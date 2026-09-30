@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { usePatternStore } from "@/lib/patternStore";
 import { getPlaybackEngine } from "./engine";
-import type { LoopRange, Playback } from "./types";
+import { playRange, type LoopSetting } from "@/lib/loopRegion";
+import type { Playback } from "./types";
 
-export function usePlayback(instrumentId: string, loop: LoopRange): Playback {
+export function usePlayback(instrumentId: string, loop: LoopSetting): Playback {
   const engine = getPlaybackEngine(instrumentId);
   const snapshot = useSyncExternalStore(
     engine.subscribe,
@@ -11,10 +12,17 @@ export function usePlayback(instrumentId: string, loop: LoopRange): Playback {
     engine.getSnapshot,
   );
 
-  const { start, end } = loop;
+  const { enabled } = loop;
+  const range = playRange(loop);
+  const start = range?.start;
+  const end = range?.end;
   useEffect(() => {
-    engine.setLoop({ start, end });
+    // Primitives keep a fresh-but-equal region object from re-running this every render.
+    engine.setLoop(start === undefined || end === undefined ? null : { start, end });
   }, [engine, start, end]);
+  useEffect(() => {
+    engine.setLooping(enabled);
+  }, [engine, enabled]);
 
   useEffect(() => () => engine.stop(), [engine]);
 

@@ -685,6 +685,8 @@ describe("clip playback", () => {
 
   it("starts at a seeked measure and then follows the loop range", async () => {
     const { engine } = setupClips();
+    // A seek only chooses the start while looping is off.
+    engine.setLooping(false);
     engine.seek?.(5);
     await start(engine);
     advanceTo(4.1);
@@ -710,5 +712,196 @@ describe("clip playback", () => {
     expect(times).toHaveLength(16 * 128);
     expect(times.every((t) => Math.abs(t / 2 - Math.round(t / 2)) < 1e-9)).toBe(true);
     expect(h.state.events.length).toBeLessThan(5);
+  });
+});
+
+describe("play-once ending", () => {
+  const perMeasure = (measures: number) =>
+    Array.from({ length: measures }, (_, m) => ({
+      row_id: "kick",
+      step: m * 16,
+      length_steps: 1,
+      velocity: 100 + m,
+    }));
+  const measuresHeard = () =>
+    h.state.hits.map((x) => Math.round(x.gain.value * 127) - 100 + 1);
+
+  it("plays every measure once and stops by itself when looping is off", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(7.9);
+    expect(engine.isPlaying).toBe(true);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(measuresHeard()).toEqual([1, 2, 3, 4]);
+    expect(engine.status).toBe("idle");
+  });
+
+  it("loops the whole pattern when looping is on with no range", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLoop(null);
+    engine.setLooping(true);
+    await start(engine);
+    advanceTo(9.9);
+    expect(measuresHeard()).toEqual([1, 2, 3, 4, 1]);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("resets the position when it stops by itself", async () => {
+    const seen: (number | null)[] = [];
+    let frame: (() => void) | undefined;
+    const store = createPatternStore("drums-pos-end");
+    store.getState().setPattern(makePattern());
+    const engine = createPlaybackEngine(createPatternPlaybackModel("drums", store), {
+      requestFrame: (cb) => {
+        frame = cb;
+        return 1;
+      },
+      cancelFrame: () => {},
+    });
+    engine.subscribePosition((s) => seen.push(s));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(1);
+    frame?.();
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(seen.at(-1)).toBeNull();
+    expect(seen.length).toBeGreaterThan(1);
+  });
+
+  it("lets the last note sound for its full length before stopping", async () => {
+    const stops: number[] = [];
+    const ends: number[] = [];
+    registerSoundSource("ring", () => ({
+      load: async () => {},
+      trigger: (_row, _start, end) => ends.push(end),
+      stopAll: () => stops.push(h.state.seconds),
+    }));
+    const store = createPatternStore("ring-test");
+    store.getState().setPattern(
+      makePattern({
+        instrument: "ring",
+        notes: [{ row_id: "kick", step: 56, length_steps: 8, velocity: 100 }],
+      }),
+    );
+    const engine = createPlaybackEngine(createPatternPlaybackModel("ring", store), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+    });
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(7.95);
+    const stopsBeforeEnd = stops.length;
+    expect(engine.isPlaying).toBe(true);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    // The note was triggered at 7 s and lasts 1 s, so nothing may be cut before 8 s.
+    expect(ends[0] - AUDIO_OFFSET).toBeCloseTo(8);
+    expect(stops.slice(stopsBeforeEnd).every((t) => t >= 8)).toBe(true);
+  });
+
+  it("continues to the end when looping is turned off mid-play", async () => {
+    const { engine } = setup(makePattern({ measures: 16, notes: perMeasure(16) }));
+    engine.setLoop({ start: 5, end: 8 });
+    await start(engine);
+    advanceTo(2.5);
+    engine.setLooping(false);
+    advanceTo(200);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(measuresHeard()).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  });
+
+  it("returns to the region when looping is turned on outside it", async () => {
+    const { engine } = setup(makePattern({ measures: 16, notes: perMeasure(16) }));
+    engine.setLoop({ start: 5, end: 8 });
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(22.5);
+    engine.setLooping(true);
+    advanceTo(33.9);
+    expect(measuresHeard()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 5, 6, 7, 8, 5]);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("starts at a seeked measure when looping is off", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLooping(false);
+    engine.seek?.(3);
+    await start(engine);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(measuresHeard()).toEqual([3, 4]);
+  });
+
+  it("starts at the region rather than a seeked measure when looping is on", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLoop({ start: 2, end: 3 });
+    engine.seek?.(4);
+    await start(engine);
+    advanceTo(0.1);
+    expect(measuresHeard()).toEqual([2]);
+  });
+
+  it("does nothing further when stopped before the finish timer fires", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(8.05);
+    engine.stop();
+    const heard = measuresHeard().length;
+    advanceTo(12);
+    expect(engine.isPlaying).toBe(false);
+    expect(measuresHeard()).toHaveLength(heard);
+    expect(h.state.events).toHaveLength(0);
+  });
+
+  it("plays again right after an automatic stop", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+
+    h.state.hits = [];
+    await start(engine);
+    advanceTo(3);
+    expect(engine.isPlaying).toBe(true);
+    expect(measuresHeard()).toEqual([1, 2]);
+  });
+
+  it("does not silence triggered sources on the natural end, but does on a user Stop", async () => {
+    const stopAll = vi.fn();
+    registerSoundSource("crash", () => ({
+      load: async () => {},
+      trigger: () => {},
+      stopAll,
+    }));
+    const store = createPatternStore("crash-test");
+    store.getState().setPattern(makePattern({ instrument: "crash" }));
+    const engine = createPlaybackEngine(createPatternPlaybackModel("crash", store), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+    });
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(stopAll).not.toHaveBeenCalled();
+
+    await start(engine);
+    engine.stop();
+    expect(stopAll).toHaveBeenCalled();
+  });
+
+  it("starts at measure 1 when looping is turned off after a seek made with looping on", async () => {
+    const { engine } = setup(makePattern({ notes: perMeasure(4) }));
+    engine.setLoop({ start: 1, end: 4 });
+    engine.seek?.(3);
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(1);
+    expect(measuresHeard()).toEqual([1]);
   });
 });

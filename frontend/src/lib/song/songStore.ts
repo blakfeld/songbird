@@ -5,9 +5,11 @@ import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { Row } from "@/generated/Row";
 import type { NoteGrid } from "../patternOps";
+import { clampLoop, type LoopSetting } from "../loopRegion";
 import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as ops from "./songOps";
+import { withLiveLoop, withSongLoop } from "./songLoop";
 import type { Song } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
@@ -78,6 +80,8 @@ export interface SongState {
   // A cancelled drag must neither spend an undo step nor wipe redo, so it restores rather than commits.
   cancelGesture: () => void;
   setSongLength: (measures: number) => void;
+  // Not an undo step: the region is a view setting, so undoing an edit must never move it.
+  setLoop: (loop: LoopSetting) => void;
   setTempo: (tempoBpm: number) => void;
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
@@ -274,7 +278,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) =>
           s.gestureBase
             ? {
-                song: s.gestureBase,
+                song: withLiveLoop(s.gestureBase, s.song!),
                 ...validSelection(s.gestureBase, s.selectedTrackId, s.selectedClipId),
                 future: s.gestureFuture ?? s.future,
                 gestureBase: null,
@@ -283,6 +287,12 @@ export function createSongStore(initial: Song | null = null): SongStore {
             : s,
         ),
       setSongLength: (m) => edit((s) => ops.setSongLength(s, m)),
+      setLoop: (loop) =>
+        set((s) => {
+          if (!s.song) return s;
+          const next = withSongLoop(s.song, clampLoop(loop, s.song.measures));
+          return next === s.song ? s : { song: next };
+        }),
       setTempo: (t) => edit((s) => ops.setTempo(s, t)),
       setSwing: (w) => edit((s) => ops.setSwing(s, w)),
       renameSong: (name) => edit((s) => ops.renameSong(s, name)),
@@ -292,9 +302,10 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const previous = s.past[s.past.length - 1];
           if (!previous || !s.song) return s;
+          const song = withLiveLoop(previous, s.song);
           return {
-            song: previous,
-            ...validSelection(previous, s.selectedTrackId, s.selectedClipId),
+            song,
+            ...validSelection(song, s.selectedTrackId, s.selectedClipId),
             past: s.past.slice(0, -1),
             future: [s.song, ...s.future],
           };
@@ -305,9 +316,10 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const [next, ...rest] = s.future;
           if (!next || !s.song) return s;
+          const song = withLiveLoop(next, s.song);
           return {
-            song: next,
-            ...validSelection(next, s.selectedTrackId, s.selectedClipId),
+            song,
+            ...validSelection(song, s.selectedTrackId, s.selectedClipId),
             past: push(s.past, s.song),
             future: rest,
           };

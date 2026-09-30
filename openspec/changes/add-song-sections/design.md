@@ -7,7 +7,7 @@ See proposal.md for the motivation. This change builds on the song page and song
 - **Tracks** (add-arrangement-clips D1): each track holds `loops` (`{id, name, measures, notes}`, with note steps relative to the loop start) and `clips` (`{id, loop_id, start_measure, measures}`, in whole measures, sorted by `start_measure`, non-overlapping). What a track plays is derived by `resolveTrackNotes` (D2). Clip operations are pure `Song → Song` functions in `lib/song/clipOps.ts` (D5). A track holds at most 64 loops and 256 clips.
 - **Persistence**: songs persist in the browser in IndexedDB (`songbird.songs.v1.<id>`, #4), with undo and redo in the song store. #4's loader keeps unrecognised fields.
 - **Pattern editor**: the single-instrument editor keeps its stores in `frontend/src/lib/patternStore.ts` and pure operations in `frontend/src/lib/patternOps.ts`. It commits whole immutable documents to a 100-entry history (`patternStore.ts:11`). We assume the song store follows the same pattern.
-- **Loop range**: this is a `LoopRange { start, end }` in measures, passed to `Transport` (`frontend/src/components/editor/Transport.tsx:16-17`). Selecting a section only has to set it.
+- **Loop region** (add-timeline-loop-region): playback looping is a `LoopSetting { region: { start, end } | null, enabled }` in 1-based inclusive measures, where a song starts with no region and looping off, with pure helpers (`defaultLoop`, `clampLoop`, `drawRegion`, …) in `frontend/src/lib/loopRegion.ts`. The Studio draws it on the arrangement ruler with `components/editor/LoopRegion.tsx`, and the Loop toggle beside Play switches it on or off. The song store owns it as the song's optional `loop_region { region: { start_measure, end_measure } | null, enabled }`, set through `songStore.setLoop` outside undo history. Selecting a section only has to call that setter.
 - **Song type ownership**: since #5, `Song` and `Track` are defined in Rust (`music/src/song.rs`) and generated to `frontend/src/generated/` by ts-rs. The browser validates project files in `lib/song/projectFile.ts`, kept in step with Rust by `fixtures/song_validation.json`. #5's versioning policy applies: additive optional fields, `version` stays 2.
 - **Backend**: no backend behavior depends on sections. MIDI export ignores them. They are still declared on the Rust `Song` so the generated types carry them and validation checks their ranges.
 
@@ -72,10 +72,18 @@ Section notes use a plain `<textarea>`. Its edits are debounced (300 ms) into th
 `isTextEntryTarget` (`frontend/src/lib/pianoRoll.ts`) already recognizes textareas, so Space and Cmd/Ctrl+Z inside the field act on the text.
 
 ### D6. Selection is UI state, not document state
-`selectedSectionId` lives in the song page's component state (and is not persisted). When the user selects a section, the page calls the existing loop-range setter with the section's measure span. When #6's generate dialog is open, it reads the selection as its default range. Deleting the selected section clears the selection.
+`selectedSectionId` lives in the song page's component state (and is not persisted). When #6's generate dialog is open, it reads the selection as its default range. Deleting the selected section clears the selection.
+
+- **Selecting sets the loop region and turns looping on.** The page calls `songStore.setLoop({ region: { start, end }, enabled: true })` with the section's measure span, whether or not a region existed before. Selecting a section is a request to hear it, so leaving looping off would make the click appear to do nothing while playback runs on to the end of the song.
+- **The region is not an undo step**, as add-timeline-loop-region requires, so selecting a section adds no history entry.
+- **Clearing the selection leaves the region alone.** The region is the user's playback setting and is saved with the song. Clearing a UI highlight should not silently change what plays; the user can redraw the region or toggle looping instead.
+- **Region edits do not change the selection.** Drawing, moving, or resizing the region on the ruler, or toggling Loop, leaves `selectedSectionId` as it is, because the selection also drives the notes panel and #6's default range.
+- **Structural edits keep the region valid.** An edit that changes the song's length passes the song through `clampLoop`, so a drawn region stays inside the new length and no region stays none. The edit does not otherwise move the region to follow shifted sections; the user reselects the section to loop it again.
+
+*Alternative:* select without touching `enabled`. That would keep the Loop toggle fully manual, but selecting a section while looping is off would then have no audible effect.
 
 ### D7. Section ruler reuses the measure grid geometry
-The ruler reuses the existing grid geometry: `MeasureRuler.tsx`, and the 28 px cell width constant in `lib/pianoRoll.ts`. It sits in the same horizontal scroll container as the tracks, so alignment needs no scroll syncing. Section actions are in a per-section menu (a button on the ruler label) and an "Add section" button at the end of the ruler. The dialog reuses `components/ui/` `Field` and `Select`.
+The ruler reuses the existing grid geometry: `MeasureRuler.tsx`, and the 28 px cell width constant in `lib/pianoRoll.ts`. It sits in the same horizontal scroll container as the tracks, so alignment needs no scroll syncing. Section actions are in a per-section menu (a button on the ruler label) and an "Add section" button at the end of the ruler. The dialog reuses `components/ui/` `Field` and `Select`. The section ruler is its own row, separate from the measure ruler that hosts `LoopRegion`, because a click on the loop region already toggles looping and a click on a section must select it; sharing one strip would give one click two meanings.
 
 ## Risks / Trade-offs
 

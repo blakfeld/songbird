@@ -4,7 +4,7 @@
 
 After add-multitrack-song, a song is one undivided run of measures. Songwriters think in sections, though: intro, verse, chorus, bridge. They need to see that structure, grow or repeat a chorus without redrawing every track, and jot down what each section is for ("verse 2: the letter arrives"). Sections are also the unit that later tools key off. Chord generation (add-section-chord-generation) writes a progression per section. The lyric assistant (add-lyrics-assistant) reads section names and notes. So sections have to exist first.
 
-**Depends on:** #4 add-multitrack-song (the Song document, tracks, song page, and song persistence), add-arrangement-clips (tracks built from loops placed as clips, and the clip operations in `lib/song/clipOps.ts`), and #5 add-song-export (the Rust `Song` type that `sections` is added to, the project-file validator, and `fixtures/song_validation.json`). Archive after all three.
+**Depends on:** #4 add-multitrack-song (the Song document, tracks, song page, and song persistence), add-arrangement-clips (tracks built from loops placed as clips, and the clip operations in `lib/song/clipOps.ts`), and #5 add-song-export (the Rust `Song` type that `sections` is added to, the project-file validator, and `fixtures/song_validation.json`), and add-timeline-loop-region (the song's `loop_region`, the `LoopSetting` helpers in `lib/loopRegion.ts`, and the ruler's `LoopRegion`). Archive after all four.
 
 ## What Changes
 
@@ -16,7 +16,7 @@ After add-multitrack-song, a song is one undivided run of measures. Songwriters 
   - These edits act on each track's **clips**, not on notes: clips move, clips crossing an edit point are split, clips inside removed measures are deleted, and duplicated measures get linked clips of the same loops. A loop's contents are never changed by a measure edit.
   - Every structural edit can be undone.
 - **Section ruler**: a labelled ruler above the tracks shows the sections along the song timeline.
-  - Selecting a section sets the playback loop range to that section.
+  - Selecting a section sets the song's loop region (add-timeline-loop-region) to that section and turns looping on.
   - The selected section also becomes the default range for per-track generation (from #6, when that change is present).
 - **Section notes**: a notes field for the selected section, up to 5,000 characters, saved with the song.
 - **Song length control**: while a song has sections, changing the song's length resizes its last section.
@@ -32,7 +32,7 @@ Non-goals:
 ## Capabilities
 
 ### New Capabilities
-- `songwriting/sections`: This capability covers the song's section structure, including tiling rules, the implicit section, and structural edits and their effect on track clips. It also covers the section ruler, section selection as loop and generation range, section notes, persistence, and undo.
+- `songwriting/sections`: This capability covers the song's section structure, including tiling rules, the implicit section, and structural edits and their effect on track clips. It also covers the section ruler, section selection as the loop region and generation range, section notes, persistence, and undo.
 
 ### Modified Capabilities
 <!-- None. The songs/multitrack spec from #4 is not archived yet; how the song-length control behaves with sections is specified as an added requirement in songwriting/sections. -->

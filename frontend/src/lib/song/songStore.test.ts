@@ -186,3 +186,93 @@ describe("songStore clips", () => {
   });
 });
 
+
+describe("songStore loop region", () => {
+  const stored = (store: ReturnType<typeof setup>) => store.getState().song!.loop_region;
+  const R = (start: number, end: number, enabled = true) => ({
+    region: { start, end },
+    enabled,
+  });
+  const S = (start: number, end: number, enabled = true) => ({
+    region: { start_measure: start, end_measure: end },
+    enabled,
+  });
+
+  it("starts with no region and looping off", () => {
+    expect(stored(setup())).toBeUndefined();
+  });
+
+  it("is not an undo step", () => {
+    const store = setup();
+    store.getState().setLoop(R(3, 4, false));
+    expect(store.getState().past).toHaveLength(0);
+    expect(stored(store)).toEqual(S(3, 4, false));
+  });
+
+  it("is left alone by undo and redo of another edit", () => {
+    const store = setup();
+    store.getState().setTempo(100);
+    store.getState().setLoop(R(3, 4, false));
+    store.getState().undo();
+    expect(store.getState().song!.tempo_bpm).toBe(120);
+    expect(stored(store)).toEqual(S(3, 4, false));
+    store.getState().redo();
+    expect(store.getState().song!.tempo_bpm).toBe(100);
+    expect(stored(store)).toEqual(S(3, 4, false));
+  });
+
+  it("keeps looping on with no region across undo and redo", () => {
+    const store = setup();
+    store.getState().setTempo(100);
+    store.getState().setLoop({ region: null, enabled: true });
+    store.getState().undo();
+    expect(stored(store)).toEqual({ region: null, enabled: true });
+    store.getState().redo();
+    expect(stored(store)).toEqual({ region: null, enabled: true });
+  });
+
+  it("is left alone by a cancelled gesture", () => {
+    const store = setup();
+    const id = store.getState().song!.tracks[0].id;
+    store.getState().beginGesture();
+    store.getState().setMixer(id, { volume_db: -10 }, { transient: true });
+    store.getState().setLoop(R(2, 5));
+    store.getState().cancelGesture();
+    expect(store.getState().song!.tracks[0].volume_db).toBe(0);
+    expect(stored(store)).toEqual(S(2, 5));
+  });
+
+  it("clamps the region when an undo changes the length", () => {
+    const store = setup();
+    store.getState().setSongLength(4);
+    store.getState().setSongLength(16);
+    store.getState().setLoop(R(9, 12));
+    store.getState().undo();
+    expect(store.getState().song!.measures).toBe(4);
+    expect(stored(store)).toEqual(S(4, 4));
+  });
+
+  it("keeps a drawn region when lengthened, clamps it when shortened, and leaves no region alone", () => {
+    const store = setup();
+    store.getState().setLoop(R(1, 8));
+    store.getState().setSongLength(16);
+    expect(stored(store)).toEqual(S(1, 8));
+    store.getState().setLoop(R(9, 16));
+    store.getState().setSongLength(8);
+    expect(stored(store)).toEqual(S(8, 8));
+    store.getState().setLoop({ region: null, enabled: true });
+    store.getState().setSongLength(4);
+    expect(stored(store)).toEqual({ region: null, enabled: true });
+  });
+
+  it("ignores a setLoop that changes nothing", () => {
+    const store = setup();
+    const before = store.getState().song;
+    store.getState().setLoop({ region: null, enabled: false });
+    expect(store.getState().song).toBe(before);
+    store.getState().setLoop(R(1, 8));
+    const set = store.getState().song;
+    store.getState().setLoop(R(1, 8));
+    expect(store.getState().song).toBe(set);
+  });
+});

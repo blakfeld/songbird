@@ -278,5 +278,111 @@ describe("pattern store", () => {
       fresh().getState().toggleNote("kick", 0);
       expect(createPatternStore("bass").getState().pattern).toBeNull();
     });
+
+    it("restores the region and looping setting after a reload", () => {
+      const s = fresh(8);
+      s.getState().setLoop({ region: { start: 3, end: 4 }, enabled: false });
+      const reloaded = createPatternStore("drums");
+      expect(reloaded.getState().loop).toEqual({ region: { start: 3, end: 4 }, enabled: false });
+    });
+
+    it("restores looping on with no region", () => {
+      const s = fresh(8);
+      s.getState().setLoop({ region: null, enabled: true });
+      expect(createPatternStore("drums").getState().loop).toEqual({ region: null, enabled: true });
+    });
+
+    it("loads stored work without loop data as no region and looping off", () => {
+      const s = fresh(8);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      delete raw.state.loop;
+      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      const reloaded = createPatternStore("drums");
+      expect(reloaded.getState().loop).toEqual({ region: null, enabled: false });
+      expect(s.getState().pattern).toEqual(reloaded.getState().pattern);
+    });
+
+    it("treats the flat shape from earlier builds as the default", () => {
+      fresh(8);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      raw.state.loop = { start: 3, end: 4, enabled: true };
+      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      expect(createPatternStore("drums").getState().loop).toEqual({ region: null, enabled: false });
+    });
+
+    it("clamps a stored region that no longer fits its pattern", () => {
+      fresh(4);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      raw.state.loop = { region: { start: 3, end: 40 }, enabled: true };
+      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      expect(createPatternStore("drums").getState().loop).toEqual({ region: { start: 3, end: 4 }, enabled: true });
+    });
+  });
+
+  describe("loop", () => {
+    it("starts with no region and looping off", () => {
+      expect(fresh(8).getState().loop).toEqual({ region: null, enabled: false });
+    });
+
+    it("is not an undo step and is left alone by undo and redo", () => {
+      const s = fresh(8);
+      s.getState().toggleNote("kick", 0);
+      s.getState().setLoop({ region: { start: 2, end: 3 }, enabled: false });
+      expect(s.getState().past).toHaveLength(1);
+      s.getState().undo();
+      expect(s.getState().pattern!.notes).toHaveLength(0);
+      expect(s.getState().loop).toEqual({ region: { start: 2, end: 3 }, enabled: false });
+      s.getState().redo();
+      expect(s.getState().loop).toEqual({ region: { start: 2, end: 3 }, enabled: false });
+    });
+
+    it("keeps a drawn region when lengthened and clamps it when shortened", () => {
+      const s = fresh(4);
+      s.getState().setLoop({ region: { start: 1, end: 4 }, enabled: true });
+      s.getState().setMeasures(8);
+      expect(s.getState().loop.region).toEqual({ start: 1, end: 4 });
+      s.getState().setLoop({ region: { start: 5, end: 8 }, enabled: false });
+      s.getState().setMeasures(4);
+      expect(s.getState().loop).toEqual({ region: { start: 4, end: 4 }, enabled: false });
+    });
+
+    it("leaves no region as no region when the length changes", () => {
+      const s = fresh(4);
+      s.getState().setLoop({ region: null, enabled: true });
+      s.getState().setMeasures(8);
+      expect(s.getState().loop).toEqual({ region: null, enabled: true });
+    });
+
+    it("clamps when undoing a length change", () => {
+      const s = fresh(4);
+      s.getState().setMeasures(8);
+      s.getState().setLoop({ region: { start: 5, end: 8 }, enabled: true });
+      s.getState().undo();
+      expect(s.getState().pattern!.measures).toBe(4);
+      expect(s.getState().loop).toEqual({ region: { start: 4, end: 4 }, enabled: true });
+    });
+
+    it("keeps the region and looping setting when a new pattern of the same length replaces it", () => {
+      const s = fresh(8);
+      s.getState().setMeasures(16);
+      s.getState().setLoop({ region: { start: 5, end: 8 }, enabled: true });
+      s.getState().setPattern({ ...s.getState().pattern!, name: "generated" });
+      expect(s.getState().loop).toEqual({ region: { start: 5, end: 8 }, enabled: true });
+    });
+
+    it("clamps the region when start-blank replaces the pattern with a shorter one", () => {
+      const s = fresh(8);
+      s.getState().setMeasures(16);
+      s.getState().setLoop({ region: { start: 5, end: 8 }, enabled: true });
+      s.getState().newEmptyPattern(drums, 4);
+      expect(s.getState().loop).toEqual({ region: { start: 4, end: 4 }, enabled: true });
+    });
+
+    it("keeps the loop when the pattern is replaced", () => {
+      const s = fresh(4);
+      s.getState().setLoop({ region: null, enabled: true });
+      s.getState().newEmptyPattern(drums, 8);
+      expect(s.getState().loop).toEqual({ region: null, enabled: true });
+    });
   });
 });

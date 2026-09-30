@@ -8,7 +8,6 @@ import type { TimeSignature } from "@/generated/TimeSignature";
 import { Button } from "@/components/ui/Button";
 import { getPlaybackEngine } from "@/lib/audio/engine";
 import { usePlayback } from "@/lib/audio/usePlayback";
-import type { LoopRange } from "@/lib/audio/types";
 import { beatSteps } from "@/lib/pianoRoll";
 import { getInstruments, getLimits } from "@/lib/api";
 import { gridOf } from "@/lib/patternOps";
@@ -45,18 +44,7 @@ export function PatternEditorPage({
   const [timeSignature, setTimeSignature] = useState<TimeSignature>("4/4");
   const [status, setStatus] = useState("");
   const [follow, setFollow] = useState(true);
-  const [loopState, setLoopState] = useState<LoopRange & { measures: number }>({
-    start: 1,
-    end: 4,
-    measures: 4,
-  });
-
-  const patternMeasures = pattern?.measures ?? 4;
-  // A loop chosen for another length is meaningless, so it resets when the measure count changes.
-  const loop: LoopRange =
-    loopState.measures === patternMeasures
-      ? { start: loopState.start, end: loopState.end }
-      : { start: 1, end: patternMeasures };
+  const loop = usePatternStore(instrumentId, (s) => s.loop);
   const playback = usePlayback(instrumentId, loop);
 
   const togglePlayback = () => {
@@ -144,11 +132,10 @@ export function PatternEditorPage({
             <Transport
               playback={playback}
               onToggle={togglePlayback}
-              measures={pattern.measures}
               stepsPerMeasure={pattern.steps_per_measure}
               beatSteps={beatSteps(pattern.time_signature)}
               loop={loop}
-              onLoopChange={(r) => setLoopState({ ...r, measures: pattern.measures })}
+              onLoopChange={(l) => getPatternStore(instrumentId).getState().setLoop(l)}
               follow={follow}
               onFollowChange={setFollow}
             />
@@ -175,6 +162,7 @@ export function PatternEditorPage({
               onMoveNote={(rowId, step, to) => getPatternStore(instrumentId).getState().moveNote(rowId, step, to)}
               onPlaceNote={(row, velocity) => void getPlaybackEngine(instrumentId).audition(row, { velocity })}
               loop={loop}
+              onLoopChange={(l) => getPatternStore(instrumentId).getState().setLoop(l)}
               follow={follow}
               isPlaying={playback.isPlaying}
               onManualScroll={() => setFollow(false)}

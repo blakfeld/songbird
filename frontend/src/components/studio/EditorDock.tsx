@@ -4,7 +4,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
-import type { LoopRange, Playback } from "@/lib/audio/types";
+import type { Playback } from "@/lib/audio/types";
 import { moveGridNote, resizeGridNote, setGridVelocity, toggleGridNote, type NoteGrid } from "@/lib/patternOps";
 import { NEW_CLIP_MEASURES, freeSpanAt, loopGrid, loopUseCount, nextFreeMeasure } from "@/lib/song/clipOps";
 import { useSongStore, type SongStore } from "@/lib/song/songStore";
@@ -131,7 +131,6 @@ export function EditorDock({
       }),
     [subscribePosition, clipStart, clipSteps, loopSteps],
   );
-  const loopRange = useMemo<LoopRange>(() => ({ start: 1, end: loopDoc?.measures ?? 1 }), [loopDoc?.measures]);
 
   const edit = (fn: (g: NoteGrid) => Note[]) => {
     if (rows && loopDoc) store.getState().editLoopNotes(track.id, loopDoc.id, rows, fn);
@@ -255,7 +254,6 @@ export function EditorDock({
             onResizeNote={(rowId, step, len) => edit((g) => resizeGridNote(g, rowId, step, len))}
             onMoveNote={(rowId, step, to) => edit((g) => moveGridNote(g, rowId, step, to))}
             onPlaceNote={(row, velocity) => onAudition(track.id, row, velocity)}
-            loop={loopRange}
             follow={follow}
             isPlaying={isPlaying}
             onManualScroll={onManualScroll}

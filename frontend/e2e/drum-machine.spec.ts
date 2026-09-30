@@ -109,10 +109,10 @@ test("generate, edit, persist and export a drum pattern", async ({ page }) => {
   expect(await snapshot(page)).toEqual(edited);
 
   // Only transport state is asserted; audio output is not observable here.
-  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
   await page.getByRole("button", { name: /Stop/ }).click();
-  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
 
   const tempo = Number(await page.getByRole("spinbutton", { name: "Tempo", exact: true }).inputValue());
   const swing = Number(
@@ -158,4 +158,87 @@ test("generate, edit, persist and export a drum pattern", async ({ page }) => {
   }
 
   expect(problems).toEqual([]);
+});
+
+// Only the first measures are draggable here because later ones lie beyond the viewport.
+async function dragAcrossMeasures(page: Page, from: number, to: number) {
+  // The ruler can sit below the fold, where raw mouse coordinates would miss it.
+  await page.getByTestId("loop-hit-layer").scrollIntoViewIfNeeded();
+  const box = (await page.getByTestId("loop-hit-layer").boundingBox())!;
+  // The hit layer spans the whole ruler, so dividing by the blank grid's length gives the snap width.
+  const w = box.width / 4;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + (from - 0.5) * w, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + (to - 0.5) * w, y, { steps: 6 });
+  await page.mouse.up();
+}
+
+test("draw, toggle and persist a loop region, and play once when looping is off", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await page.goto("/drum-machine");
+  await page.getByRole("button", { name: "Start with a blank grid" }).click();
+  const region = page.getByTestId("loop-region");
+  const toggle = page.getByRole("button", { name: "Loop playback" });
+  await expect(region).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  // With no region the toggle loops the whole pattern and must not draw one.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(region).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await dragAcrossMeasures(page, 1, 2);
+  await expect(region).toHaveAttribute("data-start", "1");
+  await expect(region).toHaveAttribute("data-end", "2");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+  await region.click();
+  await expect(region).toHaveAttribute("data-enabled", "false");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(region).toHaveAttribute("data-enabled", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await page.reload();
+  await expect(region).toHaveAttribute("data-start", "1");
+  await expect(region).toHaveAttribute("data-end", "2");
+  await expect(region).toHaveAttribute("data-enabled", "false");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  // Four measures at the default tempo take about eight seconds; it must end without pressing Stop.
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible({ timeout: 30_000 });
+
+  expect(problems).toEqual([]);
+});
+
+test("create and extend the first loop region from the keyboard", async ({ page }) => {
+  await page.goto("/drum-machine");
+  await page.getByRole("button", { name: "Start with a blank grid" }).click();
+  const region = page.getByTestId("loop-region");
+  await expect(region).toHaveCount(0);
+
+  // An empty ruler has nothing to focus, so this button is the only keyboard route to a first region.
+  const setRegion = page.getByRole("button", { name: "Set loop region" });
+  await page.getByRole("button", { name: "Loop playback" }).focus();
+  for (let i = 0; i < 40 && !(await setRegion.evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(setRegion).toBeFocused();
+  await expect(setRegion).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("slider", { name: "Loop region end" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(region).toHaveAttribute("data-start", "1");
+  await expect(region).toHaveAttribute("data-end", "2");
+  await expect(page.getByRole("button", { name: "Loop playback" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Stop/ })).toHaveCount(0);
 });

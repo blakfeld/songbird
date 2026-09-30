@@ -1,7 +1,9 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
+import { clampLoop } from "../loopRegion";
 import { SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { trimClips } from "./clipOps";
+import { songLoop, withSongLoop } from "./songLoop";
 import {
   LOOP_NAME_MAX,
   MAX_TRACKS,
@@ -110,9 +112,13 @@ export function setSongLength(song: Song, measures: number): Song {
     MEASURE_RANGE.max,
   );
   if (next === song.measures) return song;
-  if (next > song.measures) return { ...song, measures: next };
+  // Applied here rather than in the store so every route to a new length, such as adding a longer pattern, clamps the region.
+  const base = song.loop_region
+    ? withSongLoop(song, clampLoop(songLoop(song), next))
+    : song;
+  if (next > song.measures) return { ...base, measures: next };
   return {
-    ...song,
+    ...base,
     measures: next,
     tracks: song.tracks.map((t) => {
       const clips = trimClips(t.clips, next);

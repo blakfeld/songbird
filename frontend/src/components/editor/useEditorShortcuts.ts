@@ -16,6 +16,9 @@ const insideRoll = (t: EventTarget | null) => t instanceof Element && t.closest(
 // Gutter keys sit inside the roll but must keep Space for their own audition.
 const onKeyboardKey = (t: EventTarget | null) => t instanceof Element && t.closest("[data-key]") !== null;
 
+// The loop region's body is a button whose Space toggles looping; playback must not also start.
+const onLoopRegion = (t: EventTarget | null) => t instanceof Element && t.closest("[data-loop-region]") !== null;
+
 export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () => void) {
   useShortcuts({
     togglePlayback: onTogglePlayback,
@@ -42,7 +45,7 @@ export function useShortcuts(actions: ShortcutActions) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isSpace(e) && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.defaultPrevented || isTextEntryTarget(e.target) || onKeyboardKey(e.target)) return;
+        if (e.defaultPrevented || isTextEntryTarget(e.target) || onKeyboardKey(e.target) || onLoopRegion(e.target)) return;
         const inRoll = insideRoll(e.target);
         if (!inRoll && e.target instanceof Element && e.target.closest(SELF_ACTIVATING)) return;
         e.preventDefault();
@@ -74,7 +77,7 @@ export function useShortcuts(actions: ShortcutActions) {
     };
     // Buttons fire click on Space keyup, which would toggle the focused cell.
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isSpace(e) && insideRoll(e.target) && !onKeyboardKey(e.target)) e.preventDefault();
+      if (isSpace(e) && insideRoll(e.target) && !onKeyboardKey(e.target) && !onLoopRegion(e.target)) e.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);

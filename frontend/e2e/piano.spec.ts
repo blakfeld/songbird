@@ -47,10 +47,13 @@ test("open the piano, generate, add a note, play, export and reload", async ({ p
     page.locator(`[data-testid="note"][data-step="${free!.step}"][data-length="4"][data-velocity="100"]`),
   ).not.toHaveCount(0);
 
-  await page.getByRole("button", { name: "Play" }).click();
+  // Looping is off by default, so Play runs through once and the ruler shows no region.
+  await expect(page.getByTestId("loop-region")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Loop playback" })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
   await page.getByRole("button", { name: /Stop/ }).click();
-  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),

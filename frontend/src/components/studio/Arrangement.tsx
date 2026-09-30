@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
-import type { LoopRange, Playback } from "@/lib/audio/types";
+import type { Playback } from "@/lib/audio/types";
+import type { LoopSetting } from "@/lib/loopRegion";
 import { beatSteps } from "@/lib/pianoRoll";
 import { audibleTracks, totalSteps } from "@/lib/song/songOps";
 import type { Song } from "@/lib/song/types";
 import type { ResourceState } from "@/lib/useApiResource";
 import { LoopShade } from "@/components/editor/LoopShade";
+import { LoopRegion } from "@/components/editor/LoopRegion";
 import { MeasureRuler } from "@/components/editor/MeasureRuler";
 import { Playhead } from "@/components/editor/Playhead";
 import { AddTrackMenu } from "./AddTrackMenu";
@@ -49,6 +51,7 @@ export function Arrangement({
   instruments,
   onRetryInstruments,
   loop,
+  onLoopChange,
   subscribePosition,
   actions,
   clipActions,
@@ -61,7 +64,8 @@ export function Arrangement({
   selectedClipId: string | null;
   instruments: ResourceState<InstrumentInfo[]>;
   onRetryInstruments: () => void;
-  loop: LoopRange;
+  loop: LoopSetting;
+  onLoopChange: (loop: LoopSetting) => void;
   subscribePosition: Playback["subscribePosition"];
   actions: TrackActions;
   clipActions: ClipActions;
@@ -108,10 +112,17 @@ export function Arrangement({
               measures={song.measures}
               stepsPerMeasure={song.steps_per_measure}
               beatSteps={beatSteps(song.time_signature)}
-              loop={loop}
               labelEvery={labelEveryFor(laneWidth, song.measures)}
               showBeats={measureWidth >= MIN_MEASURE_FOR_BEATS_PX}
-            />
+            >
+              <LoopRegion
+                loop={loop}
+                measures={song.measures}
+                stepsPerMeasure={song.steps_per_measure}
+                measurePx={measureWidth}
+                onChange={onLoopChange}
+              />
+            </MeasureRuler>
           </div>
         </div>
       </div>

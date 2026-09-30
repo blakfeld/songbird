@@ -71,6 +71,7 @@ export type PlaybackSnapshot = Pick<Playback, "isPlaying" | "status" | "error">;
 
 export interface PlaybackEngine extends Playback {
   setLoop(range: LoopRange | null): void;
+  setLooping(enabled: boolean): void;
   audition(row: Row, options?: AuditionOptions): Promise<void>;
   dispose(): void;
   getSnapshot(): PlaybackSnapshot;
@@ -99,6 +100,9 @@ export function createPlaybackEngine(
   const positionListeners = new Set<(step: number | null) => void>();
 
   let loop: LoopRange | null = null;
+  let looping = true;
+  // Transport time the last scheduled note stops sounding, so a play-once run can end after its tail.
+  let lastNoteEnd = 0;
   // Consumed by the next bar so a seek lands on a bar boundary, and survives until Play when idle.
   let jumpTo: number | null = null;
   let tone: ToneModule | null = null;
@@ -155,6 +159,9 @@ export function createPlaybackEngine(
   // Deriving the next measure from the current one (rather than a running
   // counter) keeps a loop-range change mid-play landing inside the new range.
   const nextMeasure = (timing: PlaybackTiming, current: number | null) => {
+    if (!looping) {
+      return current === null ? 1 : Math.min(current + 1, timing.measures);
+    }
     const start = Math.min(Math.max(loop?.start ?? 1, 1), timing.measures);
     const end = Math.min(
       Math.max(loop?.end ?? timing.measures, start),
@@ -292,8 +299,26 @@ export function createPlaybackEngine(
           stepToSeconds(stepInBar + note.length_steps, bar.tempo, bar.swing) -
           offset;
         entry.source.trigger(row, audioTime, audioTime + length, note.velocity);
+        lastNoteEnd = Math.max(lastNoteEnd, bar.transportStart + offset + length);
       }
     }
+  };
+
+  // A pending seek still wins so a jump requested during the last bar is honoured rather than ended.
+  const isLastBarOfRun = (bar: ScheduledBar, timing: PlaybackTiming) =>
+    !looping && jumpTo === null && bar.measure >= timing.measures;
+
+  // Tone fires scheduled callbacks up to its lookahead before their time, so the padding keeps the
+  // transport and UI reset from landing before the last note's tail has finished.
+  const finishAfterTail = (mySession: number) => {
+    if (!tone) return;
+    const at = Math.max(nextBarStart, lastNoteEnd) + LOOKAHEAD_SECONDS;
+    tone.getTransport().scheduleOnce(() => {
+      // Deferred because Tone warns about transport changes made inside a scheduled callback.
+      queueMicrotask(() => {
+        if (mySession === session) reset(false);
+      });
+    }, at);
   };
 
   // Steps are scheduled step by step, just ahead of time, and each step
@@ -316,6 +341,10 @@ export function createPlaybackEngine(
       const timing = model.getTiming();
       if (!timing) {
         stop();
+        return;
+      }
+      if (atBoundary && bar && isLastBarOfRun(bar, timing)) {
+        finishAfterTail(mySession);
         return;
       }
       if (atBoundary) startBar(timing);
@@ -354,6 +383,9 @@ export function createPlaybackEngine(
       stepInBar = 0;
       tickTime = 0;
       lastEmitted = null;
+      lastNoteEnd = 0;
+      // With looping on, Play starts at the region; a seek only chooses a start when looping is off.
+      if (looping) jumpTo = null;
       transport.scheduleOnce((time) => tick(mySession, time), 0);
       transport.start(START_DELAY);
       setSnapshot({ status: "ready", isPlaying: true });
@@ -369,7 +401,9 @@ export function createPlaybackEngine(
     }
   };
 
-  function stop() {
+  // A natural end skips stopAll so one-shot samples and synth releases already triggered ring out;
+  // only a user Stop has to silence everything at once.
+  function reset(hardStop: boolean) {
     session += 1;
     if (frame !== null) cancelFrame(frame);
     frame = null;
@@ -378,12 +412,16 @@ export function createPlaybackEngine(
       transport.stop();
       transport.cancel();
     }
-    for (const entry of channels.values()) entry.source.stopAll();
+    if (hardStop) for (const entry of channels.values()) entry.source.stopAll();
     bars = [];
     if (snapshot.isPlaying || snapshot.status === "loading") {
       setSnapshot({ isPlaying: false, status: "idle" });
     }
     emitPosition(null);
+  }
+
+  function stop() {
+    reset(true);
   }
 
   return {
@@ -414,7 +452,13 @@ export function createPlaybackEngine(
     setLoop(range) {
       loop = range;
     },
+    setLooping(enabled) {
+      looping = enabled;
+    },
     seek(measure) {
+      // While idle with looping on, Play must start at the region, so a seek made then must not
+      // resurface as the start once looping is switched off.
+      if (looping && !snapshot.isPlaying && snapshot.status !== "loading") return;
       jumpTo = measure;
     },
     async audition(row, options = {}) {

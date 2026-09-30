@@ -71,6 +71,25 @@ describe("songLibrary", () => {
     expect((await lib.list())[0].name).toBe("Auto");
   });
 
+  it("autosaves a loop region change", async () => {
+    const lib = createSongLibrary();
+    const song = await lib.create(newSong());
+    const store = createSongStore(song);
+    lib.autosave(store);
+    store.getState().setLoop({ region: { start: 2, end: 3 }, enabled: false });
+    await lib.flush();
+    const saved = (await lib.open(song.id))!;
+    expect(saved.loop_region).toEqual({ region: { start_measure: 2, end_measure: 3 }, enabled: false });
+  });
+
+  it("duplicates the loop region", async () => {
+    const lib = createSongLibrary();
+    const demo = { ...newSong(), loop_region: { region: { start_measure: 3, end_measure: 5 }, enabled: false } };
+    await lib.create(demo);
+    const copy = (await lib.duplicate(demo.id))!;
+    expect(copy.loop_region).toEqual(demo.loop_region);
+  });
+
   it("lists legacy index entries without track_count and fills it on save", async () => {
     const kv = idbKeyValueStore();
     const song = newSong();

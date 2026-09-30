@@ -99,10 +99,73 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await expect(page.getByRole("group", { name: /^Track 1: Drums.*not audible/ })).toBeVisible();
 
   // Only transport state is asserted; audio output is not observable here.
-  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
   await page.getByRole("button", { name: /Stop/ }).click();
-  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
+test("draw and toggle a song loop region, keep it across a reload, and play once when looping is off", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await page.goto("/studio");
+  await page.getByRole("button", { name: "Songs" }).click();
+  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "New song…" }).click();
+  const create = page.getByRole("dialog", { name: "New song" });
+  await create.getByRole("textbox", { name: "Name" }).fill("Loop Song");
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("button", { name: "Rename song Loop Song" })).toBeVisible();
+
+  // Four measures keep the play-once run short.
+  const length = page.getByRole("spinbutton", { name: "Length" });
+  await length.fill("4");
+  await length.press("Enter");
+
+  const region = page.getByTestId("loop-region");
+  const toggle = page.getByRole("button", { name: "Loop playback" });
+  await expect(region).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  // With no region the toggle loops the whole song and must not draw one.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(region).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  const box = (await page.getByTestId("loop-hit-layer").boundingBox())!;
+  const w = box.width / 4;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + 1.5 * w, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 2.5 * w, y, { steps: 6 });
+  await page.mouse.up();
+  await expect(region).toHaveAttribute("data-start", "2");
+  await expect(region).toHaveAttribute("data-end", "3");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+  await region.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(region).toHaveAttribute("data-enabled", "true");
+  await toggle.click();
+  await expect(region).toHaveAttribute("data-enabled", "false");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Rename song Loop Song" })).toBeVisible();
+  await expect(region).toHaveAttribute("data-start", "2");
+  await expect(region).toHaveAttribute("data-end", "3");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  // Looping off plays measures 1-4 once, about eight seconds, and must stop without pressing Stop.
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible({ timeout: 30_000 });
 
   expect(problems).toEqual([]);
 });
