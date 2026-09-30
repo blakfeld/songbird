@@ -1,0 +1,34 @@
+# Tasks
+
+## 1. Dependencies and preference store
+
+- [ ] 1.1 In `frontend/`, add `@replit/codemirror-vim`, `@codemirror/language`, and `@codemirror/search` in one `pnpm add` alongside the `@codemirror/*` versions #9 pinned. Verify `pnpm why @codemirror/state` shows a single version and `pnpm build` succeeds.
+- [ ] 1.2 Add `frontend/src/lib/editorPrefs.ts`: a zustand `persist` store under `songbird.editor.v1` holding `{vimMode: false}`, with a hydration flag. Verify with Vitest that the default is off, that the value survives re-creation of the store from the same storage, and that song serialization (#4/#5 project file) contains no vim setting.
+
+## 2. Vim keymap in the notepad
+
+- [ ] 2.1 Add a keymap `Compartment` to `components/lyrics/LyricsEditor.tsx`. On enable, dynamic-import `@replit/codemirror-vim` and reconfigure it to `vim()` ahead of the other extensions; on disable, reconfigure it to `[]`. Verify with Vitest that toggling on and off keeps the document, the selection, and `undoDepth`, and that the vim module is never imported while the preference is off.
+- [ ] 2.2 Register the ex commands per design D4 (`:w` shows the saved-automatically notice; `:q`, `:wq`, `:x`, and `:e` show unsupported; other unknown commands go to the notepad notice area). Verify with Vitest calling the registered ex handlers that each message appears and the document is unchanged.
+- [ ] 2.3 Add the wrapper keydown handler that stops Escape propagation while vim mode is on (design D5). Verify with a Vitest test that a document-level Escape listener is not called when Escape is pressed in the notepad in vim mode, and is called when vim mode is off.
+- [ ] 2.4 Confirm the 20,000-character change filter from #9 also rejects vim puts. Verify with a Vitest test that dispatches a put-sized insert transaction at limit − 10 and sees it refused with the limit notice.
+
+## 3. Toggle and mode indicator UI
+
+- [ ] 3.1 Add `components/lyrics/VimToggle.tsx` (a labelled switch in the notepad toolbar, disabled until the preference store hydrates) and `VimModeIndicator.tsx` (NORMAL/INSERT/VISUAL, `aria-live="polite"`, shown only in vim mode, subscribed to the vim mode-change event). Verify with Vitest that the switch updates the store and that the indicator text changes when a mode-change event fires.
+- [ ] 3.2 Document vim mode (supported commands, `:w` behavior, and Tab to leave the editor) in the Lyrics panel's help text and the README's tools section. Verify the text matches the spec's supported command list.
+
+## 4. End-to-end checks
+
+- [ ] 4.1 Add Playwright tests in `frontend/e2e/lyrics-vim.spec.ts` against the mock backend. Cover these cases:
+  - enable vim → `o` + text + Escape adds a line, with the indicator showing NORMAL;
+  - `dd` deletes a line;
+  - `3j` moves three lines;
+  - apply a suggestion, then `u` reverts it;
+  - Space in normal mode does not start playback;
+  - Escape in insert mode keeps the Lyrics panel open;
+  - Tab in normal mode moves focus out of the editor;
+  - reload and open another song → still in vim mode.
+
+  Verify that `pnpm test:e2e` passes.
+- [ ] 4.2 Run `just lint` and `just test` from the repo root and verify both pass.
+- [ ] 4.3 Run `openspec validate add-lyrics-vim-mode --strict` and verify it reports the change as valid.
