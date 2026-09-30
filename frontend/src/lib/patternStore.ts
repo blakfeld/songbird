@@ -15,6 +15,8 @@ export const storageKey = (instrument: string) =>
 
 export interface PatternState {
   pattern: Pattern | null;
+  // Bumped only when a whole pattern is loaded, so views can react to loads without reacting to edits.
+  loadId: number;
   prompt: string;
   past: Pattern[];
   future: Pattern[];
@@ -26,7 +28,7 @@ export interface PatternState {
     timeSignature?: TimeSignature,
     tempoBpm?: number,
   ) => void;
-  toggleNote: (rowId: string, step: number) => void;
+  toggleNote: (rowId: string, step: number, defaultLength?: number) => void;
   setVelocity: (rowId: string, step: number, velocity: number) => void;
   resizeNote: (rowId: string, step: number, lengthSteps: number) => void;
   setMeasures: (measures: MeasureCount) => void;
@@ -50,6 +52,7 @@ export function createPatternStore(instrument: string): PatternStore {
               ? s
               : {
                   pattern: next,
+                  loadId: s.loadId + 1,
                   past: s.pattern
                     ? [...s.past, s.pattern].slice(-HISTORY_LIMIT)
                     : s.past,
@@ -70,6 +73,7 @@ export function createPatternStore(instrument: string): PatternStore {
 
         return {
           pattern: null,
+          loadId: 0,
           prompt: "",
           past: [],
           future: [],
@@ -77,7 +81,8 @@ export function createPatternStore(instrument: string): PatternStore {
           setPattern: commit,
           newEmptyPattern: (info, measures, timeSignature, tempoBpm) =>
             commit(ops.emptyPattern(info, measures, timeSignature, tempoBpm)),
-          toggleNote: (rowId, step) => edit((p) => ops.toggleNote(p, rowId, step)),
+          toggleNote: (rowId, step, defaultLength) =>
+            edit((p) => ops.toggleNote(p, rowId, step, defaultLength)),
           setVelocity: (rowId, step, velocity) =>
             edit((p) => ops.setVelocity(p, rowId, step, velocity)),
           resizeNote: (rowId, step, len) =>

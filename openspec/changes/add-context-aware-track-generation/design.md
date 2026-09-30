@@ -71,6 +71,13 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Concurrency:** a `generatingTrackId` field in the store disables that track's piano-roll edits and all other Generate buttons.
 - **Request snapshot:** the request uses a snapshot of the song taken at submit time. Edits to other tracks made while the request is in flight are kept, because the result only touches the target track's range.
 
+### D7. Global song chat (open, to be designed)
+The spec's "Global song chat builds the arrangement" requirement records the intended product flow. How to build it is not decided yet, and this change needs another planning pass before it is applied. Open questions:
+- **Instrument choice:** does the model pick the instrument (for example, a first call that returns `{instrument, track_name, prompt}`, followed by `generate_track`), or does a new endpoint do both in one request?
+- **Conversation context:** how much of the chat history goes into each request, and how does it share the token budget with the track context?
+- **Persistence:** is the chat stored on the song, in the way #10 plans `lyric_chat`, and does #10's lyric assistant share this panel instead of adding its own?
+- **Mock provider:** needs deterministic instrument picking so e2e tests can cover the "Build a song one part at a time" scenario.
+
 ## Risks / Trade-offs
 
 - [Local models ignore context or copy it verbatim] → The prompt paragraph tells the model to complement the context rather than duplicate it. The live Ollama smoke test is recorded (task 5.3). Normalization guarantees validity even when musicality suffers.

@@ -14,6 +14,14 @@ export function cellLabel(rowName: string, absStep: number, stepsPerMeasure: num
 // 6/8 is felt as two dotted-quarter beats, so grouping by 6 matches how it is counted.
 export const beatSteps = (ts: TimeSignature) => (ts === "6/8" ? 6 : 4);
 
+const BLACK_KEY_PITCH_CLASSES = new Set([1, 3, 6, 8, 10]);
+
+export const isBlackKey = (midiNote: number) => BLACK_KEY_PITCH_CLASSES.has(midiNote % 12);
+
+// A sustained note defaults to one beat so it is audible as a note; one-shots have no duration to choose.
+export const defaultNoteLength = (sustained: boolean, ts: TimeSignature) =>
+  sustained ? beatSteps(ts) : 1;
+
 export function nextVelocityPreset(current: number): number {
   const lower = VELOCITY_PRESETS.find((v) => v < current);
   return lower ?? VELOCITY_PRESETS[0];

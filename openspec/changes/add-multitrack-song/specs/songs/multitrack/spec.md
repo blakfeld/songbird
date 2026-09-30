@@ -44,7 +44,7 @@ The user SHALL be able to rename the song and change its tempo (40–240 BPM), s
 - **THEN** no track has a note starting after measure 8 and no note extends past measure 8
 
 ### Requirement: Arrangement overview and track editing
-The Studio page SHALL show one lane per track, in track order, on a shared measure timeline. Each lane SHALL show the track's name, its instrument, and a compact overview of where the track has notes. Selecting a track SHALL open it in a piano roll below the lanes. That piano roll SHALL offer the same display, note editing, and resizing behavior as the single-instrument editor (see `patterns/piano-roll-editor`), using the selected track's instrument rows. Edits SHALL be reflected immediately in the lane overview, in playback, and in saved state.
+The Studio page SHALL show one lane per track, in track order, on a shared measure timeline with measure numbers. Each lane SHALL have a header showing the track's number, name, instrument, and mixer controls, and a timeline area showing the track's notes in miniature at their positions in the song. Selecting a track SHALL open it in a piano roll docked below the arrangement. That piano roll SHALL offer the same display, note editing, and resizing behavior as the single-instrument editor (see `patterns/piano-roll-editor`), using the selected track's instrument rows. Edits SHALL be reflected immediately in the lane overview, in playback, and in saved state.
 
 #### Scenario: Edit the selected track
 - **WHEN** the user selects the Piano track and clicks an empty cell in row `C4` at step 8
@@ -55,7 +55,7 @@ The Studio page SHALL show one lane per track, in track order, on a shared measu
 - **THEN** the Drums edits are still present
 
 ### Requirement: Track mixer
-Each track SHALL have a volume control (−60 to +6 dB, default 0), a pan control (−1.0 to +1.0, default 0, with a way to reset it to center), a Mute toggle, and a Solo toggle. A track SHALL be audible when it is not muted and either no track is soloed or it is soloed. Mixer changes SHALL take effect during playback within 50 ms, without restarting playback.
+Each track's header SHALL have a volume control (−60 to +6 dB, default 0), a pan control (−1.0 to +1.0, default 0, with a way to reset it to center), a Mute toggle, and a Solo toggle. A track SHALL be audible when it is not muted and either no track is soloed or it is soloed. Mixer changes SHALL take effect during playback within 50 ms, without restarting playback.
 
 #### Scenario: Solo isolates tracks
 - **WHEN** the song has Drums, Bass, and Piano tracks and the user solos Bass

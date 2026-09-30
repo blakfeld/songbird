@@ -1,8 +1,12 @@
 # Songbird
 
-Songbird is a set of tools for songwriters. The first is the **Drum Machine**:
-describe a groove in plain language, get an editable piano-roll pattern, play
-it in the browser, and export it as a Standard MIDI File.
+Songbird is a set of tools for songwriters. Each tool turns a plain-language
+description into an editable piano-roll pattern that you can play in the
+browser and export as a Standard MIDI File:
+
+- **Drum Machine**: grooves on a General MIDI drum kit.
+- **Piano**: melodies and chords on a five-octave keyboard (C2 to C7), played
+  with a built-in synthesizer. Click a key in the keyboard to hear its pitch.
 
 ## Prerequisites
 
@@ -18,7 +22,9 @@ cp backend/.env.example backend/.env
 just dev            # backend on :8080, frontend on :3000; Ctrl-C stops both
 ```
 
-Open <http://localhost:3000> and choose Drum Machine. `.env.example` selects the
+Open <http://localhost:3000> and choose **Open the Drum Machine** or **Open the
+Piano** (also reachable directly at `/drum-machine` and `/instruments/piano`).
+`.env.example` selects the
 `ollama` provider, which needs a local model (see below). To try the app with
 no setup at all, use the built-in mock provider instead:
 

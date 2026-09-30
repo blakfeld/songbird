@@ -13,6 +13,9 @@ const isSpace = (e: KeyboardEvent) => e.key === " " || e.code === "Space";
 // Inside the roll Space is playback, not "press the focused cell".
 const insideRoll = (t: EventTarget | null) => t instanceof Element && t.closest(ROLL) !== null;
 
+// Gutter keys sit inside the roll but must keep Space for their own audition.
+const onKeyboardKey = (t: EventTarget | null) => t instanceof Element && t.closest("[data-key]") !== null;
+
 export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () => void) {
   const toggle = useRef(onTogglePlayback);
   useEffect(() => {
@@ -22,7 +25,7 @@ export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () =
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isSpace(e) && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.defaultPrevented || isTextEntryTarget(e.target)) return;
+        if (e.defaultPrevented || isTextEntryTarget(e.target) || onKeyboardKey(e.target)) return;
         const inRoll = insideRoll(e.target);
         if (!inRoll && e.target instanceof Element && e.target.closest(SELF_ACTIVATING)) return;
         e.preventDefault();
@@ -45,7 +48,7 @@ export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () =
     };
     // Buttons fire click on Space keyup, which would toggle the focused cell.
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isSpace(e) && insideRoll(e.target)) e.preventDefault();
+      if (isSpace(e) && insideRoll(e.target) && !onKeyboardKey(e.target)) e.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);

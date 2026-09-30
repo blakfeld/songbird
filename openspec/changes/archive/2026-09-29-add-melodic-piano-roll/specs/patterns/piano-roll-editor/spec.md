@@ -85,6 +85,10 @@ The application SHALL provide an editor page at `/instruments/<id>` for every in
 - **WHEN** the user opens `/instruments/kazoo`
 - **THEN** a not-found message is shown with a link to `/`, and no generation request can be made
 
+#### Scenario: Instruments unavailable
+- **WHEN** the user opens `/instruments/piano` and the instrument list cannot be loaded
+- **THEN** an error with a Retry control is shown instead of the not-found message, and retrying after the service recovers shows the Piano editor
+
 #### Scenario: Landing page lists instruments
 - **WHEN** the service lists `drums` and `piano` and the user opens `/`
 - **THEN** the page links to `/drum-machine` and `/instruments/piano`

@@ -73,12 +73,16 @@ See proposal.md for motivation and `specs/songs/multitrack/spec.md` for behavior
 - **Alternative:** one engine per track, all started together. Separate schedulers drift and double the transport bookkeeping.
 
 ### D5. Studio page layout
-- **Page structure:**
-  - `app/studio/page.tsx` renders `StudioPage`. It contains a song header (name, tempo, swing, length, library menu), the transport, the lane list (`TrackLane` with header, mixer strip, and `NoteOverview`), and the selected track's `PianoRoll`.
-  - The layout follows the existing editor components.
-- **Note overview:** `NoteOverview` draws one bar per measure, shaded where the track has notes. It is cheap enough for 16 × 128 measures without virtualization.
+- **Baseline:** `mockups/studio.png`. It is modeled on a familiar DAW arrangement so songwriters coming from one can find their way around without learning a new layout.
+- **Page structure:** `app/studio/page.tsx` renders `StudioPage`, a three-region grid:
+  - **Arrangement (top left):** the song header (name, tempo, swing, length, library menu) and transport sit above the track list. Each `TrackLane` pairs a `TrackHeader` with a timeline area under a shared measure ruler. The header shows the track number, instrument icon, name, Mute, Solo, a volume slider, and a pan knob. It holds the mixer so balancing never needs a separate mixer view. The Add Track control sits at the top of the header column.
+  - **Editor dock (bottom left):** a header with the selected track's name and instrument, a bar.beat ruler, and that track's `PianoRoll`. The split between arrangement and dock is fixed in this change, because resizing adds persistence and drag handling that nothing yet needs.
+  - **Assistant column (right, full height):** `AssistantPanel`, with chat history above and a chat input below. In this change it shows an empty state and a disabled input. It is laid out now so that #6's global chat and #10's lyric assistant fill a column that already exists, instead of reworking the grid.
+- **Playhead:** it spans both the lanes and the dock, so the user can see where playback is in the arrangement and in the note being edited.
+- **Note overview:** `NoteOverview` draws the track's notes in miniature, as one region-style block spanning the song and a single SVG path per lane. The mockup relies on seeing the shape of each part at a glance. One path per lane stays cheap at 16 × 128 measures without canvas or virtualization.
 - **Time signature:** the new-song dialog asks for the time signature. After creation it is shown read-only.
-- **Before building:** `ui-designer` reviews the layout before implementation (task 4.1).
+- **Before building:** `ui-designer` turns the mockup into a layout spec before implementation (task 4.1). `ui-spec.md` records only the places it departs from the mockup and why.
+- **Deliberately omitted from the mockup:** the editor tabs other than Piano Roll, the quantize/scale/velocity inspector, the R/I buttons, and folder tracks (see proposal non-goals).
 
 ### D6. Send to song
 - **UI:** `SendToSongButton` sits in `EditorToolbar`.

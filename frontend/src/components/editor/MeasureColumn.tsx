@@ -3,7 +3,7 @@
 import { memo, useMemo } from "react";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
-import { cellLabel } from "@/lib/pianoRoll";
+import { cellLabel, isBlackKey } from "@/lib/pianoRoll";
 import { getPatternStore } from "@/lib/patternStore";
 import { NoteBar } from "./NoteBar";
 
@@ -21,23 +21,26 @@ interface Props {
   notes: Note[];
   carryIn: Note[];
   activeCell: ActiveCell | null;
+  shadeBlackRows: boolean;
+  noteLength: number;
 }
 
 const sameItems = (a: Note[], b: Note[]) =>
   a === b || (a.length === b.length && a.every((n, i) => n === b[i]));
 
-function cellClass(local: number, stepsPerMeasure: number, beatSteps: number) {
+function cellClass(local: number, stepsPerMeasure: number, beatSteps: number, shaded: boolean) {
   const parts = ["border-r border-b border-zinc-200 dark:border-zinc-800"];
   if (local === stepsPerMeasure - 1) {
     parts.push("border-r-2 border-r-zinc-500 dark:border-r-zinc-500");
   } else if (local % beatSteps === beatSteps - 1) {
     parts.push("border-r-zinc-300 dark:border-r-zinc-700");
   }
-  parts.push(
-    Math.floor(local / beatSteps) % 2 === 1
-      ? "bg-zinc-50 dark:bg-zinc-900/50"
-      : "bg-white dark:bg-zinc-950",
-  );
+  const oddBeat = Math.floor(local / beatSteps) % 2 === 1;
+  if (shaded) {
+    parts.push(oddBeat ? "bg-zinc-200/70 dark:bg-zinc-800/60" : "bg-zinc-100 dark:bg-zinc-900");
+  } else {
+    parts.push(oddBeat ? "bg-zinc-50 dark:bg-zinc-900/50" : "bg-white dark:bg-zinc-950");
+  }
   return parts.join(" ");
 }
 
@@ -50,6 +53,8 @@ function MeasureColumnImpl({
   notes,
   carryIn,
   activeCell,
+  shadeBlackRows,
+  noteLength,
 }: Props) {
   const start = measureIndex * stepsPerMeasure;
   const rowIndex = useMemo(() => new Map(rows.map((r, i) => [r.id, i])), [rows]);
@@ -67,6 +72,7 @@ function MeasureColumnImpl({
   const cells = [];
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
+    const shaded = shadeBlackRows && isBlackKey(row.midi_note);
     for (let local = 0; local < stepsPerMeasure; local++) {
       const abs = start + local;
       const covering = coverage.get(`${row.id}:${abs}`);
@@ -87,8 +93,8 @@ function MeasureColumnImpl({
           aria-description={description}
           aria-pressed={covering !== undefined}
           tabIndex={isActive ? 0 : -1}
-          onClick={() => getPatternStore(instrumentId).getState().toggleNote(row.id, abs)}
-          className={`${cellClass(local, stepsPerMeasure, beatSteps)} touch-manipulation ${covering ? "" : "cursor-pointer hover:bg-indigo-600/10 dark:hover:bg-indigo-400/15"} focus-visible:relative focus-visible:z-20 focus-visible:bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white`}
+          onClick={() => getPatternStore(instrumentId).getState().toggleNote(row.id, abs, noteLength)}
+          className={`${cellClass(local, stepsPerMeasure, beatSteps, shaded)} touch-manipulation ${covering ? "" : "cursor-pointer hover:bg-indigo-600/10 dark:hover:bg-indigo-400/15"} focus-visible:relative focus-visible:z-20 focus-visible:bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white`}
           style={{ gridColumn: local + 1, gridRow: r + 1 }}
         />,
       );
@@ -124,6 +130,8 @@ export const MeasureColumn = memo(MeasureColumnImpl, (a, b) =>
   a.rows === b.rows &&
   a.stepsPerMeasure === b.stepsPerMeasure &&
   a.beatSteps === b.beatSteps &&
+  a.shadeBlackRows === b.shadeBlackRows &&
+  a.noteLength === b.noteLength &&
   a.activeCell?.row === b.activeCell?.row &&
   a.activeCell?.step === b.activeCell?.step &&
   sameItems(a.notes, b.notes) &&

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { MeasureCount } from "@/generated/MeasureCount";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { Button } from "@/components/ui/Button";
+import { getPlaybackEngine } from "@/lib/audio/engine";
 import { usePlayback } from "@/lib/audio/usePlayback";
 import type { LoopRange } from "@/lib/audio/types";
 import { beatSteps } from "@/lib/pianoRoll";
@@ -26,9 +28,12 @@ const noopSubscribe = () => () => {};
 export function PatternEditorPage({
   instrumentId,
   title,
+  instrument: provided,
 }: {
   instrumentId: string;
   title: string;
+  // Lets a parent that already fetched the instrument avoid a first paint styled as drums.
+  instrument?: InstrumentInfo;
 }) {
   // localStorage only exists on the client, so server markup and first paint must not depend on it.
   const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
@@ -60,7 +65,7 @@ export function PatternEditorPage({
   };
   useEditorShortcuts(instrumentId, togglePlayback);
 
-  const instrument = instruments.data?.find((i) => i.id === instrumentId) ?? null;
+  const instrument = provided ?? instruments.data?.find((i) => i.id === instrumentId) ?? null;
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl min-w-0 flex-1 flex-col gap-6 bg-zinc-50 px-4 py-6 text-zinc-900 sm:px-6 sm:py-8 dark:bg-black dark:text-zinc-50">
@@ -155,6 +160,9 @@ export function PatternEditorPage({
             <PianoRoll
               instrumentId={instrumentId}
               instrumentName={instrument?.name ?? "Instrument"}
+              kind={instrument?.kind}
+              sustained={instrument?.sustained}
+              onAudition={(row) => void getPlaybackEngine(instrumentId).audition(row)}
               pattern={pattern}
               loop={loop}
               follow={follow}

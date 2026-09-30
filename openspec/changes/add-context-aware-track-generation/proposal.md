@@ -18,6 +18,10 @@ Generation today produces a standalone pattern for one instrument and knows noth
 - **Studio UI:** each track gets a Generate action with a prompt, a token counter, and a range choice (whole song, loop range, or a custom measure span).
   - While a generation runs, the target track is locked and other tracks stay editable.
   - The result replaces the track's notes in the range as one undoable step.
+- **Global song chat:** the Studio's right-hand assistant column (laid out by #4) becomes one chat for the whole song, and it is the main way to build an arrangement.
+  - "Give me a piano that does …" adds a new track. The AI picks a fitting instrument and generates its part.
+  - Follow-ups such as "give me the drums to match" and "now the bass" each add one more track. Each uses the conversation and every other track as context, so the parts are written to fit together.
+  - Each chat-added track is one undo step. The per-track Generate action remains for regenerating a range of an existing track.
 - **Non-goals:**
   - Generating several tracks in one request.
   - Streaming.
@@ -29,7 +33,7 @@ Depends on: #4 `add-multitrack-song` and #5 `add-song-export` (for the Rust `Son
 ## Capabilities
 
 ### New Capabilities
-- `songs/track-generation`: Generating one track of a song over a measure range, with the other tracks as context. This covers the endpoint contract, validation, the context summary and budget, song limits discovery, and the Studio generate flow.
+- `songs/track-generation`: Generating one track of a song over a measure range, with the other tracks as context. It also covers the global song chat that adds generated tracks from plain-language requests. This covers the endpoint contract, validation, the context summary and budget, song limits discovery, and the Studio generate flow.
 
 ### Modified Capabilities
 - `platform/service-operations`: "Environment-based configuration" adds the context token budget setting.
@@ -48,6 +52,7 @@ Depends on: #4 `add-multitrack-song` and #5 `add-song-export` (for the Rust `Son
   - A new validation error code `invalid_track`, alongside `invalid_range`.
 - **Frontend:**
   - A Studio `TrackGenerateDialog`.
+  - The chat behavior of `AssistantPanel`, the shell #4 provides.
   - `generateTrack` and `getSongLimits` in `lib/api.ts`.
   - A song store action that applies range replacements.
 - `.env.example` and `backend/README.md` document the new setting.

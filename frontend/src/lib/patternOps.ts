@@ -27,15 +27,23 @@ function findCovering(p: Pattern, rowId: string, step: number) {
 }
 
 // Returning the same reference on no-ops lets the store skip pointless undo entries.
-export function toggleNote(p: Pattern, rowId: string, step: number): Pattern {
+export function toggleNote(
+  p: Pattern,
+  rowId: string,
+  step: number,
+  defaultLength = 1,
+): Pattern {
   if (!p.rows.some((r) => r.id === rowId)) return p;
   if (!Number.isInteger(step) || step < 0 || step >= totalSteps(p)) return p;
   const existing = findCovering(p, rowId, step);
   if (existing) return { ...p, notes: p.notes.filter((n) => n !== existing) };
+  const nextStart = p.notes
+    .filter((n) => n.row_id === rowId && n.step > step)
+    .reduce((min, n) => Math.min(min, n.step), totalSteps(p));
   const added: Note = {
     row_id: rowId,
     step,
-    length_steps: 1,
+    length_steps: Math.max(1, Math.min(defaultLength, nextStart - step)),
     velocity: DEFAULT_VELOCITY,
   };
   return { ...p, notes: [...p.notes, added] };

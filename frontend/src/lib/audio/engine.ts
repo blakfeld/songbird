@@ -16,6 +16,10 @@ const START_DELAY = "+0.05";
 const LOOKAHEAD_SECONDS = 0.1;
 const TICK_SECONDS = 0.025;
 
+const AUDITION_DELAY_SECONDS = 0.01;
+const AUDITION_SECONDS = 0.5;
+const AUDITION_VELOCITY = 100;
+
 // Tempo and swing are frozen per bar so step times within a bar stay
 // consistent even if the user edits them mid-bar.
 interface ScheduledBar {
@@ -35,6 +39,7 @@ export type PlaybackSnapshot = Pick<Playback, "isPlaying" | "status" | "error">;
 
 export interface PlaybackEngine extends Playback {
   setLoop(range: LoopRange | null): void;
+  audition(row: Row): Promise<void>;
   getSnapshot(): PlaybackSnapshot;
   subscribe(cb: () => void): () => void;
 }
@@ -195,9 +200,7 @@ export function createPlaybackEngine(
   };
 
   const ensureSource = (t: ToneModule) => {
-    const factory = getSoundSourceFactory(instrumentId);
-    if (!factory) throw new Error(`No sound source for "${instrumentId}"`);
-    return (source ??= factory(t));
+    return (source ??= getSoundSourceFactory(instrumentId)(t));
   };
 
   const play = async () => {
@@ -281,6 +284,20 @@ export function createPlaybackEngine(
     },
     setLoop(range) {
       loop = range;
+    },
+    async audition(row) {
+      // Started before any await for the same user-gesture reason as play().
+      const alreadyStarted = tone?.start();
+      try {
+        const t = (tone ??= await loadTone());
+        await (alreadyStarted ?? t.start());
+        const active = ensureSource(t);
+        await active.load([row]);
+        const start = t.getContext().currentTime + AUDITION_DELAY_SECONDS;
+        active.trigger(row, start, start + AUDITION_SECONDS, AUDITION_VELOCITY);
+      } catch {
+        // Best-effort: Play is where audio failures are surfaced to the user.
+      }
     },
     subscribePosition(cb) {
       positionListeners.add(cb);

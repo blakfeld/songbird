@@ -1,15 +1,10 @@
 import type { Row } from "@/generated/Row";
 import type { SoundSource } from "./types";
+import { velocityToGain } from "./velocity";
 
 type ToneModule = typeof import("tone");
 
 export const DRUM_KIT_BASE_URL = "/kits/drums/";
-
-// Linear in amplitude so velocity 127 is unity and lower values attenuate
-// predictably.
-export function velocityToGain(velocity: number): number {
-  return Math.min(Math.max(velocity, 1), 127) / 127;
-}
 
 export function createDrumsSource(tone: ToneModule): SoundSource {
   let buffers: InstanceType<ToneModule["ToneAudioBuffers"]> | null = null;
