@@ -5,7 +5,7 @@ describe("newSong", () => {
   it("has the documented defaults", () => {
     const s = newSong();
     expect(s).toMatchObject({
-      version: 1,
+      version: 2,
       name: "Untitled song",
       measures: 8,
       time_signature: "4/4",
@@ -23,7 +23,8 @@ describe("newSong", () => {
         pan: 0,
         muted: false,
         soloed: false,
-        notes: [],
+        loops: [],
+        clips: [],
       });
     }
     expect(s.tracks[0].id).not.toBe(s.tracks[1].id);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drums } from "@/test/fixtures";
+import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { createSongStore } from "@/lib/song/songStore";
 import { newSong } from "@/lib/song/types";
 import { createSongPlaybackModel } from "./songPlaybackModel";
@@ -34,5 +34,15 @@ describe("song playback model", () => {
     expect(model.getVoices()).toEqual([]);
     model.setInstruments([drums]);
     expect(model.getVoices().map((v) => v.instrument)).toEqual(["drums"]);
+  });
+
+  it("gives each voice the notes its clips resolve to", () => {
+    const song = newSong();
+    song.tracks[0] = {
+      ...trackWithNotes(song.tracks[0], [note("kick", 0)], 1),
+      clips: [{ id: "c", loop_id: `${song.tracks[0].id}-loop`, start_measure: 3, measures: 2 }],
+    };
+    const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
+    expect(model.getVoices()[0].notes.map((n) => n.step)).toEqual([32, 48]);
   });
 });

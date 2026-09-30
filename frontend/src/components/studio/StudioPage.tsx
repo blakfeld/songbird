@@ -12,7 +12,7 @@ import { ModalDialog } from "@/components/ui/ModalDialog";
 import { getInstruments } from "@/lib/api";
 import type { LoopRange } from "@/lib/audio/types";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
-import { beatSteps, CELL_W_PX } from "@/lib/pianoRoll";
+import { beatSteps } from "@/lib/pianoRoll";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
 import { newSong, type Song } from "@/lib/song/types";
@@ -24,6 +24,7 @@ import { AssistantPanel } from "./AssistantPanel";
 import { EditorDock } from "./EditorDock";
 import { SongHeader } from "./SongHeader";
 import type { TrackActions } from "./trackActions";
+import { useClipActions } from "./useClipActions";
 
 const STORAGE_FAILURE =
   "Changes aren't being saved. Browser storage is full or unavailable. You can keep editing, but closing this tab will lose your changes.";
@@ -39,13 +40,14 @@ const HANDLE_PX = 8;
 const ARRANGEMENT_ID = "studio-arrangement";
 const DOCK_ID = "studio-editor";
 
-const countNotes = (song: Song) => song.tracks.reduce((n, t) => n + t.notes.length, 0);
-
 export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const library = provided ?? getSongLibrary();
   const [store] = useState(() => createSongStore());
   const song = useSongStore(store, (s) => s.song);
   const selectedTrackId = useSongStore(store, (s) => s.selectedTrackId);
+  const selectedClipId = useSongStore(store, (s) => s.selectedClipId);
+  const [renamingLoopId, setRenamingLoopId] = useState<string | null>(null);
+  const renameInvoker = useRef<HTMLElement | null>(null);
   const instruments = useApiResource(getInstruments);
   const [status, setStatus] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
@@ -61,7 +63,6 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const requestedSong = useRef<string | null | undefined>(undefined);
   const detachAutosave = useRef<(() => void) | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const dockScroller = useRef<HTMLDivElement | null>(null);
   const storage = useStore(library.status);
   const [storedDock, setStoredDock] = useStoredHeight(DOCK_HEIGHT_KEY);
   const mainRef = useRef<HTMLElement>(null);
@@ -117,21 +118,25 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
         if (requestedSong.current) window.history.replaceState(null, "", window.location.pathname);
       }
       const requested = requestedSong.current;
+      const unreadable = () => library.readStatus.getState().failed;
+      const unopenable = () => library.readStatus.getState().invalid;
       let opened = requested ? await library.open(requested) : null;
       // A failed read looks like "not found", and acting on that would create a song and replace last-opened.
-      if (library.readStatus.getState().failed) {
+      if (unreadable()) {
         if (!cancelled) setLoadFailed(true);
         return;
       }
-      const missing = Boolean(requested) && !opened;
+      const requestedProblem = requested && !opened ? (unopenable() ? "opened" : "found") : null;
+      let lastInvalid = false;
       let fallback: "last" | "new" = "last";
       if (!opened) {
         const last = library.getLastSongId();
         opened = last ? await library.open(last) : null;
-        if (library.readStatus.getState().failed) {
+        if (unreadable()) {
           if (!cancelled) setLoadFailed(true);
           return;
         }
+        lastInvalid = !opened && Boolean(last) && unopenable();
       }
       if (!opened) {
         fallback = "new";
@@ -140,12 +145,12 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
       }
       if (cancelled) return;
       show(opened);
-      if (missing) {
-        setStatus(
-          fallback === "last"
-            ? "That song couldn't be found, so your last song was opened."
-            : "That song couldn't be found, so a new song was created.",
-        );
+      const outcome =
+        fallback === "last" ? "so your last song was opened." : "so a new song was created.";
+      if (requestedProblem) {
+        setStatus(`That song couldn't be ${requestedProblem}, ${outcome}`);
+      } else if (lastInvalid) {
+        setStatus(`Your last song couldn't be opened, ${outcome}`);
       }
     })();
     return () => {
@@ -181,10 +186,16 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
     if (!playback.isPlaying) setFollow(true);
     playback.toggle();
   };
+  const requestRename = useCallback((loopId: string, invoker: HTMLElement | null) => {
+    renameInvoker.current = invoker;
+    setRenamingLoopId(loopId);
+  }, []);
+  const clipActions = useClipActions(store, setStatus, requestRename);
   useShortcuts({
     togglePlayback,
     undo: () => store.getState().undo(),
     redo: () => store.getState().redo(),
+    duplicate: () => clipActions.duplicateSelected(),
   });
 
   const openById = useCallback(
@@ -229,22 +240,15 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
     const before = store.getState().song;
     store.getState().setSongLength(next);
     const after = store.getState().song;
-    if (before && after && countNotes(after) < countNotes(before)) {
-      setStatus(`Shortened to ${after.measures} bars. Notes after bar ${after.measures} were removed. Undo to restore.`);
+    // Loops keep all their notes when the song shrinks, so only clip changes are worth announcing.
+    if (before && after && after.tracks.some((t, i) => t.clips !== before.tracks[i]?.clips)) {
+      setStatus(`Shortened to ${after.measures} bars. Clips after bar ${after.measures} were trimmed or removed. Undo to restore.`);
     }
   };
 
   const seek = (trackId: string, measureIndex: number) => {
     store.getState().selectTrack(trackId);
-    if (playback.isPlaying) setFollow(false);
-    const spm = store.getState().song?.steps_per_measure ?? 16;
-    requestAnimationFrame(() => {
-      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      dockScroller.current?.scrollTo?.({
-        left: measureIndex * spm * CELL_W_PX,
-        behavior: reduced ? "auto" : "smooth",
-      });
-    });
+    playback.seek?.(measureIndex + 1);
   };
 
   const audition = (trackId: string, row: Row, velocity?: number) =>
@@ -349,11 +353,13 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
             sectionId={ARRANGEMENT_ID}
             song={song}
             selectedTrackId={track.id}
+            selectedClipId={selectedClipId}
             instruments={instruments}
             onRetryInstruments={instruments.retry}
             loop={loop}
             subscribePosition={playback.subscribePosition}
             actions={trackActions}
+            clipActions={clipActions}
             onAddTrack={addTrack}
             onSeek={seek}
           />
@@ -374,13 +380,19 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
             track={track}
             instruments={instruments}
             onRetryInstruments={instruments.retry}
-            loop={loop}
             follow={follow}
             isPlaying={playback.isPlaying}
             onManualScroll={() => setFollow(false)}
             subscribePosition={playback.subscribePosition}
             onAudition={audition}
-            scrollerRef={dockScroller}
+            clipActions={clipActions}
+            renamingLoopId={renamingLoopId}
+            onRenameDone={() => {
+              setRenamingLoopId(null);
+              const invoker = renameInvoker.current;
+              renameInvoker.current = null;
+              requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+            }}
           />
         </>
       ) : (

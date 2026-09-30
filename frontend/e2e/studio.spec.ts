@@ -27,11 +27,18 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   const bass = page.getByRole("group", { name: "Track 3: Bass" });
   await expect(bass).toBeVisible();
 
-  const editor = page.getByRole("region", { name: "Editor: Bass" });
+  // Room for three 4-measure clips.
+  const length = page.getByRole("spinbutton", { name: "Length" });
+  await length.fill("16");
+  await length.press("Enter");
+
+  await bass.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const first = bass.getByRole("button", { name: "Bass 1, measures 1 to 4" });
+  await expect(first).toBeVisible();
+  const editor = page.getByRole("region", { name: "Editor: Bass 1 on Bass" });
   await editor.getByRole("button", { name: "C2, measure 1, step 1", exact: true }).click();
   await editor.getByRole("button", { name: "C2, measure 2, step 1", exact: true }).click();
   await expect(editor.getByTestId("note")).toHaveCount(2);
-  await expect(bass.getByRole("img")).toHaveAccessibleName(/2 notes/);
 
   // A plain vertical drag moves the note to another row and keeps its step.
   const rowsOf = () => editor.getByTestId("note").evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.row));
@@ -47,11 +54,26 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await expect.poll(rowsOf).not.toEqual(before);
   await expect(editor.getByTestId("note")).toHaveCount(2);
 
+  // The copies must stay linked so the unique edit below proves it isolates a single clip.
+  await first.focus();
+  await page.keyboard.press("Control+d");
+  // Focus follows the new clip asynchronously; pressing again earlier would duplicate the first clip.
+  await expect(bass.getByRole("button", { name: /^Bass 1, measures 5 to 8/ })).toBeFocused();
+  await page.keyboard.press("Control+d");
+  await expect(bass.getByRole("button", { name: "Bass 1, measures 9 to 12, linked, 3 clips" })).toBeVisible();
+
+  // Making the last copy unique and editing it must leave the linked clips alone.
+  await editor.getByRole("button", { name: /^Clip actions for/ }).click();
+  await page.getByRole("menuitem", { name: "Make unique" }).click();
+  const unique = page.getByRole("region", { name: "Editor: Bass 1 (copy) on Bass" });
+  await unique.getByRole("button", { name: "C2, measure 3, step 1", exact: true }).click();
+  await expect(unique.getByTestId("note")).toHaveCount(3);
+
   await page.getByRole("button", { name: /^Select Drums track/ }).click();
-  const drumsEditor = page.getByRole("region", { name: "Editor: Drums" });
+  await page.getByRole("group", { name: "Track 1: Drums" }).getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const drumsEditor = page.getByRole("region", { name: "Editor: Drums 1 on Drums" });
   await drumsEditor.getByRole("button", { name: "Kick, measure 1, step 1", exact: true }).click();
   await expect(drumsEditor.getByTestId("note")).toHaveCount(1);
-  await expect(page.getByRole("group", { name: "Track 1: Drums" }).getByRole("img")).toHaveAccessibleName(/1 note/);
 
   await page.getByRole("button", { name: "Solo Bass" }).click();
   await page.getByRole("slider", { name: "Volume Bass" }).fill("-6");
@@ -65,8 +87,12 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await page.reload();
   await expect(page.getByRole("button", { name: "Rename song E2E Song" })).toBeVisible();
   const reloaded = page.getByRole("group", { name: /^Track 3: Bass/ });
-  await expect(reloaded.getByRole("img")).toHaveAccessibleName(/2 notes/);
-  await expect(page.getByRole("group", { name: /^Track 1: Drums/ }).getByRole("img")).toHaveAccessibleName(/1 note/);
+  await reloaded.getByRole("button", { name: "Bass 1, measures 1 to 4, linked, 2 clips" }).click();
+  await expect(page.getByRole("region", { name: "Editor: Bass 1 on Bass" }).getByTestId("note")).toHaveCount(2);
+  await reloaded.getByRole("button", { name: "Bass 1 (copy), measures 9 to 12" }).click();
+  await expect(page.getByRole("region", { name: "Editor: Bass 1 (copy) on Bass" }).getByTestId("note")).toHaveCount(3);
+  await page.getByRole("button", { name: /^Select Drums track/ }).click();
+  await expect(page.getByRole("region", { name: "Editor: Drums 1 on Drums" }).getByTestId("note")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Solo Bass" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("slider", { name: "Volume Bass" })).toHaveValue("-6");
   await expect(page.getByRole("slider", { name: "Pan Bass" })).toHaveAttribute("aria-valuetext", "100% left");

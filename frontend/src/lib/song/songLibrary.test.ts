@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { note } from "@/test/fixtures";
+import { note, trackWithNotes } from "@/test/fixtures";
 import {
   INDEX_KEY,
   LAST_SONG_KEY,
@@ -10,6 +10,7 @@ import {
   songKey,
   type KeyValueStore,
 } from "./songLibrary";
+import { resolveTrackNotes } from "./clipOps";
 import { createSongStore } from "./songStore";
 import { newSong } from "./types";
 
@@ -23,7 +24,7 @@ describe("songLibrary", () => {
   it("restores a saved song on reload and remembers it as last opened", async () => {
     const lib = createSongLibrary();
     const song = newSong();
-    song.tracks[0].notes = [note("kick", 0)];
+    song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], song.measures);
     song.tracks[0].volume_db = -6;
     await lib.create(song);
     const reloaded = createSongLibrary();
@@ -95,17 +96,17 @@ describe("songLibrary", () => {
   it("duplicates independently", async () => {
     const lib = createSongLibrary();
     const demo = { ...newSong(), name: "Demo" };
-    demo.tracks[0].notes = [note("kick", 0)];
+    demo.tracks[0] = trackWithNotes(demo.tracks[0], [note("kick", 0)], demo.measures);
     await lib.create(demo);
     const copy = (await lib.duplicate(demo.id))!;
     expect(copy.name).toBe("Demo (copy)");
     expect(copy.id).not.toBe(demo.id);
     expect(copy.tracks).toEqual(demo.tracks);
-    const edited = { ...copy, tracks: [{ ...copy.tracks[0], notes: [] }, ...copy.tracks.slice(1)] };
+    const edited = { ...copy, tracks: [{ ...copy.tracks[0], loops: [], clips: [] }, ...copy.tracks.slice(1)] };
     lib.save(edited);
     await lib.flush();
-    expect((await lib.open(demo.id))!.tracks[0].notes).toHaveLength(1);
-    expect((await lib.open(copy.id))!.tracks[0].notes).toHaveLength(0);
+    expect((await lib.open(demo.id))!.tracks[0].loops).toHaveLength(1);
+    expect((await lib.open(copy.id))!.tracks[0].loops).toHaveLength(0);
     expect(await lib.list()).toHaveLength(2);
   });
 
@@ -213,5 +214,81 @@ describe("songLibrary", () => {
     await lib.list();
     expect(lib.readStatus.getState().failed).toBe(true);
     expect(lib.status.getState().ok).toBe(false);
+  });
+
+  describe("opening songs saved before clips", () => {
+    const v1Song = () => {
+      const song = newSong();
+      const drumsTrack: Record<string, unknown> = { ...song.tracks[0] };
+      const pianoTrack: Record<string, unknown> = { ...song.tracks[1] };
+      for (const t of [drumsTrack, pianoTrack]) {
+        delete t.loops;
+        delete t.clips;
+      }
+      return {
+        ...song,
+        version: 1,
+        sections: [{ name: "Verse" }],
+        tracks: [
+          { ...drumsTrack, notes: [note("kick", 0), note("snare", 40, 2)], future_flag: 7 },
+          { ...pianoTrack, notes: [] },
+        ],
+      };
+    };
+
+    it("converts without changing what plays, and keeps unknown fields", async () => {
+      const kv = idbKeyValueStore();
+      const v1 = v1Song();
+      await kv.set(songKey(v1.id), v1);
+      const opened = (await createSongLibrary().open(v1.id))!;
+      expect(opened.version).toBe(2);
+      expect(opened.tracks[0].loops).toMatchObject([{ name: "Drums", measures: 8 }]);
+      expect(opened.tracks[0].clips).toMatchObject([{ start_measure: 1, measures: 8 }]);
+      expect(resolveTrackNotes(opened, opened.tracks[0])).toEqual(v1.tracks[0].notes);
+      expect(opened.tracks[1]).toMatchObject({ loops: [], clips: [] });
+      expect("notes" in opened.tracks[0]).toBe(false);
+      expect((opened as unknown as Record<string, unknown>).sections).toEqual([{ name: "Verse" }]);
+      expect((opened.tracks[0] as unknown as Record<string, unknown>).future_flag).toBe(7);
+    });
+
+    it("does not write the converted song back until an edit", async () => {
+      const kv = idbKeyValueStore();
+      const v1 = v1Song();
+      await kv.set(songKey(v1.id), v1);
+      const lib = createSongLibrary();
+      const opened = (await lib.open(v1.id))!;
+      await lib.flush();
+      expect(await kv.get(songKey(v1.id))).toEqual(v1);
+      const store = createSongStore(opened);
+      lib.autosave(store);
+      store.getState().setTempo(100);
+      await lib.flush();
+      expect(((await kv.get(songKey(v1.id))) as { version: number }).version).toBe(2);
+    });
+
+    it("reports a malformed stored song as invalid, not as a failed read", async () => {
+      const kv = idbKeyValueStore();
+      const song = newSong();
+      await kv.set(songKey(song.id), { ...song, tracks: [{ ...song.tracks[0], loops: [null] }] });
+      const lib = createSongLibrary();
+      expect(await lib.open(song.id)).toBeNull();
+      expect(lib.readStatus.getState()).toMatchObject({ failed: false, invalid: true });
+      expect(await lib.open("missing")).toBeNull();
+      expect(lib.readStatus.getState()).toMatchObject({ failed: false, invalid: false });
+    });
+
+    it("refuses a clip that references another track's loop", async () => {
+      const kv = idbKeyValueStore();
+      const song = newSong();
+      song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], song.measures);
+      song.tracks[1] = {
+        ...song.tracks[1],
+        clips: [{ id: "x", loop_id: song.tracks[0].loops[0].id, start_measure: 1, measures: 2 }],
+      };
+      await kv.set(songKey(song.id), song);
+      const lib = createSongLibrary();
+      expect(await lib.open(song.id)).toBeNull();
+      expect(lib.readStatus.getState().failed).toBe(false);
+    });
   });
 });

@@ -5,6 +5,8 @@ import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { Row } from "@/generated/Row";
 import type { NoteGrid } from "../patternOps";
+import * as clipOps from "./clipOps";
+import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as ops from "./songOps";
 import type { Song } from "./types";
 
@@ -15,21 +17,57 @@ export interface SongState {
   song: Song | null;
   // Selection is deliberately outside history so switching tracks never becomes an undo step.
   selectedTrackId: string | null;
+  // Selecting a clip also selects its track, so the dock never shows a clip from another track.
+  selectedClipId: string | null;
   past: Song[];
   future: Song[];
   // A drag commits one history entry, so the pre-drag song is kept to become that entry.
   gestureBase: Song | null;
+  // Kept with the base because starting an edit clears redo, and a cancelled drag must give it back.
+  gestureFuture: Song[] | null;
 
   loadSong: (song: Song) => void;
   selectTrack: (trackId: string) => void;
+  selectClip: (clipId: string | null) => void;
   addTrack: (instrument: Pick<InstrumentInfo, "id" | "name">, name?: string) => void;
   deleteTrack: (trackId: string) => void;
   renameTrack: (trackId: string, name: string) => void;
-  editTrackNotes: (
+  editLoopNotes: (
     trackId: string,
+    loopId: string,
     rows: Row[],
     edit: (grid: NoteGrid) => Note[],
   ) => void;
+  // Clip and loop actions return the reason an op was refused, or null on success, so the UI can say why.
+  newClip: (trackId: string, measure: number) => ClipFailure | null;
+  placeLoop: (
+    trackId: string,
+    loopId: string,
+    measure: number,
+    measures?: number,
+  ) => ClipFailure | null;
+  duplicateClip: (trackId: string, clipId: string) => ClipFailure | null;
+  moveClip: (
+    trackId: string,
+    clipId: string,
+    toStart: number,
+    options?: { transient?: boolean },
+  ) => ClipFailure | null;
+  resizeClip: (
+    trackId: string,
+    clipId: string,
+    measures: number,
+    options?: { transient?: boolean },
+  ) => ClipFailure | null;
+  deleteClip: (trackId: string, clipId: string) => ClipFailure | null;
+  makeUnique: (trackId: string, clipId: string) => ClipFailure | null;
+  renameLoop: (trackId: string, loopId: string, name: string) => ClipFailure | null;
+  deleteLoop: (trackId: string, loopId: string) => ClipFailure | null;
+  setLoopLength: (
+    trackId: string,
+    loopId: string,
+    measures: number,
+  ) => ClipFailure | null;
   setMixer: (
     trackId: string,
     patch: ops.MixerPatch,
@@ -37,6 +75,8 @@ export interface SongState {
   ) => void;
   beginGesture: () => void;
   endGesture: () => void;
+  // A cancelled drag must neither spend an undo step nor wipe redo, so it restores rather than commits.
+  cancelGesture: () => void;
   setSongLength: (measures: number) => void;
   setTempo: (tempoBpm: number) => void;
   setSwing: (swing: number) => void;
@@ -50,11 +90,28 @@ export type SongStore = StoreApi<SongState>;
 
 const push = (past: Song[], song: Song) => [...past, song].slice(-HISTORY_LIMIT);
 
-// Undo or delete can remove the selected track, so selection falls back rather than dangling.
-const validSelection = (song: Song, selected: string | null) =>
-  selected && song.tracks.some((t) => t.id === selected)
-    ? selected
-    : (song.tracks[0]?.id ?? null);
+// Undo or delete can remove the selected track or clip, so selection falls back rather than dangling.
+const validSelection = (
+  song: Song,
+  trackId: string | null,
+  clipId: string | null,
+) => {
+  const track = song.tracks.find((t) => t.id === trackId) ?? song.tracks[0];
+  const clip =
+    track?.id === trackId && clipId
+      ? track.clips.find((c) => c.id === clipId)
+      : undefined;
+  return {
+    selectedTrackId: track?.id ?? null,
+    selectedClipId: clip?.id ?? null,
+  };
+};
+
+// Clips are sorted, so the first one is the earliest.
+const initialSelection = (song: Song | null) => ({
+  selectedTrackId: song?.tracks[0]?.id ?? null,
+  selectedClipId: song?.tracks[0]?.clips[0]?.id ?? null,
+});
 
 export function createSongStore(initial: Song | null = null): SongStore {
   return createStore<SongState>()((set, get) => {
@@ -65,35 +122,83 @@ export function createSongStore(initial: Song | null = null): SongStore {
         if (next === s.song) return s;
         return {
           song: next,
-          selectedTrackId: validSelection(next, s.selectedTrackId),
+          ...validSelection(next, s.selectedTrackId, s.selectedClipId),
           past: push(s.past, s.gestureBase ?? s.song),
           future: [],
           gestureBase: null,
+          gestureFuture: null,
         };
       });
 
+    // Transient runs skip history so a drag can update the song on every pointer move.
+    const run = (
+      fn: (song: Song) => ClipOpResult,
+      trackId: string,
+      options: { transient?: boolean; select?: boolean } = {},
+    ): ClipFailure | null => {
+      const song = get().song;
+      if (!song) return "not-found";
+      const result = fn(song);
+      if (result.song === null) return result.reason;
+      const next = result.song;
+      if (options.transient) {
+        set((s) => {
+          if (!s.song || next === s.song) return s;
+          return {
+            song: next,
+            gestureBase: s.gestureBase ?? s.song,
+            gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
+            future: [],
+          };
+        });
+      } else {
+        edit(() => next);
+      }
+      if (options.select && result.clipId)
+        set({ selectedTrackId: trackId, selectedClipId: result.clipId });
+      return null;
+    };
+
     return {
       song: initial,
-      selectedTrackId: initial?.tracks[0]?.id ?? null,
+      ...initialSelection(initial),
       past: [],
       future: [],
       gestureBase: null,
+      gestureFuture: null,
 
       loadSong: (song) =>
         set({
           song,
-          selectedTrackId: song.tracks[0]?.id ?? null,
+          ...initialSelection(song),
           past: [],
           future: [],
           gestureBase: null,
+          gestureFuture: null,
         }),
       selectTrack: (trackId) =>
-        set((s) =>
-          s.song?.tracks.some((t) => t.id === trackId) &&
-          s.selectedTrackId !== trackId
-            ? { selectedTrackId: trackId }
-            : s,
-        ),
+        set((s) => {
+          const track = s.song?.tracks.find((t) => t.id === trackId);
+          if (!track) return s;
+          // Re-selecting the current track keeps its selected clip so a header click never loses the user's place.
+          if (s.selectedTrackId === trackId && s.selectedClipId) return s;
+          const clipId = track.clips[0]?.id ?? null;
+          return s.selectedTrackId === trackId && s.selectedClipId === clipId
+            ? s
+            : { selectedTrackId: trackId, selectedClipId: clipId };
+        }),
+      selectClip: (clipId) =>
+        set((s) => {
+          if (clipId === null)
+            return s.selectedClipId === null ? s : { selectedClipId: null };
+          const track = s.song?.tracks.find((t) =>
+            t.clips.some((c) => c.id === clipId),
+          );
+          if (!track) return s;
+          return s.selectedTrackId === track.id && s.selectedClipId === clipId
+            ? s
+            : { selectedTrackId: track.id, selectedClipId: clipId };
+        }),
       addTrack: (instrument, name) => {
         const before = get().song;
         edit((s) => ops.addTrack(s, instrument, name));
@@ -104,16 +209,43 @@ export function createSongStore(initial: Song | null = null): SongStore {
       deleteTrack: (trackId) => edit((s) => ops.deleteTrack(s, trackId)),
       renameTrack: (trackId, name) =>
         edit((s) => ops.renameTrack(s, trackId, name)),
-      editTrackNotes: (trackId, rows, fn) =>
+      editLoopNotes: (trackId, loopId, rows, fn) =>
         edit((s) => {
-          const track = s.tracks.find((t) => t.id === trackId);
-          if (!track) return s;
-          return ops.editTrackNotes(
+          const loop = s.tracks
+            .find((t) => t.id === trackId)
+            ?.loops.find((l) => l.id === loopId);
+          if (!loop) return s;
+          return clipOps.editLoopNotes(
             s,
             trackId,
-            fn(ops.trackGrid(s, track, rows)),
+            loopId,
+            fn(clipOps.loopGrid(loop, rows, s.steps_per_measure)),
           );
         }),
+      newClip: (trackId, measure) =>
+        run((s) => clipOps.newClip(s, trackId, measure), trackId, { select: true }),
+      placeLoop: (trackId, loopId, measure, measures) =>
+        run((s) => clipOps.placeLoop(s, trackId, loopId, measure, measures), trackId, {
+          select: true,
+        }),
+      duplicateClip: (trackId, clipId) =>
+        run((s) => clipOps.duplicateClip(s, trackId, clipId), trackId, {
+          select: true,
+        }),
+      moveClip: (trackId, clipId, toStart, options) =>
+        run((s) => clipOps.moveClip(s, trackId, clipId, toStart), trackId, options),
+      resizeClip: (trackId, clipId, measures, options) =>
+        run((s) => clipOps.resizeClip(s, trackId, clipId, measures), trackId, options),
+      deleteClip: (trackId, clipId) =>
+        run((s) => clipOps.deleteClip(s, trackId, clipId), trackId),
+      makeUnique: (trackId, clipId) =>
+        run((s) => clipOps.makeUnique(s, trackId, clipId), trackId),
+      renameLoop: (trackId, loopId, name) =>
+        run((s) => clipOps.renameLoop(s, trackId, loopId, name), trackId),
+      deleteLoop: (trackId, loopId) =>
+        run((s) => clipOps.deleteLoop(s, trackId, loopId), trackId),
+      setLoopLength: (trackId, loopId, measures) =>
+        run((s) => clipOps.setLoopLength(s, trackId, loopId, measures), trackId),
       setMixer: (trackId, patch, options) => {
         if (!options?.transient) return edit((s) => ops.setMixer(s, trackId, patch));
         set((s) => {
@@ -123,18 +255,33 @@ export function createSongStore(initial: Song | null = null): SongStore {
           return {
             song: next,
             gestureBase: s.gestureBase ?? s.song,
+            gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
             future: [],
           };
         });
       },
       beginGesture: () =>
-        set((s) => (s.song && !s.gestureBase ? { gestureBase: s.song } : s)),
+        set((s) =>
+          s.song && !s.gestureBase ? { gestureBase: s.song, gestureFuture: s.future } : s,
+        ),
       endGesture: () =>
         set((s) => {
           if (!s.gestureBase) return s;
-          if (s.gestureBase === s.song) return { gestureBase: null };
-          return { past: push(s.past, s.gestureBase), gestureBase: null };
+          if (s.gestureBase === s.song) return { gestureBase: null, gestureFuture: null };
+          return { past: push(s.past, s.gestureBase), gestureBase: null, gestureFuture: null };
         }),
+      cancelGesture: () =>
+        set((s) =>
+          s.gestureBase
+            ? {
+                song: s.gestureBase,
+                ...validSelection(s.gestureBase, s.selectedTrackId, s.selectedClipId),
+                future: s.gestureFuture ?? s.future,
+                gestureBase: null,
+                gestureFuture: null,
+              }
+            : s,
+        ),
       setSongLength: (m) => edit((s) => ops.setSongLength(s, m)),
       setTempo: (t) => edit((s) => ops.setTempo(s, t)),
       setSwing: (w) => edit((s) => ops.setSwing(s, w)),
@@ -147,7 +294,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (!previous || !s.song) return s;
           return {
             song: previous,
-            selectedTrackId: validSelection(previous, s.selectedTrackId),
+            ...validSelection(previous, s.selectedTrackId, s.selectedClipId),
             past: s.past.slice(0, -1),
             future: [s.song, ...s.future],
           };
@@ -160,7 +307,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (!next || !s.song) return s;
           return {
             song: next,
-            selectedTrackId: validSelection(next, s.selectedTrackId),
+            ...validSelection(next, s.selectedTrackId, s.selectedClipId),
             past: push(s.past, s.song),
             future: rest,
           };

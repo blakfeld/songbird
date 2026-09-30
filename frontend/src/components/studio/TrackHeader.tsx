@@ -3,12 +3,14 @@
 import { useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { focusRing } from "@/components/ui/classes";
-import { TRACK_NAME_MAX, type Track } from "@/lib/song/types";
+import { TRACK_NAME_MAX, type Song, type Track } from "@/lib/song/types";
+import { LaneMenuItems, defaultLaneMeasure } from "./ClipMenu";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { Menu, menuItemClass } from "./Menu";
 import { PanKnob } from "./PanKnob";
 import type { TrackActions } from "./trackActions";
+import type { ClipActions } from "./useClipActions";
 import { VolumeSlider } from "./VolumeSlider";
 
 const toggleBase = `size-7 shrink-0 rounded text-xs font-bold pointer-coarse:size-9 ${focusRing}`;
@@ -21,19 +23,25 @@ export type InstrumentLookup =
   | { state: "missing" };
 
 export function TrackHeader({
+  song,
   track,
   number,
   selected,
   canDelete,
   instrument,
   actions,
+  selectedClipId,
+  clipActions,
 }: {
+  song: Song;
   track: Track;
   number: number;
   selected: boolean;
   canDelete: boolean;
   instrument: InstrumentLookup;
   actions: TrackActions;
+  selectedClipId: string | null;
+  clipActions: ClipActions;
 }) {
   const [renaming, setRenaming] = useState(false);
   const info = instrument.state === "ready" ? instrument.info : null;
@@ -92,12 +100,18 @@ export function TrackHeader({
         <Menu
           label={`Track options for ${track.name}`}
           align="right"
-          panelClassName="w-52"
+          panelClassName="w-64"
           triggerClassName={`inline-flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-zinc-100 pointer-coarse:size-9 dark:hover:bg-zinc-800 ${focusRing}`}
           trigger={<span aria-hidden="true">⋯</span>}
         >
           {(close) => (
-            <>
+            <LaneMenuItems
+              track={track}
+              measure={defaultLaneMeasure(song, track, selectedClipId)}
+              actions={clipActions}
+              close={close}
+              extra={
+              <>
               <button
                 type="button"
                 role="menuitem"
@@ -107,7 +121,7 @@ export function TrackHeader({
                   setRenaming(true);
                 }}
               >
-                Rename…
+                Rename track…
               </button>
               <button
                 type="button"
@@ -128,7 +142,9 @@ export function TrackHeader({
                   A song needs at least one track
                 </p>
               )}
-            </>
+              </>
+              }
+            />
           )}
         </Menu>
       </div>

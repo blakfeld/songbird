@@ -92,6 +92,7 @@ export function PianoRoll({
   gutterClassName,
   corner: cornerContent,
   beatLabels,
+  describedBy,
   scrollerRef,
   fillHeight = false,
 }: {
@@ -119,6 +120,8 @@ export function PianoRoll({
   gutterClassName?: string;
   corner?: ReactNode;
   beatLabels?: boolean;
+  // Lets a host add context the grid alone doesn't convey, such as that edits reach several clips.
+  describedBy?: string;
   // Lets a host scroll the roll, e.g. to jump to a measure picked elsewhere.
   scrollerRef?: Ref<HTMLDivElement>;
   // Lets a host that sizes the roll (a resize handle) replace the fixed height cap.
@@ -323,7 +326,7 @@ export function PianoRoll({
         role="group"
         aria-roledescription="piano roll"
         aria-label={`${instrumentName} piano roll`}
-        aria-describedby={helpId}
+        aria-describedby={describedBy ? `${helpId} ${describedBy}` : helpId}
         ref={scroller}
         onKeyDown={onKeyDown}
         onWheel={(e) => Math.abs(e.deltaX) > Math.abs(e.deltaY) && userScrolled()}

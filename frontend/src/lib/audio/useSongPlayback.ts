@@ -44,6 +44,7 @@ export function useSongPlayback(
       ...snapshot,
       toggle: engine.toggle,
       stop: engine.stop,
+      seek: engine.seek,
       preload: engine.preload,
       subscribePosition: engine.subscribePosition,
       audition: engine.audition,

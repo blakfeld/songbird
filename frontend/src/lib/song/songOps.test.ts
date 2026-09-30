@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { drums, note, patternWith } from "@/test/fixtures";
 import * as ops from "./songOps";
-import { newSong, type Song } from "./types";
+import { newSong, type Clip, type Song } from "./types";
 
-const withNotes = (song: Song, trackIndex: number, notes: ReturnType<typeof note>[]): Song => ({
+const withClips = (song: Song, trackIndex: number, spans: [start: number, measures: number][]): Song => ({
   ...song,
-  tracks: song.tracks.map((t, i) => (i === trackIndex ? { ...t, notes } : t)),
+  tracks: song.tracks.map((t, i) =>
+    i === trackIndex
+      ? {
+          ...t,
+          loops: [{ id: `l${i}`, name: "Loop", measures: 2, notes: [note("kick", 0)] }],
+          clips: spans.map(([start_measure, measures], n): Clip => ({ id: `c${i}-${n}`, loop_id: `l${i}`, start_measure, measures })),
+        }
+      : t,
+  ),
 });
 
 describe("tracks", () => {
@@ -14,8 +22,7 @@ describe("tracks", () => {
     const pianos = s.tracks.filter((t) => t.instrument === "piano");
     expect(pianos).toHaveLength(2);
     expect(pianos[0].id).not.toBe(pianos[1].id);
-    const edited = ops.editTrackNotes(s, pianos[1].id, [note("c4", 0)]);
-    expect(edited.tracks.find((t) => t.id === pianos[0].id)!.notes).toEqual([]);
+    expect(pianos[0].loops).not.toBe(pianos[1].loops);
   });
 
   it("refuses a 17th track", () => {
@@ -37,28 +44,24 @@ describe("tracks", () => {
     expect(ops.renameTrack(s, s.tracks[0].id, "  ")).toBe(s);
     expect(ops.renameTrack(s, s.tracks[0].id, "x".repeat(60)).tracks[0].name).toHaveLength(40);
   });
-
-  it("editTrackNotes returns the same song for unchanged notes", () => {
-    const s = newSong();
-    expect(ops.editTrackNotes(s, s.tracks[0].id, s.tracks[0].notes)).toBe(s);
-  });
 });
 
 describe("song settings", () => {
-  it("lengthening appends silence and keeps existing notes", () => {
-    const s = withNotes(newSong(), 0, [note("kick", 0), note("kick", 127)]);
+  it("lengthening appends silence and keeps existing clips", () => {
+    const s = withClips(newSong(), 0, [[1, 8]]);
     const longer = ops.setSongLength(s, 12);
     expect(longer.measures).toBe(12);
-    expect(longer.tracks[0].notes).toEqual(s.tracks[0].notes);
+    expect(longer.tracks[0].clips).toBe(s.tracks[0].clips);
   });
 
-  it("shortening drops and shortens notes on every track", () => {
+  it("shortening trims and deletes clips on every track and keeps every loop whole", () => {
     let s = ops.setSongLength(newSong(), 12);
-    s = withNotes(s, 0, [note("kick", 0), note("kick", 9 * 16)]);
-    s = withNotes(s, 1, [note("c4", 7 * 16 + 14, 8), note("c4", 11 * 16)]);
+    s = withClips(s, 0, [[7, 4], [11, 2]]);
+    s = withClips(s, 1, [[1, 2]]);
     const cut = ops.setSongLength(s, 8);
-    expect(cut.tracks[0].notes).toEqual([note("kick", 0)]);
-    expect(cut.tracks[1].notes).toEqual([note("c4", 126, 2)]);
+    expect(cut.tracks[0].clips).toMatchObject([{ start_measure: 7, measures: 2 }]);
+    expect(cut.tracks[0].loops).toBe(s.tracks[0].loops);
+    expect(cut.tracks[1].clips).toBe(s.tracks[1].clips);
   });
 
   it("clamps length, tempo, swing and no-ops on equal values", () => {
@@ -141,17 +144,27 @@ describe("addTrackFromPattern", () => {
   it("adds a track named after the pattern with its notes", () => {
     const s = ops.addTrackFromPattern(newSong(), pattern);
     const t = s.tracks[s.tracks.length - 1];
-    expect(t).toMatchObject({ name: "Boom Bap", instrument: drums.id, notes: pattern.notes });
+    expect(t).toMatchObject({ name: "Boom Bap", instrument: drums.id });
+    expect(t.loops).toMatchObject([{ name: "Boom Bap", measures: 4, notes: pattern.notes }]);
+    expect(t.clips).toMatchObject([{ loop_id: t.loops[0].id, start_measure: 1, measures: 4 }]);
     expect(s.measures).toBe(8);
   });
 
   it("lengthens the song when the pattern is longer, leaving other tracks empty there", () => {
     const long = { ...pattern, measures: 16 as const };
-    const base = withNotes(newSong(), 0, [note("kick", 0)]);
+    const base = withClips(newSong(), 0, [[1, 8]]);
     const s = ops.addTrackFromPattern(base, long);
     expect(s.measures).toBe(16);
-    expect(s.tracks[0].notes).toEqual([note("kick", 0)]);
-    expect(s.tracks[1].notes).toEqual([]);
+    expect(s.tracks[0].clips).toBe(base.tracks[0].clips);
+    expect(s.tracks[1].clips).toEqual([]);
+    expect(s.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 16 }]);
+  });
+
+  it("places a short pattern as a short clip in a longer song", () => {
+    const base = ops.setSongLength(newSong(), 16);
+    const s = ops.addTrackFromPattern(base, { ...pattern, measures: 4 });
+    expect(s.measures).toBe(16);
+    expect(s.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 4 }]);
   });
 
   it("refuses at 16 tracks or a mismatched meter", () => {

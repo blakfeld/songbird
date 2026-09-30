@@ -11,6 +11,8 @@ export interface Playback {
   error: string | null;
   toggle(): void;
   stop(): void;
+  // Optional because only the song view lets the user pick a starting point.
+  seek?(measure: number): void;
   // Loading ahead of Play keeps the first Play inside the user gesture, which browsers require to start audio.
   preload(rows?: Row[]): Promise<void>;
   // A callback rather than React state, since per-frame state updates would re-render every measure.

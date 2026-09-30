@@ -2,6 +2,7 @@ import { del, get, set } from "idb-keyval";
 import { createStore } from "zustand/vanilla";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import type { SongStore } from "./songStore";
+import { migrateSong } from "./migrate";
 import { newId, type Song } from "./types";
 
 const KEY_PREFIX = "songbird.songs.v1.";
@@ -76,8 +77,9 @@ export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
     }
   };
 
-  // Reads report through their own flag so a failed read never raises the save-failure banner.
-  const readStatus = createStore<{ failed: boolean }>(() => ({ failed: false }));
+  // Reads report through their own flags so a failed read never raises the save-failure banner.
+  // `invalid` separates a stored song that cannot be converted from one that does not exist.
+  const readStatus = createStore<{ failed: boolean; invalid: boolean }>(() => ({ failed: false, invalid: false }));
   const guardedRead = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
     try {
       const result = await fn();
@@ -143,8 +145,16 @@ export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
     await queue;
   };
 
+  // Migration happens only in memory: opening an old song must not rewrite it until the user edits.
   const load = (id: string) =>
-    guardedRead(async () => ((await kv.get(songKey(id))) as Song | undefined) ?? null, null);
+    guardedRead(async () => {
+      readStatus.setState({ invalid: false });
+      const raw = await kv.get(songKey(id));
+      if (raw === undefined) return null;
+      const song = migrateSong(raw);
+      if (!song) readStatus.setState({ invalid: true });
+      return song;
+    }, null);
 
   return {
     status,

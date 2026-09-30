@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pattern } from "@/generated/Pattern";
 import type { PlaybackModel, Voice } from "./types";
 import { createPatternStore } from "@/lib/patternStore";
+import { createSongStore } from "@/lib/song/songStore";
+import { newSong, newTrack } from "@/lib/song/types";
+import { drums } from "@/test/fixtures";
 import { stepToSeconds } from "@/lib/timing";
 import { createPlaybackEngine } from "./engine";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
+import { createSongPlaybackModel } from "./songPlaybackModel";
 import { registerSoundSource } from "./registry";
 
 type MockParam = { ramps: [number, number][]; rampTo(v: number, t: number): void };
@@ -620,5 +624,91 @@ describe("multi-voice playback", () => {
     expect(h.state.channels).toHaveLength(1);
     expect(outputs["mv-b"]).toBe(h.state.channels[0]);
     expect(outputs["mv-a"]).toBeUndefined();
+  });
+});
+
+describe("clip playback", () => {
+  const times: number[] = [];
+  registerSoundSource("clip-test", () => ({
+    load: async () => {},
+    trigger: (_row, time) => times.push(time - AUDIO_OFFSET),
+    stopAll: () => {},
+  }));
+
+  function setupClips() {
+    const song = newSong();
+    song.measures = 8;
+    song.tracks = [
+      {
+        ...song.tracks[0],
+        instrument: "clip-test",
+        loops: [{ id: "l", name: "L", measures: 2, notes: [{ row_id: "kick", step: 0, length_steps: 1, velocity: 100 }] }],
+        clips: [{ id: "c", loop_id: "l", start_measure: 3, measures: 6 }],
+      },
+    ];
+    song.measures = 8;
+    const store = createSongStore(song);
+    const engine = createPlaybackEngine(createSongPlaybackModel(store, [{ ...drums, id: "clip-test" }]), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+    });
+    return { store, engine };
+  }
+
+  beforeEach(() => {
+    times.length = 0;
+  });
+
+  it("triggers a repeated loop on the first step of measures 3, 5 and 7 only", async () => {
+    const { engine } = setupClips();
+    await start(engine);
+    advanceTo(15.9);
+    // A measure lasts 2 s at 120 BPM in 4/4.
+    expect(times).toEqual([4, 8, 12]);
+  });
+
+  it("hears a loop edit at the next matching step in every clip", async () => {
+    const { engine, store } = setupClips();
+    const trackId = store.getState().song!.tracks[0].id;
+    store.getState().placeLoop(trackId, "l", 1, 2);
+    await start(engine);
+    advanceTo(0.1);
+    expect(times).toEqual([0]);
+    store.getState().editLoopNotes(trackId, "l", drums.rows, (g) => [
+      ...g.notes,
+      { row_id: "kick", step: 8, length_steps: 1, velocity: 100 },
+    ]);
+    advanceTo(15.9);
+    // The added note is half a measure (1 s) into each repeat of the loop, in the clip at measure 1 and the one at 3-8.
+    expect(times).toEqual([0, 1, 4, 5, 8, 9, 12, 13]);
+  });
+
+  it("starts at a seeked measure and then follows the loop range", async () => {
+    const { engine } = setupClips();
+    engine.seek?.(5);
+    await start(engine);
+    advanceTo(4.1);
+    // Measure 5 plays first, then 6 and 7, so the next kick lands two measures later.
+    expect(times).toEqual([0, 4]);
+  });
+
+  it("plays 16 tracks across 128 measures on the grid without drift or piling up events", async () => {
+    const song = newSong();
+    song.measures = 128;
+    song.tracks = Array.from({ length: 16 }, (_, i) => ({
+      ...newTrack("clip-test", `T${i}`),
+      loops: [{ id: `l${i}`, name: "L", measures: 1, notes: [{ row_id: "kick", step: 0, length_steps: 1, velocity: 100 }] }],
+      clips: [{ id: `c${i}`, loop_id: `l${i}`, start_measure: 1, measures: 128 }],
+    }));
+    const store = createSongStore(song);
+    const model = createSongPlaybackModel(store, [{ ...drums, id: "clip-test" }]);
+    const first = model.getVoices()[0].notes;
+    expect(model.getVoices()[0].notes).toBe(first);
+    const engine = createPlaybackEngine(model, { requestFrame: () => 0, cancelFrame: () => {} });
+    await start(engine);
+    advanceTo(255.9);
+    expect(times).toHaveLength(16 * 128);
+    expect(times.every((t) => Math.abs(t / 2 - Math.round(t / 2)) < 1e-9)).toBe(true);
+    expect(h.state.events.length).toBeLessThan(5);
   });
 });
