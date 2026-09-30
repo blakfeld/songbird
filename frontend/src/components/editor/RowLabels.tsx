@@ -7,19 +7,30 @@ export function RowLabels({
   rows,
   kind = "drums",
   onAudition,
+  gutterClassName,
   ref,
 }: {
   rows: Row[];
   kind?: InstrumentKind;
   onAudition?: (row: Row) => void;
+  // Lets a host align the label column with other regions instead of the native width.
+  gutterClassName?: string;
   ref?: Ref<HTMLDivElement>;
 }) {
   if (kind === "melodic") {
-    return <Keyboard ref={ref} rows={rows} onAudition={onAudition} />;
+    if (!gutterClassName) return <Keyboard ref={ref} rows={rows} onAudition={onAudition} />;
+    return (
+      <div
+        ref={ref}
+        className={`sticky left-0 z-30 flex justify-end border-r border-zinc-400 bg-white dark:bg-zinc-950 ${gutterClassName}`}
+      >
+        <Keyboard rows={rows} onAudition={onAudition} />
+      </div>
+    );
   }
 
   return (
-    <div ref={ref} className="sticky left-0 z-30 w-28 max-sm:w-20">
+    <div ref={ref} className={`sticky left-0 z-30 ${gutterClassName ?? "w-28 max-sm:w-20"}`}>
       {rows.map((row) => (
         <div
           key={row.id}

@@ -5,7 +5,12 @@ import { createSynthSource } from "./synthSource";
 
 type ToneModule = typeof import("tone");
 
-export type SoundSourceFactory = (tone: ToneModule) => SoundSource;
+// Without an output the source plays straight to the destination, which is
+// what single-instrument pages and key audition want.
+export type SoundSourceFactory = (
+  tone: ToneModule,
+  output?: import("tone").InputNode,
+) => SoundSource;
 
 const factories = new Map<string, SoundSourceFactory>([
   ["drums", createDrumsSource],

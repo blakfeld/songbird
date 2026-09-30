@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import type { InstrumentKind } from "@/generated/InstrumentKind";
 import type { Note } from "@/generated/Note";
-import type { Pattern } from "@/generated/Pattern";
+import type { TimeSignature } from "@/generated/TimeSignature";
 import type { Row } from "@/generated/Row";
 import type { LoopRange, Playback } from "@/lib/audio/types";
 import {
@@ -13,11 +23,11 @@ import {
   nextVelocityPreset,
   noteCovers,
 } from "@/lib/pianoRoll";
-import { getPatternStore, usePatternStore } from "@/lib/patternStore";
-import { totalSteps } from "@/lib/patternOps";
+import { moveGridNote, type NoteGrid } from "@/lib/patternOps";
 import { LoopShade } from "./LoopShade";
 import { MeasureColumn, type ActiveCell } from "./MeasureColumn";
 import { MeasureRuler } from "./MeasureRuler";
+import type { NoteActions } from "./noteActions";
 import { Playhead } from "./Playhead";
 import { RowLabels } from "./RowLabels";
 
@@ -27,16 +37,16 @@ const MELODIC_ROW_H_PX = 18;
 const MELODIC_ROW_H_COARSE_PX = 24;
 
 // When the range is taller than the viewport, the top is kept because melodies are read from their highest note.
-function initialScrollTop(pattern: Pattern, rowH: number, viewportH: number) {
-  const indexOf = new Map(pattern.rows.map((r, i) => [r.id, i]));
-  const noteRows = pattern.notes.flatMap((n) => indexOf.get(n.row_id) ?? []);
+function initialScrollTop(grid: NoteGrid, rowH: number, viewportH: number) {
+  const indexOf = new Map(grid.rows.map((r, i) => [r.id, i]));
+  const noteRows = grid.notes.flatMap((n) => indexOf.get(n.row_id) ?? []);
   let first: number;
   let last: number;
   if (noteRows.length) {
     first = Math.min(...noteRows);
     last = Math.max(...noteRows);
   } else {
-    first = last = pattern.rows.findIndex((r) => r.midi_note === MIDDLE_C);
+    first = last = grid.rows.findIndex((r) => r.midi_note === MIDDLE_C);
     if (first < 0) return 0;
   }
   const rangeH = (last - first + 1) * rowH;
@@ -44,82 +54,141 @@ function initialScrollTop(pattern: Pattern, rowH: number, viewportH: number) {
   return Math.max(0, first * rowH - (viewportH - rangeH) / 2);
 }
 
-function groupByMeasure(pattern: Pattern) {
-  const spm = pattern.steps_per_measure;
-  const starting: Note[][] = Array.from({ length: pattern.measures }, () => []);
-  const carry: Note[][] = Array.from({ length: pattern.measures }, () => []);
-  for (const n of pattern.notes) {
+function groupByMeasure(notes: Note[], spm: number, measures: number) {
+  const starting: Note[][] = Array.from({ length: measures }, () => []);
+  const carry: Note[][] = Array.from({ length: measures }, () => []);
+  for (const n of notes) {
     const first = Math.floor(n.step / spm);
     const last = Math.floor((n.step + n.length_steps - 1) / spm);
     starting[first]?.push(n);
-    for (let m = first + 1; m <= last && m < pattern.measures; m++) carry[m].push(n);
+    for (let m = first + 1; m <= last && m < measures; m++) carry[m].push(n);
   }
   return { starting, carry };
 }
 
+const DEFAULT_FRAME = "max-h-[70vh] rounded-xl border border-zinc-200 dark:border-zinc-800";
+const FILLED_FRAME = "min-h-0 flex-1 rounded-t-xl border border-zinc-200 dark:border-zinc-800";
+
 export function PianoRoll({
-  instrumentId,
   instrumentName,
   kind = "drums",
   sustained = false,
   onAudition,
-  pattern,
+  grid,
+  timeSignature,
+  stepsPerMeasure: spm,
+  resetKey,
+  onToggleNote,
+  onSetVelocity,
+  onResizeNote,
+  onMoveNote,
+  onPlaceNote,
   loop,
   follow,
   isPlaying,
   onManualScroll,
   subscribePosition,
+  className,
+  gutterClassName,
+  corner: cornerContent,
+  beatLabels,
+  scrollerRef,
+  fillHeight = false,
 }: {
-  instrumentId: string;
   instrumentName: string;
   kind?: InstrumentKind;
   sustained?: boolean;
   onAudition?: (row: Row) => void;
-  pattern: Pattern;
+  grid: NoteGrid;
+  timeSignature: TimeSignature;
+  stepsPerMeasure: number;
+  // Changes when a whole document is loaded, so edits never move the viewport under the user.
+  resetKey: number | string;
+  onToggleNote: (rowId: string, step: number, defaultLength?: number) => void;
+  onSetVelocity: (rowId: string, step: number, velocity: number) => void;
+  onResizeNote: (rowId: string, step: number, lengthSteps: number) => void;
+  onMoveNote: (rowId: string, step: number, toRowId: string) => void;
+  onPlaceNote?: (row: Row, velocity: number) => void;
   loop: LoopRange;
   follow: boolean;
   isPlaying: boolean;
   onManualScroll: () => void;
   subscribePosition: Playback["subscribePosition"];
+  // Replaces the default bordered frame so a host can make the roll fill its region.
+  className?: string;
+  gutterClassName?: string;
+  corner?: ReactNode;
+  beatLabels?: boolean;
+  // Lets a host scroll the roll, e.g. to jump to a measure picked elsewhere.
+  scrollerRef?: Ref<HTMLDivElement>;
+  // Lets a host that sizes the roll (a resize handle) replace the fixed height cap.
+  fillHeight?: boolean;
 }) {
   const helpId = useId();
   const scroller = useRef<HTMLDivElement>(null);
+  useImperativeHandle(scrollerRef, () => scroller.current!);
   const labels = useRef<HTMLDivElement>(null);
   const corner = useRef<HTMLDivElement>(null);
-  const patternRef = useRef(pattern);
+  const latest = useRef({ grid, onToggleNote, onSetVelocity, onResizeNote, onMoveNote, onPlaceNote });
   const followRef = useRef(follow);
   const labelWidth = useRef(0);
   const [active, setActive] = useState<ActiveCell>({ row: 0, step: 0 });
-  const spm = pattern.steps_per_measure;
-  const beat = beatSteps(pattern.time_signature);
-  const total = totalSteps(pattern);
+  const [announcement, setAnnouncement] = useState("");
+  const beat = beatSteps(timeSignature);
+  const total = grid.totalSteps;
+  const measures = total / spm;
   const melodic = kind === "melodic";
-  const noteLength = defaultNoteLength(sustained, pattern.time_signature);
-  const loadId = usePatternStore(instrumentId, (s) => s.loadId);
-  const { starting, carry } = useMemo(() => groupByMeasure(pattern), [pattern]);
+  const noteLength = defaultNoteLength(sustained, timeSignature);
+  const { starting, carry } = useMemo(
+    () => groupByMeasure(grid.notes, spm, measures),
+    [grid.notes, spm, measures],
+  );
+
+  // Handlers read through a ref so the actions object, and with it every memoized column, stays stable.
+  const actions = useMemo<NoteActions>(
+    () => ({
+      toggle: (rowId, step, len) => latest.current.onToggleNote(rowId, step, len),
+      setVelocity: (rowId, step, v) => latest.current.onSetVelocity(rowId, step, v),
+      resize: (rowId, step, len) => latest.current.onResizeNote(rowId, step, len),
+      move: (rowId, step, toRowId) => latest.current.onMoveNote(rowId, step, toRowId),
+      rows: () => latest.current.grid.rows,
+      canMove: (note, toRowId) => {
+        const g = latest.current.grid;
+        return note.row_id === toRowId || moveGridNote(g, note.row_id, note.step, toRowId) !== g.notes;
+      },
+      placed: (row, velocity) => latest.current.onPlaceNote?.(row, velocity),
+      maxLength: (note) => {
+        const g = latest.current.grid;
+        const nextStart = g.notes
+          .filter((n) => n.row_id === note.row_id && n.step > note.step)
+          .reduce((min, n) => Math.min(min, n.step), g.totalSteps);
+        return nextStart - note.step;
+      },
+    }),
+    [],
+  );
 
   // A resize or undo can shrink the grid below the remembered cell; fall back so the roll always has a tab stop.
   const safeActive =
-    active.row < pattern.rows.length && active.step < total ? active : { row: 0, step: 0 };
+    active.row < grid.rows.length && active.step < total ? active : { row: 0, step: 0 };
 
   useEffect(() => {
     followRef.current = follow;
   }, [follow]);
 
-  // Layout effects run before passive ones, so the scroll effect below must see the pattern from this same commit.
+  // Layout effects run before passive ones, so the scroll effect below must see the grid from this same commit.
   useLayoutEffect(() => {
-    patternRef.current = pattern;
-  }, [pattern]);
+    latest.current = { grid, onToggleNote, onSetVelocity, onResizeNote, onMoveNote, onPlaceNote };
+  });
 
-  // Keyed on loadId rather than the pattern so edits never move the viewport under the user.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el || !melodic) return;
     const coarse = window.matchMedia?.("(pointer: coarse)").matches;
     const rowH = coarse ? MELODIC_ROW_H_COARSE_PX : MELODIC_ROW_H_PX;
     const rulerH = corner.current?.offsetHeight ?? 0;
-    el.scrollTop = initialScrollTop(patternRef.current, rowH, el.clientHeight - rulerH);
-  }, [loadId, melodic]);
+    el.scrollTop = initialScrollTop(latest.current.grid, rowH, el.clientHeight - rulerH);
+  }, [resetKey, melodic]);
 
   // Measuring per frame would force layout 60 times a second.
   useEffect(() => {
@@ -166,7 +235,7 @@ export function PianoRoll({
   };
 
   function focusCell(row: number, step: number, root: HTMLElement) {
-    const r = Math.min(pattern.rows.length - 1, Math.max(0, row));
+    const r = Math.min(grid.rows.length - 1, Math.max(0, row));
     const s = Math.min(total - 1, Math.max(0, step));
     setActive({ row: r, step: s });
     const el = root.querySelector<HTMLElement>(`[data-cell="${r}:${s}"]`);
@@ -176,27 +245,41 @@ export function PianoRoll({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     // Browser and OS shortcuts such as Cmd+V must not be read as editor keys.
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey) return;
     const target = e.target as HTMLElement;
     const raw = target.getAttribute?.("data-cell");
     if (!raw) return;
     const [row, step] = raw.split(":").map(Number);
-    const rowId = pattern.rows[row].id;
-    const store = getPatternStore(instrumentId).getState();
-    const current = store.pattern;
-    const covering = current?.notes.find((n) => n.row_id === rowId && noteCovers(n, step));
+    const rowId = grid.rows[row].id;
+    const covering = grid.notes.find((n) => n.row_id === rowId && noteCovers(n, step));
     const root = e.currentTarget;
     const stop = () => e.preventDefault();
+
+    if (e.altKey) {
+      if (!covering || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      stop();
+      const dir = e.key === "ArrowUp" ? -1 : 1;
+      // The keyboard path must land where a drag would, so it applies the same skip-occupied-rows rule.
+      for (let i = row + dir; i >= 0 && i < grid.rows.length; i += dir) {
+        if (moveGridNote(grid, rowId, covering.step, grid.rows[i].id) === grid.notes) continue;
+        onMoveNote(rowId, covering.step, grid.rows[i].id);
+        onPlaceNote?.(grid.rows[i], covering.velocity);
+        focusCell(i, step, root);
+        setAnnouncement(`Moved to ${grid.rows[i].name}`);
+        break;
+      }
+      return;
+    }
 
     if (e.shiftKey && covering) {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         stop();
-        store.setVelocity(rowId, covering.step, covering.velocity + (e.key === "ArrowUp" ? 10 : -10));
+        onSetVelocity(rowId, covering.step, covering.velocity + (e.key === "ArrowUp" ? 10 : -10));
         return;
       }
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         stop();
-        store.resizeNote(rowId, covering.step, covering.length_steps + (e.key === "ArrowRight" ? 1 : -1));
+        onResizeNote(rowId, covering.step, covering.length_steps + (e.key === "ArrowRight" ? 1 : -1));
         return;
       }
     }
@@ -214,13 +297,13 @@ export function PianoRoll({
       case "Delete":
       case "Backspace":
         stop();
-        if (covering) store.toggleNote(rowId, step);
+        if (covering) onToggleNote(rowId, step);
         break;
       case "v":
       case "V":
         if (covering) {
           stop();
-          store.setVelocity(rowId, covering.step, nextVelocityPreset(covering.velocity));
+          onSetVelocity(rowId, covering.step, nextVelocityPreset(covering.velocity));
         }
         break;
     }
@@ -230,7 +313,11 @@ export function PianoRoll({
     <>
       <p id={helpId} className="sr-only">
         Arrow keys move between steps. Enter adds or removes a note. Shift plus Up or Down changes
-        velocity. Shift plus Left or Right changes length. Space plays or stops.
+        velocity. Shift plus Left or Right changes length. Alt plus Up or Down moves the note to
+        another row. Space plays or stops.
+      </p>
+      <p aria-live="polite" className="sr-only">
+        {announcement}
       </p>
       <div
         role="group"
@@ -242,19 +329,27 @@ export function PianoRoll({
         onWheel={(e) => Math.abs(e.deltaX) > Math.abs(e.deltaY) && userScrolled()}
         onTouchStart={userScrolled}
         onPointerDown={(e) => e.target === e.currentTarget && userScrolled()}
-        className={`relative max-h-[70vh] ${melodic ? "scroll-pl-16 max-sm:scroll-pl-14" : "scroll-pl-28 max-sm:scroll-pl-20"} overflow-auto overscroll-x-contain rounded-xl border border-zinc-200 [--cell-w:28px] ${melodic ? "[--row-h:18px] pointer-coarse:[--row-h:24px]" : "[--row-h:32px] pointer-coarse:[--row-h:40px]"} dark:border-zinc-800`}
+        className={`relative ${className ?? `${fillHeight ? FILLED_FRAME : DEFAULT_FRAME} ${melodic ? "scroll-pl-16 max-sm:scroll-pl-14" : "scroll-pl-28 max-sm:scroll-pl-20"}`} overflow-auto overscroll-x-contain [--cell-w:28px] ${melodic ? "[--row-h:18px] pointer-coarse:[--row-h:24px]" : "[--row-h:32px] pointer-coarse:[--row-h:40px]"}`}
       >
         <div className="relative grid w-max grid-cols-[auto_1fr]">
-          <div ref={corner} className="sticky top-0 left-0 z-40 border-r border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950" />
-          <MeasureRuler measures={pattern.measures} stepsPerMeasure={spm} beatSteps={beat} loop={loop} />
-          <RowLabels ref={labels} rows={pattern.rows} kind={kind} onAudition={onAudition} />
+          <div ref={corner} className="sticky top-0 left-0 z-40 border-r border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950">
+            {cornerContent}
+          </div>
+          <MeasureRuler measures={measures} stepsPerMeasure={spm} beatSteps={beat} loop={loop} beatLabels={beatLabels} />
+          <RowLabels
+            ref={labels}
+            rows={grid.rows}
+            kind={kind}
+            onAudition={onAudition}
+            gutterClassName={gutterClassName}
+          />
           <div className="relative flex">
             {starting.map((notes, m) => (
               <MeasureColumn
                 key={m}
-                instrumentId={instrumentId}
+                actions={actions}
                 measureIndex={m}
-                rows={pattern.rows}
+                rows={grid.rows}
                 stepsPerMeasure={spm}
                 beatSteps={beat}
                 notes={notes.length ? notes : NO_NOTES}
@@ -264,7 +359,7 @@ export function PianoRoll({
                 noteLength={noteLength}
               />
             ))}
-            <LoopShade loop={loop} measures={pattern.measures} stepsPerMeasure={spm} />
+            <LoopShade loop={loop} measures={measures} stepsPerMeasure={spm} />
             <Playhead subscribePosition={subscribePosition} />
           </div>
         </div>

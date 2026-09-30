@@ -22,13 +22,17 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - "Give me a piano that does …" adds a new track. The AI picks a fitting instrument and generates its part.
   - Follow-ups such as "give me the drums to match" and "now the bass" each add one more track. Each uses the conversation and every other track as context, so the parts are written to fit together.
   - Each chat-added track is one undo step. The per-track Generate action remains for regenerating a range of an existing track.
+  - A new stateless endpoint, `POST /api/v1/songs/chat`, takes the song and the recent conversation. It makes two AI calls. A small planner call chooses the instrument and rewrites the request into a self-contained prompt. The track generation above then writes the part.
+  - Questions that do not ask for a part get a text reply only.
+  - The conversation, up to its latest 20 messages, is saved with the song.
 - **Non-goals:**
-  - Generating several tracks in one request.
+  - Generating several tracks in one request, or one chat message.
+  - The chat editing, regenerating, or deleting existing tracks.
   - Streaming.
   - Chord context. #8 adds that as a separate requirement.
   - Server-side memory of past generations.
 
-Depends on: #4 `add-multitrack-song` and #5 `add-song-export` (for the Rust `Song` type, `Song::validate`, and the 1 MiB body limit on `/api/v1/songs/`).
+Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell) and #5 `add-song-export` (for the Rust `Song` type, `Song::validate`, and the 1 MiB body limit on `/api/v1/songs/`).
 
 ## Capabilities
 
@@ -41,19 +45,22 @@ Depends on: #4 `add-multitrack-song` and #5 `add-song-export` (for the Rust `Son
 ## Impact
 
 - **Backend (`music`):**
+  - A plan provider kind (`ai/plan.rs`) and the `Providers { patterns, plans }` bundle. This change introduces the bundle in the shape #8 planned, and #8 then adds `chords` to it.
+  - Transcript and arrangement-summary rendering for the planner.
   - A generation span that accepts any length of 1–32 measures, rather than only the `MeasureCount` values.
   - A new `context.rs` for the summary and budget.
   - A prompt section for context, fence-escaped because track names are user text.
   - A generation function for songs.
   - Context-aware mock drafts.
 - **Backend (`api`):**
-  - New routes in `songs.rs`.
+  - New routes in `songs.rs`: track generate, chat, and limits.
   - `SONGBIRD_MAX_CONTEXT_TOKENS` in `config.rs`.
   - A new validation error code `invalid_track`, alongside `invalid_range`.
 - **Frontend:**
   - A Studio `TrackGenerateDialog`.
   - The chat behavior of `AssistantPanel`, the shell #4 provides.
-  - `generateTrack` and `getSongLimits` in `lib/api.ts`.
+  - `generateTrack`, `sendChat`, and `getSongLimits` in `lib/api.ts`.
+  - An optional `chat` field on the song document, saved under #5's optional-field policy.
   - A song store action that applies range replacements.
 - `.env.example` and `backend/README.md` document the new setting.
 - **Compatibility:** `POST /api/v1/patterns/generate` behavior is unchanged.

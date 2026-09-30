@@ -4,8 +4,9 @@ import { memo, useMemo } from "react";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 import { cellLabel, isBlackKey } from "@/lib/pianoRoll";
-import { getPatternStore } from "@/lib/patternStore";
+import { DEFAULT_VELOCITY } from "@/lib/patternOps";
 import { NoteBar } from "./NoteBar";
+import type { NoteActions } from "./noteActions";
 
 export interface ActiveCell {
   row: number;
@@ -13,7 +14,7 @@ export interface ActiveCell {
 }
 
 interface Props {
-  instrumentId: string;
+  actions: NoteActions;
   measureIndex: number;
   rows: Row[];
   stepsPerMeasure: number;
@@ -45,7 +46,7 @@ function cellClass(local: number, stepsPerMeasure: number, beatSteps: number, sh
 }
 
 function MeasureColumnImpl({
-  instrumentId,
+  actions,
   measureIndex,
   rows,
   stepsPerMeasure,
@@ -93,7 +94,10 @@ function MeasureColumnImpl({
           aria-description={description}
           aria-pressed={covering !== undefined}
           tabIndex={isActive ? 0 : -1}
-          onClick={() => getPatternStore(instrumentId).getState().toggleNote(row.id, abs, noteLength)}
+          onClick={() => {
+            actions.toggle(row.id, abs, noteLength);
+            if (!covering) actions.placed(row, DEFAULT_VELOCITY);
+          }}
           className={`${cellClass(local, stepsPerMeasure, beatSteps, shaded)} touch-manipulation ${covering ? "" : "cursor-pointer hover:bg-indigo-600/10 dark:hover:bg-indigo-400/15"} focus-visible:relative focus-visible:z-20 focus-visible:bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white`}
           style={{ gridColumn: local + 1, gridRow: r + 1 }}
         />,
@@ -113,7 +117,7 @@ function MeasureColumnImpl({
       {notes.map((n) => (
         <NoteBar
           key={`${n.row_id}:${n.step}`}
-          instrumentId={instrumentId}
+          actions={actions}
           note={n}
           rowIndex={rowIndex.get(n.row_id) ?? 0}
           measureStartStep={start}
@@ -125,7 +129,7 @@ function MeasureColumnImpl({
 
 // A default shallow compare would re-render every measure on each edit because note arrays are rebuilt per render.
 export const MeasureColumn = memo(MeasureColumnImpl, (a, b) =>
-  a.instrumentId === b.instrumentId &&
+  a.actions === b.actions &&
   a.measureIndex === b.measureIndex &&
   a.rows === b.rows &&
   a.stepsPerMeasure === b.stepsPerMeasure &&

@@ -106,7 +106,7 @@ Track generation SHALL use the configured AI provider, and it SHALL follow the s
 - **THEN** the response is `504` with error code `generation_timeout`
 
 ### Requirement: Song limits discovery
-The system SHALL expose `GET /api/v1/songs/limits`, returning `200` with `{"max_input_tokens": <integer>, "max_range_measures": 32, "max_song_measures": 128, "max_tracks": 16}` that reflects the service configuration.
+The system SHALL expose `GET /api/v1/songs/limits`, returning `200` with `{"max_input_tokens": <integer>, "max_range_measures": 32, "max_song_measures": 128, "max_tracks": 16, "max_chat_messages": 20}` that reflects the service configuration.
 
 #### Scenario: Limits reflect configuration
 - **WHEN** the service is configured with a max input token limit of 128
@@ -143,9 +143,11 @@ On success, the target track's notes that start within the range SHALL be replac
 ### Requirement: Global song chat builds the arrangement
 The Studio's assistant column (laid out by #4 `add-multitrack-song`) SHALL provide one chat for the whole song, not tied to a selected track. The user SHALL be able to describe a part in plain language, such as "give me a piano that plays slow jazzy chords". The system SHALL then add a new track, pick an instrument from `GET /api/v1/instruments` that suits the request, and fill the track with generated notes for the whole song.
 
-Later messages SHALL be understood in the light of the earlier conversation and the current arrangement. For example, "give me the drums to match" and then "now the bass" SHALL each add one new track whose part is generated with every other unmuted track as context, under the same rules as "Other tracks as generation context". Each message SHALL add at most one track. The chat history SHALL show, for each assistant reply, which track was added and with which instrument.
+Later messages SHALL be understood in the light of the earlier conversation and the current arrangement. For example, "give me the drums to match" and then "now the bass" SHALL each add one new track whose part is generated with every other unmuted track as context, under the same rules as "Other tracks as generation context". Each message SHALL add at most one track. A message that does not ask for a part SHALL get a text reply and SHALL NOT change the song. The chat history SHALL show, for each assistant reply, which track was added and with which instrument.
 
 While a chat request is in flight, the chat input SHALL be disabled, and editing, the mixer, and playback SHALL remain usable. A track added from the chat SHALL be recorded as one undo step. When the song already has 16 tracks, the reply SHALL say so and the song SHALL be unchanged. When generation fails, the error SHALL be shown in the chat and the song SHALL be unchanged.
+
+The chat SHALL generate over the whole song when the song has at most 32 measures, and otherwise over the loop range when one is set and spans at most 32 measures. When neither applies, the reply SHALL ask the user to set a loop range and no track SHALL be added. The conversation, up to its latest 20 messages, SHALL be saved with the song and restored on reload.
 
 #### Scenario: Build a song one part at a time
 - **WHEN** in an empty song the user sends "give me a piano that plays slow jazzy chords", then "give me the drums to match", then "now the bass"
@@ -162,3 +164,43 @@ While a chat request is in flight, the chat input SHALL be disabled, and editing
 #### Scenario: Chat failure leaves the song unchanged
 - **WHEN** a chat request fails
 - **THEN** the error is shown in the chat and no track is added
+
+#### Scenario: Long song without a loop range
+- **WHEN** the song is 48 measures long, no loop range is set, and the user asks the chat for a bass part
+- **THEN** the reply asks the user to set a loop range of at most 32 measures and no track is added
+
+#### Scenario: Conversation survives reload
+- **WHEN** the user has exchanged three messages with the chat and reloads the page
+- **THEN** the same messages are shown in the chat history
+
+### Requirement: Song chat endpoint
+The system SHALL expose `POST /api/v1/songs/chat`, accepting a JSON body with:
+- `song`: a song document;
+- `messages`: 1–20 `{role, content}` entries, where `role` is `user` or `assistant` and the last entry is from the user;
+- optional `range`: `{start_measure, end_measure}`, the Studio's loop range.
+
+The last message SHALL follow the prompt rules of pattern generation. Assistant messages SHALL be at most 4,000 characters. On success it SHALL respond `200` with `{"reply", "track"}`. `track` is either `null` or `{"name", "instrument", "notes"}`, where `instrument` is an id listed by `GET /api/v1/instruments`, `name` is 1–40 characters, and `notes` follow the "Generate one track of a song" note rules for that instrument and the chat range. The generated part SHALL use the other unmuted tracks as context, as in "Other tracks as generation context". The endpoint SHALL NOT store the song or the conversation. Invalid bodies SHALL be rejected with `400` and a validation error code. Provider failures and timeouts SHALL use the same codes as track generation.
+
+#### Scenario: Request for a part adds a track
+- **WHEN** a client posts a song with a Piano track and the message "give me the drums to match"
+- **THEN** the response is `200` with a `track` whose `instrument` is `drums` and whose notes all use drums rows within the song
+
+#### Scenario: Question gets a reply only
+- **WHEN** a client posts the message "what tempo is this song?"
+- **THEN** the response is `200` with a non-empty `reply` and `track` null
+
+#### Scenario: Unknown instrument from the model
+- **WHEN** the provider's plan names an instrument id that is not listed, on both attempts
+- **THEN** the response is `502` with `generation_failed`
+
+#### Scenario: Track limit enforced by the server
+- **WHEN** a client posts a song with 16 tracks and asks for another part
+- **THEN** the response is `200` with `track` null and a reply saying the track limit is reached
+
+#### Scenario: Conversation reaches the planner
+- **WHEN** a client posts the messages "give me a piano that plays slow jazzy chords", then an assistant reply, then "now the bass"
+- **THEN** the planner request contains all three messages, and the generation request contains the planner's rewritten prompt rather than the text "now the bass"
+
+#### Scenario: Too many messages
+- **WHEN** a client posts 21 messages
+- **THEN** the response is `400` with a validation error and no provider is called

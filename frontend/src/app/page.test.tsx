@@ -27,6 +27,15 @@ describe("landing page", () => {
     );
   });
 
+  it("links the Studio", async () => {
+    vi.mocked(api.getInstruments).mockResolvedValue([drums]);
+    render(<Home />);
+    expect(await screen.findByRole("link", { name: "Open the Studio" })).toHaveAttribute(
+      "href",
+      "/studio",
+    );
+  });
+
   it("falls back to the drum machine link when the fetch fails", async () => {
     vi.mocked(api.getInstruments).mockRejectedValue(new Error("down"));
     render(<Home />);
@@ -34,6 +43,6 @@ describe("landing page", () => {
       "href",
       "/drum-machine",
     );
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getAllByRole("link")).toHaveLength(2);
   });
 });

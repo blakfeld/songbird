@@ -1,3 +1,4 @@
+import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 
 export type LoopRange = { start: number; end: number };
@@ -10,15 +11,13 @@ export interface Playback {
   error: string | null;
   toggle(): void;
   stop(): void;
-  // Imports Tone and fetches the kit ahead of Play so the first Play stays
-  // inside the user gesture and later plays work offline.
+  // Loading ahead of Play keeps the first Play inside the user gesture, which browsers require to start audio.
   preload(rows?: Row[]): Promise<void>;
-  // Kept out of React state: per-frame updates would re-render every measure.
+  // A callback rather than React state, since per-frame state updates would re-render every measure.
   subscribePosition(cb: (absoluteStep: number | null) => void): () => void;
 }
 
-// Sustained instruments release at endSeconds; one-shot instruments ignore it.
-// Times are AudioContext seconds.
+// Times are AudioContext seconds because the audio clock, unlike wall time, does not drift under load.
 export interface SoundSource {
   load(rows: Row[]): Promise<void>;
   trigger(
@@ -28,4 +27,33 @@ export interface SoundSource {
     velocity: number,
   ): void;
   stopAll(): void;
+  // Nodes stay connected to the channel until released, so a removed voice would keep running unheard.
+  dispose?(): void;
+}
+
+export interface PlaybackTiming {
+  tempo: number;
+  swing: number;
+  stepsPerMeasure: number;
+  measures: number;
+}
+
+export interface Voice {
+  // Stable across edits so the engine keeps one source and channel per voice.
+  key: string;
+  instrument: string;
+  rows: Row[];
+  notes: Note[];
+  volumeDb: number;
+  pan: number;
+  // Resolved by the model because solo depends on every other track, which a single voice cannot see.
+  audible: boolean;
+}
+
+export interface PlaybackModel {
+  // Null rather than a default so the engine can tell "nothing loaded" from a real song.
+  getTiming(): PlaybackTiming | null;
+  getVoices(): Voice[];
+  // Single-instrument pages have one implicit voice, so their audition needs no voice key.
+  instrument?: string;
 }

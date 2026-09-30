@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { DownloadMidiButton } from "./DownloadMidiButton";
 import { NewPatternDialog } from "./NewPatternDialog";
+import { SendToSongButton } from "./SendToSongButton";
 import { SwingSlider } from "./SwingSlider";
 import { TempoField } from "./TempoField";
 
@@ -97,6 +98,9 @@ export function EditorToolbar({
             onStatus("Created a new empty pattern.");
           }}
         />
+      </div>
+      <div className={divider}>
+        <SendToSongButton pattern={pattern} />
       </div>
       <div className={divider}>
         <DownloadMidiButton pattern={pattern} onExported={(f) => onStatus(`Saved ${f}.`)} />

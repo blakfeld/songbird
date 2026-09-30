@@ -343,6 +343,35 @@ describe("pitch audition", () => {
     expect(pianoStore.getState().past).toEqual([]);
   });
 
+  it("plays a placed note once at its velocity, and stays silent when it is removed", async () => {
+    const piano: InstrumentInfo = {
+      ...drums,
+      id: "piano",
+      name: "Piano",
+      kind: "melodic",
+      sustained: true,
+      midi_channel: 1,
+      midi_program: 0,
+      range: { low: 69, high: 69 },
+      rows: [{ id: "a4", name: "A4", midi_note: 69 }],
+    };
+    vi.mocked(api.getInstruments).mockResolvedValue([piano]);
+    getPatternStore("piano").getState().setPattern(emptyPattern(piano, 4));
+
+    render(<PatternEditorPage instrumentId="piano" title="Piano" />);
+    const cellButton = await screen.findByRole("button", { name: "A4, measure 1, step 1" });
+    await userEvent.click(cellButton);
+
+    await waitFor(() => expect(trigger).toHaveBeenCalledTimes(1));
+    expect(trigger.mock.calls[0][0]).toEqual(piano.rows[0]);
+    expect(trigger.mock.calls[0][3]).toBe(100);
+
+    await userEvent.click(cellButton);
+    expect(getPatternStore("piano").getState().pattern!.notes).toEqual([]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(trigger).toHaveBeenCalledTimes(1);
+  });
+
   it("auditions on Space from a focused key instead of toggling playback", async () => {
     const piano: InstrumentInfo = {
       ...drums,
@@ -375,5 +404,67 @@ describe("pitch audition", () => {
 
     await waitFor(() => expect(trigger).toHaveBeenCalledTimes(1));
     expect(toggle).not.toHaveBeenCalled();
+  });
+});
+
+describe("vertical resize of the piano roll", () => {
+  const KEY = "songbird.editor.drums.rollHeight";
+  const separator = () => screen.getByRole("separator", { name: "Resize piano roll" });
+
+  async function renderWithPattern() {
+    store().setState({ pattern: patternWith([]) });
+    const view = render(<PatternEditorPage instrumentId="drums" title="Drum Machine" />);
+    await screen.findByRole("separator", { name: "Resize piano roll" });
+    return view;
+  }
+
+  it("is a horizontal separator with value, bounds and a label", async () => {
+    await renderWithPattern();
+    expect(separator()).toHaveAttribute("aria-orientation", "horizontal");
+    expect(separator()).toHaveAttribute("aria-valuemin", "160");
+    expect(Number(separator().getAttribute("aria-valuemax"))).toBeGreaterThan(160);
+    expect(separator()).toHaveAttribute("aria-valuenow");
+  });
+
+  it("grows with Down, shrinks with Up, and never goes below the minimum", async () => {
+    await renderWithPattern();
+    separator().focus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    const grown = Number(separator().getAttribute("aria-valuenow"));
+    expect(grown).toBe(160 + 48);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(Number(separator().getAttribute("aria-valuenow"))).toBe(grown - 24);
+    await userEvent.keyboard("{Home}{ArrowUp}");
+    expect(separator()).toHaveAttribute("aria-valuenow", "160");
+  });
+
+  it("follows a pointer drag", async () => {
+    await renderWithPattern();
+    separator().focus();
+    await userEvent.keyboard("{ArrowDown}");
+    const start = Number(separator().getAttribute("aria-valuenow"));
+    fireEvent.pointerDown(separator(), { clientY: 100 });
+    fireEvent.pointerMove(separator(), { clientY: 160 });
+    fireEvent.pointerUp(separator(), { clientY: 160 });
+    expect(Number(separator().getAttribute("aria-valuenow"))).toBe(start + 60);
+  });
+
+  it("remembers the height after a remount and resets on double-click", async () => {
+    const view = await renderWithPattern();
+    separator().focus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    const chosen = separator().getAttribute("aria-valuenow");
+    expect(localStorage.getItem(KEY)).toBe(chosen);
+
+    view.unmount();
+    store().setState({ pattern: patternWith([]) });
+    render(<PatternEditorPage instrumentId="drums" title="Drum Machine" />);
+    expect(await screen.findByRole("separator", { name: "Resize piano roll" })).toHaveAttribute(
+      "aria-valuenow",
+      chosen,
+    );
+
+    await userEvent.dblClick(separator());
+    expect(localStorage.getItem(KEY)).toBeNull();
   });
 });

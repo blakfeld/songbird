@@ -17,6 +17,7 @@ interface Props {
   onLoopChange: (r: LoopRange) => void;
   follow: boolean;
   onFollowChange: (v: boolean) => void;
+  wholeLabel?: string;
 }
 
 function PositionReadout({
@@ -65,6 +66,7 @@ export function Transport({
   onLoopChange,
   follow,
   onFollowChange,
+  wholeLabel = "Loop whole pattern",
 }: Props) {
   const id = useId();
   const loading = playback.status === "loading";
@@ -127,7 +129,7 @@ export function Transport({
               ))}
           </Select>
           {!whole && (
-            <Button onClick={() => onLoopChange({ start: 1, end: measures })}>Loop whole pattern</Button>
+            <Button onClick={() => onLoopChange({ start: 1, end: measures })}>{wholeLabel}</Button>
           )}
         </div>
         <label htmlFor={`${id}-follow`} className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">

@@ -11,11 +11,12 @@ import { usePlayback } from "@/lib/audio/usePlayback";
 import type { LoopRange } from "@/lib/audio/types";
 import { beatSteps } from "@/lib/pianoRoll";
 import { getInstruments, getLimits } from "@/lib/api";
+import { gridOf } from "@/lib/patternOps";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { useApiResource } from "@/lib/useApiResource";
 import { EditorToolbar } from "./EditorToolbar";
 import { ErrorAlert } from "./ErrorAlert";
-import { PianoRoll } from "./PianoRoll";
+import { ResizablePianoRoll } from "./ResizablePianoRoll";
 import { PromptForm } from "./PromptForm";
 import { Transport } from "./Transport";
 import { useEditorShortcuts } from "./useEditorShortcuts";
@@ -65,6 +66,7 @@ export function PatternEditorPage({
   };
   useEditorShortcuts(instrumentId, togglePlayback);
 
+  const loadId = usePatternStore(instrumentId, (s) => s.loadId);
   const instrument = provided ?? instruments.data?.find((i) => i.id === instrumentId) ?? null;
 
   return (
@@ -157,13 +159,21 @@ export function PatternEditorPage({
               measureOptions={limits.data?.measure_options ?? null}
               onStatus={setStatus}
             />
-            <PianoRoll
-              instrumentId={instrumentId}
+            <ResizablePianoRoll
+              storageKey={`songbird.editor.${instrumentId}.rollHeight`}
               instrumentName={instrument?.name ?? "Instrument"}
               kind={instrument?.kind}
               sustained={instrument?.sustained}
               onAudition={(row) => void getPlaybackEngine(instrumentId).audition(row)}
-              pattern={pattern}
+              grid={gridOf(pattern)}
+              timeSignature={pattern.time_signature}
+              stepsPerMeasure={pattern.steps_per_measure}
+              resetKey={loadId}
+              onToggleNote={(rowId, step, len) => getPatternStore(instrumentId).getState().toggleNote(rowId, step, len)}
+              onSetVelocity={(rowId, step, v) => getPatternStore(instrumentId).getState().setVelocity(rowId, step, v)}
+              onResizeNote={(rowId, step, len) => getPatternStore(instrumentId).getState().resizeNote(rowId, step, len)}
+              onMoveNote={(rowId, step, to) => getPatternStore(instrumentId).getState().moveNote(rowId, step, to)}
+              onPlaceNote={(row, velocity) => void getPlaybackEngine(instrumentId).audition(row, { velocity })}
               loop={loop}
               follow={follow}
               isPlaying={playback.isPlaying}

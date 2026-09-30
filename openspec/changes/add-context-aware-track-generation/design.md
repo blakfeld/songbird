@@ -7,7 +7,7 @@
 - **Measure count:** `GenerateRequest.measures` is a `MeasureCount`, which allows only 4, 8, 12, 16, and 32 (`expand.rs:37-41`).
 - **Available from #5:** `Song` / `Track` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`.
 - **Timeout:** the timeout wrapper lives in the API handler (`api/src/patterns.rs:26`).
-- **Provider seam:** this change adds no provider trait. It reuses `PatternProvider` and #1's lane-per-pitch draft format, so `AppState` keeps one provider. #8 later introduces the shared `Providers` bundle for its chord provider.
+- **Provider seam:** track generation reuses `PatternProvider` and #1's lane-per-pitch draft format. The chat's planner is a second provider kind, so this change introduces the `Providers` bundle #8 had planned (D12).
 
 See proposal.md for motivation and `specs/songs/track-generation/spec.md` for behavior.
 
@@ -21,7 +21,8 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 **Non-Goals:**
 - Music-theory analysis such as key detection or chord naming. #8 adds explicit chords.
 - Caching or deduplicating context across requests.
-- Letting the AI edit tracks other than the target.
+- Letting the AI edit tracks other than the target, including from the chat.
+- Streaming chat replies.
 
 ## Decisions
 
@@ -71,16 +72,50 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Concurrency:** a `generatingTrackId` field in the store disables that track's piano-roll edits and all other Generate buttons.
 - **Request snapshot:** the request uses a snapshot of the song taken at submit time. Edits to other tracks made while the request is in flight are kept, because the result only touches the target track's range.
 
-### D7. Global song chat (open, to be designed)
-The spec's "Global song chat builds the arrangement" requirement records the intended product flow. How to build it is not decided yet, and this change needs another planning pass before it is applied. Open questions:
-- **Instrument choice:** does the model pick the instrument (for example, a first call that returns `{instrument, track_name, prompt}`, followed by `generate_track`), or does a new endpoint do both in one request?
-- **Conversation context:** how much of the chat history goes into each request, and how does it share the token budget with the track context?
-- **Persistence:** is the chat stored on the song, in the way #10 plans `lyric_chat`, and does #10's lyric assistant share this panel instead of adding its own?
-- **Mock provider:** needs deterministic instrument picking so e2e tests can cover the "Build a song one part at a time" scenario.
+### D7. Chat endpoint
+- **Contract:** `POST /api/v1/songs/chat` takes `ChatBody { song, messages, range? }`, where `messages` is `[{role: user|assistant, content}]` with the latest user message last, and `range` is the Studio's loop range if one is set. It returns `ChatResponse { reply, track: {name, instrument, notes} | null }`.
+- **Stateless:** the browser holds the history, matching #10's lyric assistant, so the server stores nothing and any instance can serve any request.
+- **Ids stay on the client:** the browser assigns the new track's id and default mixer settings, as when a track is added by hand, so the song store remains the only source of ids.
+- **Validation:** `Song::validate`, then 1–20 messages with the last from the user, then the existing prompt rules on the last message. Assistant messages over 4,000 characters are rejected with `invalid_request`, the same limit #10 uses.
+- **Why one endpoint instead of two browser calls:** one round trip, and a failure in the second call cannot leave the browser holding a plan with no notes.
+- **Alternative:** the browser calls a plan endpoint, then `songs/tracks/generate`. This exposes a half-finished state and needs a placeholder track to generate into.
+
+### D8. Planner call
+- **Provider kind:** `ai/plan.rs` adds `PlanProvider`, `SchemaPlanProvider<T: StructuredProvider>`, and `MockPlanProvider`, following #8's one-trait-per-artifact shape. They reuse the schema-generic transports unchanged. Claude's hard-coded "emit_pattern" error text becomes the request's `tool_name`.
+- **Schema:** `{action: "add_track" | "reply_only", reply, instrument, track_name, prompt}`. `instrument` is an enum of registry ids, built the same way the draft schema builds its lane enums.
+- **Rechecks after the call:** the server rechecks the instrument, because not every transport enforces enums. An unknown id is retried once as an unusable draft, and then fails with `generation_failed`. `track_name` is trimmed to 40 characters.
+- **Rewritten prompt:** the planner turns "now the bass" into a standalone description, for example "a bass line locking to the kick and following the piano's chords". This lets the generation call stay exactly as D1–D3 define it, with no knowledge of the chat.
+- **Timeouts:** the planner and the generation call each run under the existing 60 s timeout, because they are separate provider calls with separate failure modes.
+- **`reply_only`:** answers questions such as "what tempo is this?" without adding a track. It is also the path when the song has 16 tracks. The server enforces that limit before generating, whatever the planner says.
+
+### D9. Conversation context
+- **Scope:** only the planner sees the transcript.
+- **Rendering:** messages are rendered as fenced `<message role=…>` blocks, each passed through `escape_for_fence`. This is the format #10 D1 designs, so the two assistants can later share the renderer.
+- **Arrangement summary:** alongside the transcript, one line per track gives its name, instrument, muted state, and the measures with notes. It is enough to resolve "to match" and "the bass" without full note detail.
+- **Budget:** the transcript is trimmed oldest-first until the planner prompt fits `SONGBIRD_MAX_CONTEXT_TOKENS`. The latest user message and the summary are never trimmed.
+- **Generation budget:** the generation call gets the rewritten prompt plus the D3 context, under the same budget as before. Adding chat does not grow any single provider call beyond what the budget allows.
+
+### D10. Chat range
+- **Rule:**
+  - When the song has at most 32 measures, the range is the whole song.
+  - When the song is longer, the range is the supplied loop range if it spans at most 32 measures.
+  - Otherwise the server returns a `reply_only` response asking the user to set a loop range, and it makes no generation call.
+- **Why:** this reuses the existing 32-measure span limit and does not quietly generate only part of a long song.
+
+### D11. Chat persistence
+- **Field:** `Song` gains optional `chat: [{role, content, track_id?}]`, with `#[serde(default, skip_serializing_if = "Vec::is_empty")]` in Rust per #5's optional-field policy. The browser trims it to the latest 20 on append.
+- **Undo:** adding a track from the chat and appending the assistant message is one undo step. Undo removes the track, and the chat message stays, marked with the removed track's id so the panel can show that the track is gone.
+- **#10:** its lyric assistant should reuse this field and the panel instead of adding `lyric_chat`. That revision belongs to #10.
+
+### D12. Providers bundle
+- **Bundle:** `api/src/provider.rs` builds `Providers { patterns, plans }` over one shared transport per configured provider, and `AppState.provider` becomes `AppState.providers`. `check()` runs once per transport.
+- **Why here:** this is the first change that needs a second provider kind. #8 then adds `chords` rather than introducing the bundle.
 
 ## Risks / Trade-offs
 
-- [Local models ignore context or copy it verbatim] → The prompt paragraph tells the model to complement the context rather than duplicate it. The live Ollama smoke test is recorded (task 5.3). Normalization guarantees validity even when musicality suffers.
+- [The planner sees only each instrument's `id`, `name`, `kind`, and range] → This is fine with `drums` and `piano`. With #3's synth set it may choose poorly between similar instruments. Instrument names stay descriptive. A `description` field on `InstrumentInfo` is the follow-up if the live smoke test (task 6.3) shows poor choices.
+- [A chat message costs two provider calls] → The planner prompt is small, and the transcript is capped by the context budget. The live smoke test records the latency of both calls.
+- [Local models ignore context or copy it verbatim] → The prompt paragraph tells the model to complement the context rather than duplicate it. The live Ollama smoke test is recorded (task 6.3). Normalization guarantees validity even when musicality suffers.
 - [Prompt-size growth raises latency and cost] → The 4000-token default budget is configurable, and the budget is measured in tests.
 - [Summaries lose voicing detail] → Accepted. Per-beat pitch sets plus bass carry harmony and rhythm, and #8 adds explicit chords.
 - [The user edits the target track's range during a request] → Prevented, because the target track is locked while generating.

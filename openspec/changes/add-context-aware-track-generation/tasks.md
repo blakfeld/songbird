@@ -21,15 +21,27 @@
 - [ ] 3.7 Document track generation and `SONGBIRD_MAX_CONTEXT_TOKENS` in `backend/README.md`; verify the documented `curl` example returns `200` with the mock provider
 - [ ] 3.8 Run from `backend/`: `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`; verify both pass
 
-## 4. Studio generate flow
+## 4. Chat (backend)
 
-- [ ] 4.1 Add `generateTrack` and `getSongLimits` to `frontend/src/lib/api.ts`; verify Vitest tests for request shape and error mapping
-- [ ] 4.2 Add `songStore.applyGeneratedRange` (replace notes starting in range, truncate notes crossing the range start, one history entry) and `generatingTrackId` locking; verify Vitest tests for "Regenerate a range and undo" and "Notes outside the range are kept"
-- [ ] 4.3 Build `TrackGenerateDialog` (prompt + `TokenCounter`, range options per limits, loading and error states) and the per-track Generate action; verify RTL tests for "Failure leaves the track unchanged", "Whole song unavailable for long songs", and the target track's editor being disabled while in flight
+- [ ] 4.1 Add `ai/plan.rs` with `PlanProvider`, `SchemaPlanProvider<T>` (schema with an `instrument` enum of registry ids, plus the post-call instrument recheck and retry), and `MockPlanProvider` (keyword-to-instrument rules: drum or beat → `drums`, piano, chord, or keys → `piano`, otherwise the first melodic instrument; questions → `reply_only`). Make Claude's missing-tool error name the request's `tool_name` (design D8). Verify unit tests for schema enum contents, the unknown-instrument retry then `generation_failed`, 40-character name trimming, and deterministic mock plans
+- [ ] 4.2 Introduce `Providers { patterns, plans }` in `api/src/provider.rs` over one shared transport, and move `AppState.provider` to `AppState.providers` (design D12). Verify that all existing API tests pass and that `check()` runs once per transport
+- [ ] 4.3 Implement the planner prompt rendering: fenced, escaped `<message role=…>` transcript, per-track arrangement summary, and oldest-first trimming to `SONGBIRD_MAX_CONTEXT_TOKENS` that keeps the latest message and summary (design D9). Verify tests that a message cannot escape its fence, that trimming drops the oldest first, and that a 0 budget still sends the latest message and summary
+- [ ] 4.4 Add `ChatBody`, `ChatMessage`, `ChatResponse`, and `max_chat_messages` on `SongLimits` with ts-rs derives, register them in `tests/ts_bindings.rs`, and run `just gen-types`. Verify the binding test passes
+- [ ] 4.5 Implement `POST /api/v1/songs/chat` in `api/src/songs.rs`: validation, the 16-track guard, the range rule (design D10), the planner call, and then `generate_track` with the rewritten prompt, each call under the timeout wrapper. Verify `oneshot` integration tests for every "Song chat endpoint" scenario, "Long song without a loop range", and a `504` when the planner hangs
+- [ ] 4.6 Document the chat endpoint in `backend/README.md`, including a `curl` example; verify it returns `200` with the mock provider
+- [ ] 4.7 Run from `backend/`: `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`; verify both pass
 
-## 5. Integration checks
+## 5. Studio generate flow and chat
 
-- [ ] 5.1 Add a Playwright test with the mock provider: create a song, add notes to Drums, generate the Bass track for measures 1–4, verify notes appear only in 1–4, then undo
-- [ ] 5.2 Run `just lint` and `just test`; verify both pass
-- [ ] 5.3 Run one live Ollama track generation against a 3-track song (`just test-live-ollama` or manual `curl`); record latency and the estimated context size in `backend/README.md`
-- [ ] 5.4 Run `openspec validate add-context-aware-track-generation --strict`; verify it passes
+- [ ] 5.1 Add `generateTrack`, `sendChat`, and `getSongLimits` to `frontend/src/lib/api.ts`; verify Vitest tests for request shape and error mapping
+- [ ] 5.2 Add `songStore.applyGeneratedRange` (replace notes starting in range, truncate notes crossing the range start, one history entry) and `generatingTrackId` locking; verify Vitest tests for "Regenerate a range and undo" and "Notes outside the range are kept"
+- [ ] 5.3 Build `TrackGenerateDialog` (prompt + `TokenCounter`, range options per limits, loading and error states) and the per-track Generate action; verify RTL tests for "Failure leaves the track unchanged", "Whole song unavailable for long songs", and the target track's editor being disabled while in flight
+- [ ] 5.4 Add the optional `chat` field to the frontend `Song` type, and add `songStore.applyChatResult`. It appends the user and assistant messages (trimmed to the latest 20), adds the returned track with a client id and default mixer settings, and records one history entry (design D11). Verify Vitest tests for "Undo a chat-added track", 20-message trimming, and an unrecognised-field round trip that still works with `chat` present
+- [ ] 5.5 Wire #4's `AssistantPanel`: history with added-track labels, input disabled while in flight, error display, and the loop range sent as `range`. Verify RTL tests for "Build a song one part at a time" (mocked API), "Track limit in chat", "Chat failure leaves the song unchanged", "Long song without a loop range", and "Conversation survives reload"
+
+## 6. Integration checks
+
+- [ ] 6.1 Add a Playwright test with the mock provider: create a song, add notes to Drums, generate the Bass track for measures 1–4, verify notes appear only in 1–4, then undo. Add a second test that builds piano, then drums, then bass through the chat with the mock provider, and verifies three tracks with notes and that undo removes the bass
+- [ ] 6.2 Run `just lint` and `just test`; verify both pass
+- [ ] 6.3 Run one live Ollama track generation against a 3-track song and one three-message chat session (`just test-live-ollama` or manual `curl`); record latency for the planner and generation calls, the estimated context size, and whether the planner picked sensible instruments in `backend/README.md`
+- [ ] 6.4 Run `openspec validate add-context-aware-track-generation --strict`; verify it passes

@@ -36,7 +36,7 @@ Depends on: #2 `add-melodic-piano-roll`, which provides the piano-keyboard rows 
 - `songs/multitrack`: The song document, tracks with one instrument each, per-track editing, the mixer (volume, pan, mute, solo), mixed playback, the browser song library, and undo/redo on the Studio page.
 
 ### Modified Capabilities
-- `patterns/piano-roll-editor`: Adds a "Send to song" action to the single-instrument editor pages. Existing requirements are unchanged.
+- `patterns/piano-roll-editor`: Adds a "Send to song" action to the single-instrument editor pages, plays a note when it is placed, lets notes be dragged to another row, moves velocity editing to Shift-drag on the note, and makes the piano roll resizable vertically, on those pages and on the Studio. Existing requirements are unchanged.
 
 ## Impact
 

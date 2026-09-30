@@ -1,9 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pattern } from "@/generated/Pattern";
+import type { PlaybackModel, Voice } from "./types";
 import { createPatternStore } from "@/lib/patternStore";
 import { stepToSeconds } from "@/lib/timing";
 import { createPlaybackEngine } from "./engine";
+import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { registerSoundSource } from "./registry";
+
+type MockParam = { ramps: [number, number][]; rampTo(v: number, t: number): void };
+type MockChannel = {
+  opts: { volume: number; pan: number };
+  volume: MockParam;
+  pan: MockParam;
+  toDestinationCalls: number;
+  disposed: boolean;
+};
 
 const h = vi.hoisted(() => {
   type Ev = { time: number; cb: (t: number) => void };
@@ -17,6 +28,7 @@ const h = vi.hoisted(() => {
     gains: [] as GainNode[],
     stopped: 0,
     kitLoads: [] as Record<string, string>[],
+    channels: [] as MockChannel[],
   };
   return { state };
 });
@@ -66,7 +78,35 @@ vi.mock("tone", () => {
     toDestination() {
       return this;
     }
+    connect() {
+      return this;
+    }
     dispose() {}
+  }
+  const param = (): MockParam => {
+    const p: MockParam = {
+      ramps: [],
+      rampTo(v, t) {
+        p.ramps.push([v, t]);
+      },
+    };
+    return p;
+  };
+  class Channel implements MockChannel {
+    volume = param();
+    pan = param();
+      toDestinationCalls = 0;
+    disposed = false;
+    constructor(public opts: MockChannel["opts"]) {
+      state.channels.push(this);
+    }
+    toDestination() {
+      this.toDestinationCalls += 1;
+      return this;
+    }
+    dispose() {
+      this.disposed = true;
+    }
   }
   class ToneBufferSource {
     private gain: Gain | null = null;
@@ -96,6 +136,7 @@ vi.mock("tone", () => {
     getTransport: () => transport,
     ToneAudioBuffers,
     Gain,
+    Channel,
     ToneBufferSource,
   };
 });
@@ -142,8 +183,7 @@ function makePattern(over: Partial<Pattern> = {}): Pattern {
 function setup(pattern: Pattern) {
   const store = createPatternStore("drums-test");
   store.getState().setPattern(pattern);
-  const engine = createPlaybackEngine("drums", {
-    store,
+  const engine = createPlaybackEngine(createPatternPlaybackModel("drums", store), {
     requestFrame: () => 0,
     cancelFrame: () => {},
   });
@@ -166,6 +206,7 @@ beforeEach(() => {
     gains: [],
     stopped: 0,
     kitLoads: [],
+    channels: [],
   });
 });
 
@@ -283,8 +324,7 @@ describe("playback engine", () => {
     let frame: (() => void) | undefined;
     const store = createPatternStore("drums-pos");
     store.getState().setPattern(makePattern({ measures: 4 }));
-    const e2 = createPlaybackEngine("drums", {
-      store,
+    const e2 = createPlaybackEngine(createPatternPlaybackModel("drums", store), {
       requestFrame: (cb) => {
         frame = cb;
         return 1;
@@ -312,8 +352,7 @@ describe("playback engine", () => {
     }));
     const store = createPatternStore("spy-test");
     store.getState().setPattern(makePattern({ instrument: "spy" }));
-    const engine = createPlaybackEngine("spy", {
-      store,
+    const engine = createPlaybackEngine(createPatternPlaybackModel("spy", store), {
       requestFrame: () => 0,
       cancelFrame: () => {},
     });
@@ -386,7 +425,9 @@ describe("audition", () => {
     registerSoundSource("audition-test", () => ({ load, trigger, stopAll: () => {} }));
     const store = createPatternStore("audition-test");
     const before = store.getState();
-    const engine = createPlaybackEngine("audition-test", { store });
+    const engine = createPlaybackEngine(
+      createPatternPlaybackModel("audition-test", store),
+    );
 
     await engine.audition(ROWS[0]);
 
@@ -399,5 +440,185 @@ describe("audition", () => {
     expect(velocity).toBe(100);
     expect(h.state.startCalls).toBe(1);
     expect(store.getState()).toBe(before);
+  });
+});
+
+describe("multi-voice playback", () => {
+  type Hit = { id: string; time: number; velocity: number };
+  const hits: Hit[] = [];
+  const outputs: Record<string, unknown> = {};
+
+  for (const id of ["mv-a", "mv-b"]) {
+    registerSoundSource(id, (_tone, output) => {
+      outputs[id] = output;
+      return {
+        load: async () => {},
+        trigger: (_row, time, _end, velocity) => hits.push({ id, time, velocity }),
+        stopAll: () => {},
+      };
+    });
+  }
+
+  const note = (step: number, velocity = 100) => ({
+    row_id: "kick",
+    step,
+    length_steps: 1,
+    velocity,
+  });
+
+  const voice = (key: string, over: Partial<Voice> = {}): Voice => ({
+    key,
+    instrument: key,
+    rows: ROWS,
+    notes: [note(0)],
+    volumeDb: 0,
+    pan: 0,
+    audible: true,
+    ...over,
+  });
+
+  function setupVoices(initial: Voice[], instrument?: string) {
+    let voices = initial;
+    const model: PlaybackModel = {
+      instrument,
+      getTiming: () => ({ tempo: 120, swing: 0, stepsPerMeasure: 16, measures: 1 }),
+      getVoices: () => voices,
+    };
+    const engine = createPlaybackEngine(model, {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+    });
+    return { engine, setVoices: (v: Voice[]) => (voices = v) };
+  }
+
+  beforeEach(() => {
+    hits.length = 0;
+    for (const k of Object.keys(outputs)) delete outputs[k];
+  });
+
+  it("triggers two voices that start on the same step, each through its own channel", async () => {
+    const { engine } = setupVoices([voice("mv-a"), voice("mv-b")]);
+    await start(engine);
+    advanceTo(0);
+
+    expect(hits.map((x) => [x.id, x.time])).toEqual([
+      ["mv-a", AUDIO_OFFSET],
+      ["mv-b", AUDIO_OFFSET],
+    ]);
+    expect(h.state.channels).toHaveLength(2);
+    expect(h.state.channels.every((c) => c.toDestinationCalls === 1)).toBe(true);
+    expect(outputs["mv-a"]).toBe(h.state.channels[0]);
+    expect(outputs["mv-b"]).toBe(h.state.channels[1]);
+  });
+
+  it("silences the other voices when the audible set changes to a solo", async () => {
+    const { engine, setVoices } = setupVoices([
+      voice("mv-a", { notes: [note(0), note(4)] }),
+      voice("mv-b", { notes: [note(0), note(4)] }),
+    ]);
+    await start(engine);
+    advanceTo(0.1);
+    expect(hits.map((x) => x.id)).toEqual(["mv-a", "mv-b"]);
+
+    setVoices([
+      voice("mv-a", { notes: [note(0), note(4)], audible: false }),
+      voice("mv-b", { notes: [note(0), note(4)] }),
+    ]);
+    advanceTo(0.6);
+
+    expect(hits.map((x) => x.id)).toEqual(["mv-a", "mv-b", "mv-b"]);
+    const [a, b] = h.state.channels;
+    expect(a.volume.ramps).toEqual([[-100, 0.02]]);
+    expect(b.volume.ramps).toEqual([]);
+
+    setVoices([
+      voice("mv-a", { notes: [note(0), note(4)] }),
+      voice("mv-b", { notes: [note(0), note(4)] }),
+    ]);
+    advanceTo(0.7);
+    expect(a.volume.ramps).toEqual([
+      [-100, 0.02],
+      [0, 0.02],
+    ]);
+  });
+
+  it("ramps a voice to pan -1 on its channel", async () => {
+    const { engine, setVoices } = setupVoices([voice("mv-a")]);
+    await start(engine);
+    advanceTo(0.1);
+    setVoices([voice("mv-a", { pan: -1 })]);
+    advanceTo(0.2);
+
+    expect(h.state.channels[0].pan.ramps).toEqual([[-1, 0.02]]);
+  });
+
+  it("applies a volume change without restarting the transport", async () => {
+    const { engine, setVoices } = setupVoices([voice("mv-a")]);
+    await start(engine);
+    advanceTo(0.1);
+    const startsBefore = h.state.started;
+    setVoices([voice("mv-a", { volumeDb: -12 })]);
+    advanceTo(0.2);
+
+    expect(h.state.channels[0].volume.ramps).toEqual([[-12, 0.02]]);
+    expect(h.state.started).toBe(startsBefore);
+    expect(engine.isPlaying).toBe(true);
+    expect(h.state.channels).toHaveLength(1);
+  });
+
+  it("creates the channel with the voice's initial mixer values", async () => {
+    const { engine } = setupVoices([voice("mv-a", { volumeDb: -6, pan: 0.5 })]);
+    await start(engine);
+    expect(h.state.channels[0].opts).toEqual({ volume: -6, pan: 0.5 });
+  });
+
+  it("fades out and then disposes the channel of a voice that disappears", async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, setVoices } = setupVoices([voice("mv-a")]);
+      await start(engine);
+      advanceTo(0.1);
+      setVoices([voice("mv-b")]);
+      advanceTo(0.2);
+
+      // Fading first avoids a click from cutting a channel that is still sounding.
+      expect(h.state.channels[0].volume.ramps.at(-1)?.[0]).toBe(-100);
+      expect(h.state.channels[0].disposed).toBe(false);
+      vi.advanceTimersByTime(500);
+      expect(h.state.channels[0].disposed).toBe(true);
+      expect(h.state.channels[1].disposed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("previews a muted voice audibly, through its own volume and pan", async () => {
+    const { engine } = setupVoices([voice("mv-a", { audible: false, volumeDb: -6, pan: -1 })]);
+    await engine.audition(ROWS[0], { voiceKey: "mv-a", velocity: 90 });
+
+    expect(hits).toEqual([{ id: "mv-a", time: expect.closeTo(0.01), velocity: 90 }]);
+    expect(h.state.channels[0].opts).toEqual({ volume: -6, pan: -1 });
+  });
+
+  it("keeps a preview at its own volume while the scheduler holds the muted voice silent", async () => {
+    const { engine } = setupVoices([voice("mv-a", { audible: false, volumeDb: -6, notes: [] })]);
+    await start(engine);
+    await engine.audition(ROWS[0], { voiceKey: "mv-a" });
+    advanceTo(0.1);
+
+    const [scheduled, preview] = h.state.channels;
+    expect(scheduled.opts.volume).toBe(-100);
+    expect(preview.opts.volume).toBe(-6);
+    expect(preview.volume.ramps).toEqual([]);
+  });
+
+  it("auditions a specific voice through its channel at the given velocity", async () => {
+    const { engine } = setupVoices([voice("mv-a"), voice("mv-b")]);
+    await engine.audition(ROWS[0], { voiceKey: "mv-b", velocity: 42 });
+
+    expect(hits).toEqual([{ id: "mv-b", time: expect.closeTo(0.01), velocity: 42 }]);
+    expect(h.state.channels).toHaveLength(1);
+    expect(outputs["mv-b"]).toBe(h.state.channels[0]);
+    expect(outputs["mv-a"]).toBeUndefined();
   });
 });

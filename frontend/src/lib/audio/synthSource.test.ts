@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fallbackPreset, pianoPreset } from "./presets";
 import { createSynthSource, MAX_POLYPHONY, type SynthPreset } from "./synthSource";
 
 const RELEASE = 0.5;
@@ -6,6 +7,7 @@ const RELEASE = 0.5;
 const h = vi.hoisted(() => ({
   voices: [] as MockSynth[],
   buses: [] as MockGain[],
+  chains: [] as unknown[][],
 }));
 
 interface MockGain {
@@ -31,7 +33,9 @@ class Gain {
   connect() {
     return this;
   }
-  chain() {}
+  chain(...nodes: unknown[]) {
+    h.chains.push(nodes);
+  }
   dispose() {
     this.disposed = true;
   }
@@ -70,6 +74,7 @@ const row = (midi_note: number) => ({ id: `n${midi_note}`, name: "x", midi_note 
 beforeEach(() => {
   h.voices = [];
   h.buses = [];
+  h.chains = [];
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
@@ -157,5 +162,36 @@ describe("synth source", () => {
     expect(h.voices[1].bus).not.toBe(oldBus);
     expect(old.attacks).toHaveLength(1);
     expect(old.releases).toEqual([100]);
+  });
+});
+
+describe("synth source routing", () => {
+  const destination = { name: "destination" };
+  const output = { name: "channel" };
+  const routedTone = {
+    Gain,
+    FMSynth,
+    Reverb: class {
+      dispose() {}
+    },
+    getDestination: () => destination,
+  } as never;
+
+  it("ends a preset's effect chain at the supplied output, not the destination", () => {
+    createSynthSource(pianoPreset)(routedTone, output as never);
+    const [chain] = h.chains;
+    expect(chain).toHaveLength(2);
+    expect(chain.at(-1)).toBe(output);
+    expect(chain).not.toContain(destination);
+  });
+
+  it("routes the fallback preset to the supplied output", () => {
+    createSynthSource(fallbackPreset)(routedTone, output as never);
+    expect(h.chains).toEqual([[output]]);
+  });
+
+  it("uses the destination when no output is supplied", () => {
+    createSynthSource(pianoPreset)(routedTone);
+    expect(h.chains[0].at(-1)).toBe(destination);
   });
 });

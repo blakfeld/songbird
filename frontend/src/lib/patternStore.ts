@@ -31,6 +31,7 @@ export interface PatternState {
   toggleNote: (rowId: string, step: number, defaultLength?: number) => void;
   setVelocity: (rowId: string, step: number, velocity: number) => void;
   resizeNote: (rowId: string, step: number, lengthSteps: number) => void;
+  moveNote: (rowId: string, step: number, toRowId: string) => void;
   setMeasures: (measures: MeasureCount) => void;
   setTempo: (tempoBpm: number) => void;
   setSwing: (swing: number) => void;
@@ -87,6 +88,8 @@ export function createPatternStore(instrument: string): PatternStore {
             edit((p) => ops.setVelocity(p, rowId, step, velocity)),
           resizeNote: (rowId, step, len) =>
             edit((p) => ops.resizeNote(p, rowId, step, len)),
+          moveNote: (rowId, step, toRowId) =>
+            edit((p) => ops.moveNote(p, rowId, step, toRowId)),
           setMeasures: (measures) => edit((p) => ops.setMeasures(p, measures)),
           setTempo: (tempo) => edit((p) => ops.setTempo(p, tempo)),
           setSwing: (swing) => edit((p) => ops.setSwing(p, swing)),
