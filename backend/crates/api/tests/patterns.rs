@@ -335,13 +335,16 @@ async fn limits_reflect_configuration() {
 }
 
 #[tokio::test]
-async fn instruments_lists_exactly_drums() {
+async fn instruments_lists_drums_then_piano() {
     let (status, body) = get(app_with(MockProvider, &[]), "/api/v1/instruments").await;
     assert_eq!(status, StatusCode::OK);
     let list = body.as_array().unwrap();
-    assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["id"], "drums");
+    let listed: Vec<&str> = list.iter().map(|i| i["id"].as_str().unwrap()).collect();
+    assert_eq!(listed, ["drums", "piano"]);
+    assert_eq!(list[0]["kind"], "drums");
     assert_eq!(list[0]["midi_channel"], 10);
+    assert_eq!(list[0]["midi_program"], Value::Null);
+    assert_eq!(list[0]["range"], Value::Null);
     assert_eq!(list[0]["sustained"], false);
     let ids: Vec<&str> = list[0]["rows"]
         .as_array()
@@ -367,6 +370,109 @@ async fn instruments_lists_exactly_drums() {
         ]
     );
     assert_eq!(list[0]["rows"][0]["midi_note"], 36);
+
+    let piano = &list[1];
+    assert_eq!(piano["name"], "Piano");
+    assert_eq!(piano["kind"], "melodic");
+    assert_eq!(piano["midi_channel"], 1);
+    assert_eq!(piano["midi_program"], 1);
+    assert_eq!(piano["range"], json!({"low": 36, "high": 96}));
+    assert_eq!(piano["sustained"], true);
+    let rows = piano["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 61);
+    assert_eq!(rows[0], json!({"id": "C7", "name": "C7", "midi_note": 96}));
+    assert_eq!(rows[60], json!({"id": "C2", "name": "C2", "midi_note": 36}));
+    assert!(rows.contains(&json!({"id": "C#4", "name": "C#4", "midi_note": 61})));
+}
+
+#[tokio::test]
+async fn generates_a_piano_pattern_with_all_rows_and_program_one() {
+    let app = app_with(MockProvider, &[]);
+    let (_, instruments) = get(app.clone(), "/api/v1/instruments").await;
+    let (status, pattern) = generate(
+        app,
+        json!({"instrument": "piano", "prompt": "gentle ballad", "measures": 8}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pattern["instrument"], "piano");
+    assert_eq!(pattern["midi_program"], 1);
+    assert_eq!(pattern["midi_channel"], 1);
+    assert_eq!(pattern["rows"], instruments[1]["rows"]);
+    assert_eq!(pattern["rows"].as_array().unwrap().len(), 61);
+    let notes = pattern["notes"].as_array().unwrap();
+    assert!(!notes.is_empty());
+    let row_ids: Vec<&Value> = pattern["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| &r["id"])
+        .collect();
+    assert!(notes.iter().all(|n| row_ids.contains(&&n["row_id"])));
+}
+
+#[tokio::test]
+async fn piano_pattern_exports_to_a_parseable_midi_with_its_program() {
+    let app = app_with(MockProvider, &[]);
+    let (_, mut pattern) = generate(
+        app.clone(),
+        json!({"instrument": "piano", "prompt": "gentle ballad", "measures": 4}),
+    )
+    .await;
+    let (status, headers, bytes) = export(app.clone(), &pattern).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "audio/midi");
+    let smf = midly::Smf::parse(&bytes).unwrap();
+    let programs: Vec<u8> = smf
+        .tracks
+        .iter()
+        .flatten()
+        .filter_map(|e| match e.kind {
+            midly::TrackEventKind::Midi {
+                channel,
+                message: midly::MidiMessage::ProgramChange { program },
+            } => {
+                assert_eq!(channel.as_int(), 0);
+                Some(program.as_int())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(programs, [0]);
+
+    // Patterns saved without a program still export with the instrument's.
+    pattern.as_object_mut().unwrap().remove("midi_program");
+    let (status, _, bytes) = export(app, &pattern).await;
+    assert_eq!(status, StatusCode::OK);
+    let smf = midly::Smf::parse(&bytes).unwrap();
+    assert!(smf.tracks.iter().flatten().any(|e| matches!(
+        e.kind,
+        midly::TrackEventKind::Midi {
+            message: midly::MidiMessage::ProgramChange { .. },
+            ..
+        }
+    )));
+}
+
+#[tokio::test]
+async fn drums_pattern_without_midi_program_exports_without_program_change() {
+    let app = app_with(MockProvider, &[]);
+    let (_, mut pattern) = generate(
+        app.clone(),
+        json!({"instrument": "drums", "prompt": "rock", "measures": 4}),
+    )
+    .await;
+    pattern.as_object_mut().unwrap().remove("midi_program");
+    let (status, _, bytes) = export(app, &pattern).await;
+    assert_eq!(status, StatusCode::OK);
+    let smf = midly::Smf::parse(&bytes).unwrap();
+    assert!(!smf.tracks.iter().flatten().any(|e| matches!(
+        e.kind,
+        midly::TrackEventKind::Midi {
+            message: midly::MidiMessage::ProgramChange { .. },
+            ..
+        }
+    )));
 }
 
 async fn export(

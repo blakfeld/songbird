@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use music::instruments::{InstrumentKind, PitchRange};
 use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
 use ts_rs::{Config, TS};
 
@@ -17,6 +18,8 @@ fn export_into(dir: &Path) {
     let cfg = Config::new().with_out_dir(dir);
     Pattern::export_all(&cfg).unwrap();
     InstrumentInfo::export_all(&cfg).unwrap();
+    InstrumentKind::export_all(&cfg).unwrap();
+    PitchRange::export_all(&cfg).unwrap();
     GenerateRequestBody::export_all(&cfg).unwrap();
     GenerationLimits::export_all(&cfg).unwrap();
 }

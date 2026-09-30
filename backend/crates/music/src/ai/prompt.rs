@@ -102,6 +102,7 @@ fn strictify(schema: &mut Value) {
 mod tests {
     use super::*;
     use crate::instruments::drums::DRUMS;
+    use crate::instruments::piano::PIANO;
     use crate::instruments::InstrumentRegistry;
     use crate::request::GenerateRequestBody;
 
@@ -116,6 +117,26 @@ mod tests {
             .collect();
         let expected: Vec<&str> = DRUMS.rows.iter().map(|r| r.id).collect();
         assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn piano_lane_enum_lists_sharp_named_pitches_high_to_low() {
+        let schema = draft_schema(&PIANO);
+        let ids = schema["$defs"]["DraftLane"]["properties"]["lane"]["enum"]
+            .as_array()
+            .unwrap();
+        assert_eq!(ids.len(), 61);
+        assert_eq!(ids[0], "C7");
+        assert_eq!(ids[60], "C2");
+        assert!(ids.contains(&json!("C#4")));
+    }
+
+    #[test]
+    fn piano_system_prompt_explains_pitch_lanes_and_range() {
+        let prompt = system_prompt(&PIANO);
+        assert!(prompt.contains("sections"));
+        assert!(prompt.contains("C2 to C7"));
+        assert!(prompt.contains("chord as several lanes"));
     }
 
     #[test]

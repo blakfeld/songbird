@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::instruments::Instrument;
+use crate::instruments::{Instrument, InstrumentRegistry};
 use crate::meter::{MeasureCount, TimeSignature};
 
 /// Lets clients recognize documents saved (e.g. in localStorage) by an older format.
@@ -18,6 +18,9 @@ pub struct Pattern {
     pub steps_per_measure: u32,
     pub swing: f64,
     pub midi_channel: u8,
+    /// Optional on input so patterns saved before melodic instruments existed
+    /// still deserialize.
+    pub midi_program: Option<u8>,
     pub rows: Vec<Row>,
     pub notes: Vec<Note>,
 }
@@ -60,8 +63,19 @@ impl Pattern {
             steps_per_measure: time_signature.steps_per_measure(),
             swing,
             midi_channel: instrument.midi_channel,
+            midi_program: instrument.midi_program,
             rows: instrument.row_list(),
             notes: Vec::new(),
+        }
+    }
+
+    /// Clients may omit the program; the instrument's own is the only sensible
+    /// value, and looking it up keeps old saved patterns exportable.
+    pub fn fill_default_program(&mut self, registry: &InstrumentRegistry) {
+        if self.midi_program.is_none() {
+            self.midi_program = registry
+                .get(&self.instrument)
+                .and_then(|instrument| instrument.midi_program);
         }
     }
 
@@ -78,6 +92,7 @@ impl Pattern {
 mod tests {
     use super::*;
     use crate::instruments::drums::DRUMS;
+    use crate::instruments::piano::PIANO;
 
     #[test]
     fn empty_pattern_derives_steps_per_measure() {
@@ -106,6 +121,60 @@ mod tests {
         assert_eq!(p.instrument, "drums");
         assert_eq!(p.midi_channel, 10);
         assert_eq!(p.rows.len(), 12);
+    }
+
+    #[test]
+    fn drums_pattern_without_midi_program_deserializes() {
+        let p = Pattern::empty(
+            &DRUMS,
+            "x",
+            120,
+            TimeSignature::FourFour,
+            MeasureCount::default(),
+            0.0,
+        );
+        let mut json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["midi_program"], serde_json::Value::Null);
+        json.as_object_mut().unwrap().remove("midi_program");
+        let back: Pattern = serde_json::from_value(json).unwrap();
+        assert_eq!(back.midi_program, None);
+    }
+
+    #[test]
+    fn piano_pattern_carries_program_one_and_all_rows() {
+        let p = Pattern::empty(
+            &PIANO,
+            "x",
+            120,
+            TimeSignature::FourFour,
+            MeasureCount::default(),
+            0.0,
+        );
+        assert_eq!(p.midi_program, Some(1));
+        assert_eq!(p.midi_channel, 1);
+        assert_eq!(p.rows.len(), 61);
+    }
+
+    #[test]
+    fn missing_program_falls_back_to_the_instruments() {
+        let registry = InstrumentRegistry::builtin();
+        let mut piano = Pattern::empty(
+            &PIANO,
+            "x",
+            120,
+            TimeSignature::FourFour,
+            MeasureCount::default(),
+            0.0,
+        );
+        piano.midi_program = None;
+        piano.fill_default_program(&registry);
+        assert_eq!(piano.midi_program, Some(1));
+
+        let mut unknown = piano.clone();
+        unknown.instrument = "kazoo".into();
+        unknown.midi_program = None;
+        unknown.fill_default_program(&registry);
+        assert_eq!(unknown.midi_program, None);
     }
 
     #[test]

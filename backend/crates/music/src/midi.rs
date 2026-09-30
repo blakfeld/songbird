@@ -49,6 +49,13 @@ pub fn validate_for_export(pattern: &Pattern) -> Result<(), MidiError> {
             pattern.midi_channel
         )));
     }
+    if let Some(program) = pattern.midi_program {
+        if !(1..=128).contains(&program) {
+            return Err(invalid(format!(
+                "midi_program must be 1-128, got {program}"
+            )));
+        }
+    }
     if let Some(row) = pattern.rows.iter().find(|r| r.midi_note > 127) {
         return Err(invalid(format!(
             "row `{}` has midi_note {} above 127",
@@ -132,6 +139,18 @@ pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
         0,
         MetaMessage::TrackName(pattern.instrument.as_bytes()),
     )];
+    if let Some(program) = pattern.midi_program {
+        note_track.push(TrackEvent {
+            delta: u28::new(0),
+            kind: TrackEventKind::Midi {
+                channel,
+                // The pattern stores GM programs 1-based like channels.
+                message: MidiMessage::ProgramChange {
+                    program: u7::new(program - 1),
+                },
+            },
+        });
+    }
     let mut previous = 0;
     for (tick, phase, key, velocity) in timed {
         let message = match phase {
@@ -196,6 +215,7 @@ fn meta(delta: u32, message: MetaMessage<'_>) -> TrackEvent<'_> {
 mod tests {
     use super::*;
     use crate::instruments::drums::DRUMS;
+    use crate::instruments::piano::PIANO;
     use crate::meter::MeasureCount;
     use crate::pattern::Note;
     use midly::{MetaMessage as M, MidiMessage as Mm};
@@ -397,6 +417,8 @@ mod tests {
         assert!(export_error(|p| p.notes[0].velocity = 0).contains("velocity"));
         assert!(export_error(|p| p.notes[0].velocity = 128).contains("velocity"));
         assert!(export_error(|p| p.rows[0].midi_note = 200).contains("midi_note"));
+        assert!(export_error(|p| p.midi_program = Some(0)).contains("midi_program"));
+        assert!(export_error(|p| p.midi_program = Some(129)).contains("midi_program"));
     }
 
     #[test]
@@ -437,5 +459,130 @@ mod tests {
             assert!((0..=1).contains(&sounding));
         }
         assert_eq!(sounding, 0);
+    }
+
+    fn piano_pattern(notes: &[(&str, u32, u32, u8)]) -> Pattern {
+        let mut p = Pattern::empty(
+            &PIANO,
+            "Chords",
+            100,
+            TimeSignature::FourFour,
+            MeasureCount::new(4).unwrap(),
+            0.0,
+        );
+        p.notes = notes
+            .iter()
+            .map(|&(row, step, length, velocity)| note(row, step, length, velocity))
+            .collect();
+        p
+    }
+
+    fn on(key: u8, vel: u8) -> Mm {
+        Mm::NoteOn {
+            key: key.into(),
+            vel: vel.into(),
+        }
+    }
+
+    fn off(key: u8) -> Mm {
+        Mm::NoteOff {
+            key: key.into(),
+            vel: 0.into(),
+        }
+    }
+
+    #[test]
+    fn program_change_precedes_notes_with_zero_based_wire_value() {
+        let p = piano_pattern(&[("C4", 0, 4, 90)]);
+        let events = channel_events(&pattern_to_midi(&p).unwrap());
+        assert_eq!(
+            events,
+            vec![
+                (0, 0, Mm::ProgramChange { program: 0.into() }),
+                (0, 0, on(60, 90)),
+                (480, 0, off(60)),
+            ]
+        );
+    }
+
+    #[test]
+    fn program_change_follows_the_track_name() {
+        let bytes = pattern_to_midi(&piano_pattern(&[("C4", 0, 4, 90)])).unwrap();
+        let smf = Smf::parse(&bytes).unwrap();
+        assert!(matches!(
+            smf.tracks[1][0].kind,
+            TrackEventKind::Meta(M::TrackName(_))
+        ));
+        assert!(matches!(
+            smf.tracks[1][1].kind,
+            TrackEventKind::Midi {
+                message: Mm::ProgramChange { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn drums_export_has_no_program_change() {
+        let mut p = pattern(TimeSignature::FourFour, 120, 4, 0.0);
+        p.notes = vec![note("kick", 0, 1, 100)];
+        let events = channel_events(&pattern_to_midi(&p).unwrap());
+        assert!(events
+            .iter()
+            .all(|(_, _, m)| !matches!(m, Mm::ProgramChange { .. })));
+    }
+
+    #[test]
+    fn program_128_is_wire_value_127() {
+        let mut p = piano_pattern(&[("C4", 0, 4, 90)]);
+        p.midi_program = Some(128);
+        let events = channel_events(&pattern_to_midi(&p).unwrap());
+        assert_eq!(
+            events[0].2,
+            Mm::ProgramChange {
+                program: 127.into()
+            }
+        );
+    }
+
+    #[test]
+    fn chord_starts_together_and_releases_at_the_barline() {
+        let p = piano_pattern(&[("C4", 0, 16, 80), ("E4", 0, 16, 80), ("G4", 0, 16, 80)]);
+        let events: Vec<_> = channel_events(&pattern_to_midi(&p).unwrap())
+            .into_iter()
+            .filter(|(_, _, m)| !matches!(m, Mm::ProgramChange { .. }))
+            .collect();
+        assert_eq!(
+            events,
+            vec![
+                (0, 0, on(60, 80)),
+                (0, 0, on(64, 80)),
+                (0, 0, on(67, 80)),
+                (1920, 0, off(60)),
+                (1920, 0, off(64)),
+                (1920, 0, off(67)),
+            ]
+        );
+    }
+
+    #[test]
+    fn piano_round_trip_recovers_pitches_and_program() {
+        let mut p = piano_pattern(&[("C7", 0, 2, 100), ("C2", 4, 4, 70), ("C#4", 8, 1, 50)]);
+        p.midi_program = Some(5);
+        let bytes = pattern_to_midi(&p).unwrap();
+        let smf = Smf::parse(&bytes).unwrap();
+        let mut program = None;
+        let mut keys = Vec::new();
+        for event in &smf.tracks[1] {
+            if let TrackEventKind::Midi { message, .. } = event.kind {
+                match message {
+                    Mm::ProgramChange { program: p } => program = Some(p.as_int() + 1),
+                    Mm::NoteOn { key, .. } => keys.push(key.as_int()),
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(program, p.midi_program);
+        assert_eq!(keys, vec![96, 36, 61]);
     }
 }

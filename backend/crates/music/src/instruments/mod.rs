@@ -2,12 +2,18 @@
 //! format, API, editor, playback, and export never change when one is added.
 
 pub mod drums;
+pub mod melodic;
+pub mod piano;
+pub mod pitch;
+
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::draft::{MeasureNotes, PatternDraft};
 use crate::pattern::Row;
+use pitch::parse_pitch;
 
 #[derive(Debug)]
 pub struct RowDef {
@@ -34,13 +40,48 @@ impl ExampleDraft {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum InstrumentKind {
+    Drums,
+    Melodic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct PitchRange {
+    pub low: u8,
+    pub high: u8,
+}
+
+impl PitchRange {
+    /// Shifts by whole octaves so a model's out-of-range voicing keeps its
+    /// pitch class instead of being dropped. A range narrower than an octave
+    /// can lack the pitch class entirely, hence the `None`.
+    pub fn fold(self, pitch: i32) -> Option<u8> {
+        let (low, high) = (i32::from(self.low), i32::from(self.high));
+        let folded = if pitch > high {
+            pitch - (pitch - high + 11) / 12 * 12
+        } else if pitch < low {
+            pitch + (low - pitch + 11) / 12 * 12
+        } else {
+            pitch
+        };
+        (low..=high).contains(&folded).then_some(folded as u8)
+    }
+}
+
 #[derive(Debug)]
 pub struct Instrument {
     pub id: &'static str,
     pub name: &'static str,
+    pub kind: InstrumentKind,
     /// Stored 1-based because that is how users and DAWs number channels; the
     /// SMF writer subtracts one.
     pub midi_channel: u8,
+    /// General MIDI program, 1-based like channels; drums select their kit by
+    /// channel instead.
+    pub midi_program: Option<u8>,
+    pub range: Option<PitchRange>,
     /// Decides whether playback honours `length_steps` (melodic) or always plays
     /// the whole sample (drums).
     pub sustained: bool,
@@ -68,7 +109,10 @@ impl Instrument {
         InstrumentInfo {
             id: self.id.to_string(),
             name: self.name.to_string(),
+            kind: self.kind,
             midi_channel: self.midi_channel,
+            midi_program: self.midi_program,
+            range: self.range,
             sustained: self.sustained,
             rows: self.row_list(),
         }
@@ -76,6 +120,18 @@ impl Instrument {
 
     pub fn row_index(&self, id: &str) -> Option<usize> {
         self.rows.iter().position(|r| r.id == id)
+    }
+
+    /// Melodic lanes are pitches (any spelling, folded into range) rather than
+    /// row ids, because models write flats and MIDI numbers the schema forbids.
+    pub fn resolve_lane(&self, raw: &str) -> Option<usize> {
+        match (self.kind, self.range) {
+            (InstrumentKind::Melodic, Some(range)) => {
+                let midi = range.fold(parse_pitch(raw)?)?;
+                self.rows.iter().position(|r| r.midi_note == midi)
+            }
+            _ => self.resolve_row(raw),
+        }
     }
 
     /// Accepts row ids and aliases in any case, with `-` or spaces for `_`.
@@ -96,12 +152,17 @@ impl Instrument {
 pub struct InstrumentInfo {
     pub id: String,
     pub name: String,
+    pub kind: InstrumentKind,
     pub midi_channel: u8,
+    pub midi_program: Option<u8>,
+    pub range: Option<PitchRange>,
     pub sustained: bool,
     pub rows: Vec<Row>,
 }
 
-static BUILTIN: [&Instrument; 1] = [&drums::DRUMS];
+/// Lazy because the piano's rows are built at first use.
+static BUILTIN: LazyLock<[&'static Instrument; 2]> =
+    LazyLock::new(|| [&drums::DRUMS, &piano::PIANO]);
 
 #[derive(Clone, Copy)]
 pub struct InstrumentRegistry {
@@ -117,9 +178,9 @@ impl std::fmt::Debug for InstrumentRegistry {
 }
 
 impl InstrumentRegistry {
-    pub const fn builtin() -> Self {
+    pub fn builtin() -> Self {
         Self {
-            instruments: &BUILTIN,
+            instruments: &*BUILTIN,
         }
     }
 
@@ -141,13 +202,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_lists_exactly_drums() {
+    fn registry_lists_drums_then_piano() {
         let ids: Vec<_> = InstrumentRegistry::builtin()
             .all()
             .iter()
             .map(|i| i.id)
             .collect();
-        assert_eq!(ids, ["drums"]);
+        assert_eq!(ids, ["drums", "piano"]);
     }
 
     #[test]
@@ -164,5 +225,26 @@ mod tests {
         assert_eq!(info.midi_channel, 10);
         assert!(!info.sustained);
         assert_eq!(info.rows.len(), 12);
+        assert_eq!(info.kind, InstrumentKind::Drums);
+        assert_eq!(info.midi_program, None);
+        assert_eq!(info.range, None);
+    }
+
+    #[test]
+    fn fold_moves_to_the_nearest_octave_in_range() {
+        let range = PitchRange { low: 36, high: 96 };
+        assert_eq!(range.fold(100), Some(88));
+        assert_eq!(range.fold(60), Some(60));
+        assert_eq!(range.fold(24), Some(36));
+        assert_eq!(range.fold(127), Some(91));
+        assert_eq!(range.fold(0), Some(36));
+    }
+
+    #[test]
+    fn fold_drops_pitch_classes_a_narrow_range_lacks() {
+        let range = PitchRange { low: 60, high: 64 };
+        assert_eq!(range.fold(72), Some(60));
+        assert_eq!(range.fold(67), None);
+        assert_eq!(range.fold(55), None);
     }
 }
