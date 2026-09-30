@@ -173,7 +173,7 @@ fn parse_section(
 ) -> MeasureNotes {
     let mut notes = MeasureNotes::new();
     for lane in &section.lanes {
-        let Some(row) = instrument.resolve_row(&lane.lane) else {
+        let Some(row) = instrument.resolve_lane(&lane.lane) else {
             continue;
         };
         let lane_notes = match &lane.steps {
@@ -457,6 +457,65 @@ mod tests {
             "arrangement": ["A", "B", "A", "fill"]
         }));
         assert_eq!(d.normalize(&DRUMS, 16).unwrap().arrangement, vec![0, 0, 1]);
+    }
+
+    mod melodic {
+        use super::*;
+        use crate::instruments::piano::PIANO;
+
+        fn piano_row(id: &str) -> usize {
+            PIANO.rows.iter().position(|r| r.id == id).unwrap()
+        }
+
+        fn lane_rows(lanes: &[(&str, &str)]) -> MeasureNotes {
+            let lanes: Vec<_> = lanes
+                .iter()
+                .map(|(lane, steps)| json!({"lane": lane, "steps": steps}))
+                .collect();
+            draft(json!({
+                "name": "P",
+                "sections": [{"id": "A", "lanes": lanes}],
+                "arrangement": ["A"]
+            }))
+            .normalize(&PIANO, 16)
+            .unwrap()
+            .sections
+            .remove(0)
+        }
+
+        #[test]
+        fn flats_and_midi_numbers_resolve_to_sharp_rows() {
+            let notes = lane_rows(&[("Bb3", "x..."), ("60", ".x..")]);
+            let expected: MeasureNotes = [
+                ((piano_row("A#3"), 0), note(90, 1)),
+                ((piano_row("C4"), 1), note(90, 1)),
+            ]
+            .into_iter()
+            .collect();
+            assert_eq!(notes, expected);
+        }
+
+        #[test]
+        fn out_of_range_pitches_fold_by_octaves() {
+            let notes = lane_rows(&[("E8", "x---")]);
+            let expected: MeasureNotes =
+                [((piano_row("E6"), 0), note(90, 4))].into_iter().collect();
+            assert_eq!(notes, expected);
+        }
+
+        #[test]
+        fn drum_lanes_are_dropped() {
+            let notes = lane_rows(&[("kick", "xxxx"), ("C4", "x...")]);
+            assert_eq!(notes.len(), 1);
+        }
+
+        #[test]
+        fn lanes_folding_onto_one_row_keep_the_louder_note() {
+            let notes = lane_rows(&[("C7", "g..."), ("C8", "X..."), ("C9", "x...")]);
+            let expected: MeasureNotes =
+                [((piano_row("C7"), 0), note(120, 1))].into_iter().collect();
+            assert_eq!(notes, expected);
+        }
     }
 
     #[test]

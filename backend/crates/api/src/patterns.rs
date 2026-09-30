@@ -53,7 +53,11 @@ async fn instruments(State(state): State<AppState>) -> Json<Vec<InstrumentInfo>>
     Json(state.instruments.infos())
 }
 
-async fn export_midi(ApiJson(pattern): ApiJson<Pattern>) -> Result<Response, ApiError> {
+async fn export_midi(
+    State(state): State<AppState>,
+    ApiJson(mut pattern): ApiJson<Pattern>,
+) -> Result<Response, ApiError> {
+    pattern.fill_default_program(&state.instruments);
     let bytes = pattern_to_midi(&pattern).map_err(|error| match error {
         MidiError::InvalidPattern(message) => ApiError::InvalidPattern(message),
         MidiError::Write(error) => {

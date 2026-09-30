@@ -21,8 +21,32 @@ Request bodies are limited to 64 KiB; larger ones get the standard JSON
 
 ### `GET /api/v1/instruments`
 
-Lists every instrument: `id`, `name`, `midi_channel` (1-16), `sustained`, and
-`rows` (`id`, `name`, `midi_note`) in display order. Currently only `drums`.
+Lists every instrument: `id`, `name`, `kind` (`drums` or `melodic`),
+`midi_channel` (1-16), `midi_program` (General MIDI 1-128, `null` for drums),
+`range` (`{"low","high"}` MIDI notes, `null` for drums), `sustained`, and `rows`
+(`id`, `name`, `midi_note`) in display order. Currently `drums` and `piano`.
+
+### Piano and pitch lanes
+
+`piano` is a melodic instrument: channel 1, General MIDI program 1 (Acoustic
+Grand Piano), range C2-C7 (MIDI 36-96), sustained. Its 61 rows run from `C7`
+down to `C2`; ids and names are scientific pitch notation with sharps, where
+MIDI 60 is `C4` (`C#4`, `A#2`). Every piano pattern carries all 61 rows.
+
+In a draft, a lane is one pitch, and a chord is several lanes with the same
+steps. Lanes accept sharps or flats in any case (`C#4`, `Db4`, `db4`) or MIDI
+numbers (`60`). A pitch outside the range is moved by whole octaves to the
+nearest octave inside it (`E8` becomes `E6`); a name that is not a pitch (such
+as `kick`) is dropped. If two lanes land on one row, the louder note is kept.
+Holds (`-`) make sustained notes. For a pattern longer than four measures with
+no variation, a cadence variant of the first measure is inserted at each phrase
+end.
+
+```sh
+curl -s localhost:8080/api/v1/patterns/generate \
+  -H 'content-type: application/json' \
+  -d '{"instrument":"piano","prompt":"gentle ballad","measures":4,"tempo_bpm":72}'
+```
 
 ### `GET /api/v1/patterns/limits`
 
@@ -42,7 +66,7 @@ Body: `instrument` (required), `prompt` (required), `measures` (4, 8, 12, 16 or
 32), and optional `tempo_bpm` (40-240), `time_signature` (`4/4`, `3/4`, `6/8`),
 `swing` (0-0.75). The response is a pattern document (`version`, `instrument`,
 `name`, `tempo_bpm`, `time_signature`, `measures`, `steps_per_measure`,
-`swing`, `midi_channel`, `rows`, `notes`); a note is
+`swing`, `midi_channel`, `midi_program`, `rows`, `notes`); a note is
 `{"row_id":"kick","step":0,"length_steps":1,"velocity":90}` with an absolute,
 zero-based sixteenth `step`.
 
@@ -81,12 +105,20 @@ naming the field: `tempo_bpm` outside 40-240, `swing` outside 0-0.75,
 `steps_per_measure` not matching the time signature, `midi_channel` outside
 1-16, or a note with an unknown row, a `step` past the end, `length_steps` of 0,
 or `velocity` outside 1-127. Overlapping notes on one row are shortened so the
-next begins where the previous ends, as in generation.
+next begins where the previous ends, as in generation. A pattern with a
+`midi_program` gets a Program Change at tick 0 on its channel (wire value
+`midi_program - 1`); `midi_program` outside 1-128 is `422 invalid_pattern`. A
+pattern that omits it, such as one saved before melodic instruments, is treated
+as having its instrument's program (none for drums).
 
 ```sh
 curl -s localhost:8080/api/v1/patterns/export/midi -H 'content-type: application/json' \
   -d @pattern.json -o groove.mid
 ```
+
+Manually checked on 2026-09-29: a piano pattern generated with the `ollama`
+provider (`qwen2.5:7b-instruct`) and exported with this endpoint imported into
+Logic Pro, and its pitches matched the pattern's notes.
 
 ## Choosing an AI provider
 
@@ -175,8 +207,9 @@ just test-live-ollama   # needs Ollama running with the model pulled
 just test-live-codex    # needs a signed-in Codex CLI
 ```
 
-The draft JSON Schema is snapshotted in
-`crates/music/tests/snapshots/drums_draft_schema.json`; regenerate it with
+The draft JSON Schemas are snapshotted in
+`crates/music/tests/snapshots/drums_draft_schema.json` and
+`piano_draft_schema.json`; regenerate it with
 `UPDATE_SNAPSHOTS=1 cargo test -p music --test schema_snapshot` after an
 intentional change.
 
@@ -186,7 +219,10 @@ intentional change.
    id, display name, MIDI channel, `sustained`, rows (id, name, MIDI note), the
    instrument's system prompt, row aliases, example drafts for the mock
    provider, and an optional fallback-variation hook.
-2. Register it in `InstrumentRegistry::builtin` (`instruments/mod.rs`).
+   A melodic instrument instead sets `kind: Melodic`, a `midi_program` and a
+   `range`, builds its rows with `pitch_rows(low, high)`, and uses
+   `melodic_phrase_end` as its fallback hook (see `instruments/piano.rs`).
+2. Register it in `BUILTIN` (`instruments/mod.rs`).
 3. Add unit tests mirroring `instruments/drums.rs` (rows and channel, aliases,
    examples normalize, the hook differs from its input).
 

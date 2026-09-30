@@ -16,8 +16,8 @@ See proposal.md for the motivation. This change relies on the following existing
 
 **Earlier changes in this roadmap:**
 - #5 adds the Rust `Song` mirror, the `/api/v1/songs/` route group, and its 1 MiB body limit.
-- #6 adds track generation, a context summarizer with `SONGBIRD_MAX_CONTEXT_TOKENS`, and whatever provider seam it needs for song-aware requests.
-- #7 adds `Song.sections` (frontend) and the section operations in `frontend/src/lib/songSectionOps.ts`.
+- #6 adds track generation and a context summarizer with `SONGBIRD_MAX_CONTEXT_TOKENS`. It adds no provider trait: it reuses `PatternProvider` and the lane-per-pitch draft format from #1, passing the context as `GenerateRequest.context`. `AppState` therefore still holds a single `Arc<dyn PatternProvider>` when this change starts.
+- #7 adds `Song.sections` (Rust `music::song`, generated to TypeScript, validated by `fixtures/song_validation.json`) and the section operations in `frontend/src/lib/songSectionOps.ts`.
 
 **Frontend:** the timing math is already mirrored between Rust and TypeScript through a shared fixture (`fixtures/timing.json`, verified by `frontend/src/lib/timing.test.ts`). This change uses the same pattern for chord parsing.
 
@@ -62,9 +62,12 @@ It has two implementations:
   
   It places one chord per measure, cycles the progression to fill the section, and uses `C major` when the song has no key. The key is `A minor` when the prompt contains "minor" or "sad", so the auto-key path is testable.
 
-`build_provider` then returns both providers sharing one transport. `SchemaProvider` changes to hold an `Arc<T>` so that the pattern and chord adapters can share a transport (and Codex's `Semaphore(1)`). `AppState` gains `chords: Arc<dyn ChordProvider>`.
-
-If #6 already introduced a general song-aware seam, such as a shared `Arc<dyn StructuredProvider>` in `AppState`, the chord provider SHALL reuse it rather than adding a parallel one. Task 2.1 checks for this.
+This is the first change that needs a second AI capability, so it introduces the shared provider bundle that later changes extend:
+- `build_provider` becomes `build_providers(&Config) -> Providers`, where `Providers { patterns: Arc<dyn PatternProvider>, chords: Arc<dyn ChordProvider> }` lives in `api/src/provider.rs`.
+- `AppState.provider` becomes `AppState.providers`. Handlers read the field they need, for example `state.providers.patterns`.
+- Every adapter wraps the same transport. `SchemaProvider` and `SchemaChordProvider` hold an `Arc<T>`, so they share one transport (and Codex's `Semaphore(1)`). Startup runs `check()` once per transport, not once per capability.
+- For `mock`, `MockProvider` serves patterns and `MockChordProvider` serves chords.
+- #9 adds `lyrics: Arc<dyn LyricsProvider>` to `Providers` in the same way. Any later AI tool adds one field and one adapter, not a new wiring path.
 
 *Alternative:* one provider trait with a method per artifact type. This was rejected because it forces every future tool, such as lyrics in #9, to edit every provider.
 
@@ -133,4 +136,4 @@ All chord operations are pure functions in `frontend/src/lib/chordOps.ts`. Each 
 
 `Song.key` and `Section.chords` are optional. In Rust they use `#[serde(default)]` and are skipped when empty, so the documents from #4, #5, and #7 are unaffected, and the song `version` stays 1.
 
-Rollback: builds before this change ignore the fields, provided the loaders from #4 and #7 keep unknown fields, as verified in #7's task 1.1.
+Rollback: builds before this change keep the fields untouched, because #4's loader and #5's importer preserve unrecognised fields (#5 design D1).

@@ -10,23 +10,24 @@
 
 ## 2. Provider seam and mock
 
-- [ ] 2.1 Add `LyricsProvider` in `music/src/ai/mod.rs`, implement it for `SchemaProvider<T>` (holding `Arc<T>` so one transport serves both traits), and verify the existing pattern provider tests still pass unchanged.
+- [ ] 2.1 Add `LyricsProvider` in `music/src/ai/mod.rs` and implement it for `SchemaProvider<T>`, which shares its `Arc<T>` transport with the pattern and chord adapters from #8. Verify the existing pattern and chord provider tests still pass unchanged.
 - [ ] 2.2 Implement `LyricsProvider` for `MockProvider` per design D5. Verify with unit tests that the same request gives an identical response, that a selection yields a `replace_selection` suggestion, and that a request with section `"chorus-1"` yields `replace_section` for `"chorus-1"`.
 - [ ] 2.3 Add a Claude transport test (with the existing HTTP mocking approach) showing a lyrics `StructuredRequest` is sent as a forced tool call with the lyrics schema. Add a live test under `just test-live` / `just test-live-ollama` that asks for a chorus and asserts a normalized non-empty reply. Verify the live tests are skipped by `just test`.
 
 ## 3. API endpoint
 
-- [ ] 3.1 Replace `build_provider` with `build_providers` returning `Providers { patterns, lyrics }`, and change `AppState.provider` to `providers` (design D3; rebase onto #6/#8 if they introduced `Providers` first). Verify the existing `api/src/provider.rs` startup tests still pass.
+- [ ] 3.1 Add `lyrics: Arc<dyn LyricsProvider>` to #8's `Providers` bundle and fill it in `build_providers` for every provider choice (design D3; if #8 has not landed, introduce the bundle in the shape D3 describes). Verify that the existing `api/src/provider.rs` startup tests pass and that `check()` still runs once per transport.
 - [ ] 3.2 Add `backend/crates/api/src/lyrics.rs` with `POST /api/v1/lyrics/assist`: validate before calling the provider, wrap the call in the configured generation timeout, and map errors to `generation_failed` / `generation_timeout`. Merge the router in `routes.rs`. Verify with `oneshot` integration tests on the mock provider: 200 shape, one 422 per error code with a fake provider asserting zero calls, 502 after two bad outputs, 504 with a hanging fake provider, and a 100 KiB lyrics body accepted (relies on #5's 1 MiB limit for `/api/v1/lyrics/`).
 - [ ] 3.3 Document the endpoint and its limits in `backend/README.md`, and verify the documented `curl` example returns 200 against `SONGBIRD_AI_PROVIDER=mock just dev`.
 - [ ] 3.4 From `backend/`, run `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`, and verify both pass with no warnings.
 
 ## 4. Song document fields and pure lyric logic (frontend)
 
-- [ ] 4.1 Add optional `lyrics` and `lyric_chat` to the song type and song store (defaults `""` / `[]`, chat trimmed to the latest 20), keep them out of song undo/redo history, and make sure #5's project-file import and export round-trip them. Verify with Vitest that an old stored song loads with empty lyrics, that a project file round-trips lyrics and chat, and that song undo does not revert a lyrics change.
-- [ ] 4.2 Add `frontend/src/lib/lyrics/limits.ts` (constants mirroring D4) and `sections.ts` (heading parsing, case-insensitive linking, "Add section headings" computation). Verify with Vitest cases covering the spec scenarios: link, unlinked, and scaffold that preserves existing text.
-- [ ] 4.3 Add `lib/lyrics/applySuggestion.ts` returning a change spec plus an optional notice for `insert`, `replace_selection` (with stale-selection fallback), and `replace_section` (existing and missing heading). Verify with Vitest for each spec scenario.
-- [ ] 4.4 Add `lib/lyrics/songContext.ts` (song → `song_context`, including chords when #8's data is present and `[]` otherwise) and `assistLyrics` in `lib/api.ts`. Verify with Vitest that a song without sections sends one implicit section and that the API error shape surfaces its message.
+- [ ] 4.1 Add optional `lyrics` and `lyric_chat` (with `LyricChatMessage`) to the Rust `Song` in `backend/crates/music/src/song.rs` (`#[serde(default, skip_serializing_if = ...)]`). Extend `Song::validate` with the 20,000-character lyrics limit and the 20-message chat limit, register the new types in `tests/ts_bindings.rs`, and run `just gen-types`. Extend `lib/song/projectFile.ts` validation to match, and add valid and over-limit cases to `fixtures/song_validation.json` (#5's versioning policy: `version` stays 1). Verify that the Rust and Vitest fixture tests pass and that a song without these fields serializes byte-identically.
+- [ ] 4.2 Wire `lyrics` and `lyric_chat` into the song store (defaults `""` / `[]`, chat trimmed to the latest 20) and keep them out of song undo/redo history. Verify with Vitest that an old stored song loads with empty lyrics, that a project file round-trips lyrics and chat, and that song undo does not revert a lyrics change.
+- [ ] 4.3 Add `frontend/src/lib/lyrics/limits.ts` (constants mirroring D4) and `sections.ts` (heading parsing, case-insensitive linking, "Add section headings" computation). Verify with Vitest cases covering the spec scenarios: link, unlinked, and scaffold that preserves existing text.
+- [ ] 4.4 Add `lib/lyrics/applySuggestion.ts` returning a change spec plus an optional notice for `insert`, `replace_selection` (with stale-selection fallback), and `replace_section` (existing and missing heading). Verify with Vitest for each spec scenario.
+- [ ] 4.5 Add `lib/lyrics/songContext.ts` (song → `song_context`, including chords when #8's data is present and `[]` otherwise) and `assistLyrics` in `lib/api.ts`. Verify with Vitest that a song without sections sends one implicit section and that the API error shape surfaces its message.
 
 ## 5. Notepad and chat UI
 

@@ -4,4 +4,9 @@ import type { Note } from "./Note";
 import type { Row } from "./Row";
 import type { TimeSignature } from "./TimeSignature";
 
-export type Pattern = { version: number, instrument: string, name: string, tempo_bpm: number, time_signature: TimeSignature, measures: MeasureCount, steps_per_measure: number, swing: number, midi_channel: number, rows: Array<Row>, notes: Array<Note>, };
+export type Pattern = { version: number, instrument: string, name: string, tempo_bpm: number, time_signature: TimeSignature, measures: MeasureCount, steps_per_measure: number, swing: number, midi_channel: number, 
+/**
+ * Optional on input so patterns saved before melodic instruments existed
+ * still deserialize.
+ */
+midi_program: number | null, rows: Array<Row>, notes: Array<Note>, };

@@ -7,6 +7,7 @@
 - **Measure count:** `GenerateRequest.measures` is a `MeasureCount`, which allows only 4, 8, 12, 16, and 32 (`expand.rs:37-41`).
 - **Available from #5:** `Song` / `Track` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`.
 - **Timeout:** the timeout wrapper lives in the API handler (`api/src/patterns.rs:26`).
+- **Provider seam:** this change adds no provider trait. It reuses `PatternProvider` and #1's lane-per-pitch draft format, so `AppState` keeps one provider. #8 later introduces the shared `Providers` bundle for its chord provider.
 
 See proposal.md for motivation and `specs/songs/track-generation/spec.md` for behavior.
 
@@ -44,7 +45,7 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Target track surroundings:** the target track's notes in measures `start−1` and `end+1`, rendered in the draft lane grammar the model already writes, e.g. `C3: x---....x-......`.
 - **Other tracks:** each unmuted other track, in song order, per measure from `start−1` to `end+1`:
   - Drums: one line per struck row, in the step-string grammar. Silent rows are omitted.
-  - Melodic: per beat, the sounding pitch names (sorted) and `bass=<lowest>`, e.g. `m5 b1: C3 E4 G4 (bass C3) | b2: …`. A pitch counts as "sounding on a beat" if any note covers the beat's first step.
+  - Melodic: per beat (`beatSteps`: 4 steps in 4/4 and 3/4, 6 in 6/8, as in #2 and #8), the sounding pitch names (sorted) and `bass=<lowest>`, e.g. `m5 b1: C3 E4 G4 (bass C3) | b2: …`. A pitch counts as "sounding on a beat" if any note covers the beat's first step.
 - **Escaping:** track names are passed through `escape_for_fence`. Instrument ids and pitch names come from the registry and are safe.
 - **Budget:** tokens are estimated with `tokens::estimate` on the rendered text.
   - Units are `(track, measure)` blocks, each with a distance from the range: 0 inside the range, 1 for the neighbours.

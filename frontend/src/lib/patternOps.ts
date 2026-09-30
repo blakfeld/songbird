@@ -145,6 +145,7 @@ export function emptyPattern(
     steps_per_measure: STEPS_PER_MEASURE[timeSignature],
     swing: 0,
     midi_channel: instrument.midi_channel,
+    midi_program: instrument.midi_program,
     rows: instrument.rows,
     notes: [],
   };

@@ -4,7 +4,7 @@
 
 Songbird can arrange a song's music (tracks, sections, chords), but songwriters still have nowhere to write the words. Lyrics are written against the song's structure and harmony, so an AI co-writer that already knows the sections, the section notes, and the chords can give much better help than a generic chat window. This is the last piece of the songwriting tools feature (feature 3).
 
-**Depends on:** #7 `add-song-sections`, which provides sections and section notes. It also builds on #4 `add-multitrack-song` (the song document and `/studio` page) and uses chords from #8 `add-section-chord-generation` when they are present. It does not need #8 to have landed. This is PR 9 of 10 in the Songbird roadmap. #10 `add-lyrics-vim-mode` builds on it.
+**Depends on:** #7 `add-song-sections`, which provides sections and section notes. It also builds on #4 `add-multitrack-song` (the song document and `/studio` page) and #5 `add-song-export` (the Rust `Song` type, the project-file validator, and the 1 MiB body limit for `/api/v1/lyrics/`) and uses chords from #8 `add-section-chord-generation` when they are present. It does not need #8 to have landed. It extends the `Providers` bundle that #8 introduces, or introduces it in the same shape if #8 has not landed. This is PR 9 of 10 in the Songbird roadmap. #10 `add-lyrics-vim-mode` builds on it.
 
 ## What Changes
 

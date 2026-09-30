@@ -1,6 +1,6 @@
 use crate::draft::{MeasureNotes, SectionNote};
 
-use super::{ExampleDraft, Instrument, RowDef};
+use super::{ExampleDraft, Instrument, InstrumentKind, RowDef};
 
 const fn row(id: &'static str, name: &'static str, midi_note: u8) -> RowDef {
     RowDef {
@@ -209,7 +209,10 @@ fn row_index(id: &str) -> usize {
 pub static DRUMS: Instrument = Instrument {
     id: "drums",
     name: "Drums",
+    kind: InstrumentKind::Drums,
     midi_channel: 10,
+    midi_program: None,
+    range: None,
     sustained: false,
     rows: &ROWS,
     system_prompt: SYSTEM_PROMPT,

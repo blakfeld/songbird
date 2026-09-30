@@ -9,6 +9,9 @@ Chords are also what keeps multiple tracks musically coherent. When track genera
 **Depends on:**
 - #7 add-song-sections, for the sections that chords attach to.
 - #6 add-context-aware-track-generation, for the `songs/track-generation` capability that this change extends with chord context.
+- #5 add-song-export (through #7), for the Rust `Song` type, the song validators and fixture, and the 1 MiB `/api/v1/songs/` body limit.
+
+This change introduces the backend `Providers` bundle that #9 extends.
 
 Archive this change after both.
 
@@ -53,7 +56,7 @@ Non-goals:
   - New chord prompt, mock chord progressions, and a chord provider seam.
   - `key` and `sections[].chords` added to the Rust `Song` mirror, exported through ts-rs.
   - The track-generation prompt builder and mock gain chord context.
-- **Backend (`api` crate)**: a new route, `POST /api/v1/songs/chords/generate`. It is under `/api/v1/songs/`, so the 1 MiB body limit from #5 applies. `AppState` gains the chord provider.
+- **Backend (`api` crate)**: a new route, `POST /api/v1/songs/chords/generate`. It is under `/api/v1/songs/`, so the 1 MiB body limit from #5 applies. Provider wiring becomes a `Providers { patterns, chords }` bundle in `AppState` over one shared transport. #9 adds its lyrics provider to this bundle.
 - **Frontend**:
   - A chord parser in TypeScript, kept in sync with Rust through a shared fixture `fixtures/chords.json`.
   - Song store actions for key, chords, and render-to-track.

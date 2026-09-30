@@ -76,7 +76,7 @@
 ## 10. Run, containerize, and CI
 
 - [x] 10.1 Add Dockerfiles for backend (multi-stage, slim runtime) and frontend (Next standalone output) and `docker-compose.yml` defaulting to the mock provider, with an optional `ollama` profile that runs an Ollama container and points the backend at it; verify `docker compose up` serves the app at `localhost:3000` and `/healthz` responds, and `docker compose --profile ollama up` generates a pattern after the model is pulled — *Dockerfiles and `docker-compose.yml` (mock default, `ollama` profile) written. Owner decision (2026-09-29): `docker compose up` verification skipped; no Docker engine installed locally.*
-- [ ] 10.2 Add `.github/workflows/ci.yml` running `just lint` and `just test` (including Playwright with browsers installed); verify the workflow passes on a push
+- [x] 10.2 Add `.github/workflows/ci.yml` running `just lint` and `just test` (including Playwright with browsers installed); verify the workflow passes on a push — *Passed on push of `21d3c63` (run 36653076409) after making `typecheck` run `next typegen` first.*
 - [x] 10.3 Write root `README.md`: prerequisites (Rust, Node, pnpm, just), `just dev`, `just test`, the three live-test recipes, choosing an AI provider (link to the provider guide), Docker path, env vars, and how to import the `.mid` into Logic; verify a fresh clone following the README reaches a running app
 
 ## 11. End-to-end integration

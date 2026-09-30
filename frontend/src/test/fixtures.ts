@@ -6,6 +6,9 @@ import { emptyPattern } from "@/lib/patternOps";
 export const drums: InstrumentInfo = {
   id: "drums",
   name: "Drums",
+  kind: "drums",
+  midi_program: null,
+  range: null,
   midi_channel: 10,
   sustained: false,
   rows: [

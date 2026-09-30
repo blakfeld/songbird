@@ -6,8 +6,12 @@ use std::path::{Path, PathBuf};
 use music::{GenerateRequest, GenerateRequestBody, InstrumentRegistry};
 
 pub fn request(prompt: &str, measures: i64) -> GenerateRequest {
+    request_for("drums", prompt, measures)
+}
+
+pub fn request_for(instrument: &str, prompt: &str, measures: i64) -> GenerateRequest {
     GenerateRequestBody {
-        instrument: "drums".into(),
+        instrument: instrument.into(),
         prompt: prompt.into(),
         measures,
         ..Default::default()
@@ -59,6 +63,18 @@ pub const BAD_DRAFT: &str = r#"{
     {"lane": "bd", "steps": "x..."},
     {"lane": "cowbell", "steps": "xxxx"},
     {"lane": "hh", "steps": "x-x."}
+  ]}],
+  "arrangement": ["A"]
+}"#;
+
+pub const BAD_PIANO_DRAFT: &str = r#"{
+  "name": "Messy Keys", "tempo_bpm": 90, "swing": 0,
+  "sections": [{"id": "A", "lanes": [
+    {"lane": "C4", "steps": [200, 0, 0, 0]},
+    {"lane": "60", "steps": "x..."},
+    {"lane": "E8", "steps": "x---"},
+    {"lane": "Bb3", "steps": "..x-"},
+    {"lane": "kick", "steps": "xxxx"}
   ]}],
   "arrangement": ["A"]
 }"#;

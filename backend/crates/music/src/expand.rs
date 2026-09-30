@@ -147,6 +147,7 @@ mod tests {
     use super::*;
     use crate::draft::PatternDraft;
     use crate::instruments::drums::DRUMS;
+    use crate::instruments::piano::PIANO;
     use crate::instruments::InstrumentRegistry;
     use crate::request::GenerateRequestBody;
     use serde_json::json;
@@ -351,5 +352,59 @@ mod tests {
     fn same_step_duplicates_keep_the_loudest() {
         let settled = settle(vec![raw(0, 0, 1, 35), raw(0, 0, 1, 120)], 16);
         assert_eq!(settled, vec![raw(0, 0, 1, 120)]);
+    }
+
+    fn piano_request(measures: i64) -> GenerateRequest {
+        GenerateRequestBody {
+            instrument: "piano".into(),
+            prompt: "chords".into(),
+            measures,
+            ..Default::default()
+        }
+        .validate(&InstrumentRegistry::builtin(), 256)
+        .unwrap()
+    }
+
+    fn piano_draft(lanes: serde_json::Value) -> NormalizedDraft {
+        PatternDraft::from_json(json!({
+            "name": "Keys",
+            "sections": [{"id": "A", "lanes": lanes}],
+            "arrangement": ["A"]
+        }))
+        .unwrap()
+        .normalize(&PIANO, 16)
+        .unwrap()
+    }
+
+    #[test]
+    fn repeated_piano_part_varies_at_phrase_ends() {
+        let draft = piano_draft(json!([
+            {"lane": "C4", "steps": "x...x...x...x..."},
+            {"lane": "E4", "steps": "x...x...x...x..."},
+            {"lane": "C3", "steps": "x-------x-------"},
+        ]));
+        let p = build_pattern(&draft, &piano_request(8));
+        let first = measure_notes(&p, 0);
+        for m in 0..8 {
+            assert_eq!(measure_notes(&p, m) != first, m % 4 == 3, "measure {m}");
+        }
+        assert!(p.notes.iter().all(|n| p.row(&n.row_id).is_some()));
+        assert!(p.notes.iter().all(|n| PIANO.row_index(&n.row_id).is_some()));
+    }
+
+    #[test]
+    fn whole_note_chord_varies_at_every_phrase_end() {
+        let draft = piano_draft(json!([
+            {"lane": "C4", "steps": "x---------------"},
+            {"lane": "E4", "steps": "x---------------"},
+            {"lane": "G4", "steps": "x---------------"},
+        ]));
+        let p = build_pattern(&draft, &piano_request(16));
+        let first = measure_notes(&p, 0);
+        for m in 0..16 {
+            assert_eq!(measure_notes(&p, m) != first, m % 4 == 3, "measure {m}");
+        }
+        assert!(p.notes.iter().all(|n| PIANO.row_index(&n.row_id).is_some()));
+        assert_eq!(p.midi_program, Some(1));
     }
 }
