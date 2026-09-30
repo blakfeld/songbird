@@ -1,0 +1,28 @@
+[package]
+name = "api"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum = "0.8.9"
+dotenvy = "0.15.7"
+music = { path = "../music" }
+secrecy = "0.10.3"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tower-http = { version = "0.7.1", features = ["cors", "trace"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+
+[dev-dependencies]
+futures-util = "0.3"
+midly = "0.5.3"
+tempfile = "3.27.0"
+wiremock = "0.6.5"
+http-body-util = "0.1.5"
+tokio = { workspace = true, features = ["test-util"] }
+tower = "0.5.3"

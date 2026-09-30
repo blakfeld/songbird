@@ -1,0 +1,39 @@
+# Runs the whole app without local toolchains: `docker compose up --build`,
+# then open http://localhost:3000. Uses the mock provider unless overridden.
+# With a local model: `SONGBIRD_AI_PROVIDER=ollama docker compose --profile ollama up --build`
+# after pulling one: `docker compose exec ollama ollama pull qwen2.5:7b-instruct`.
+services:
+  backend:
+    build: ./backend
+    environment:
+      SONGBIRD_AI_PROVIDER: ${SONGBIRD_AI_PROVIDER:-mock}
+      SONGBIRD_CORS_ORIGINS: http://localhost:3000
+      SONGBIRD_OLLAMA_URL: http://ollama:11434
+      SONGBIRD_OLLAMA_MODEL: ${SONGBIRD_OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      SONGBIRD_GENERATION_TIMEOUT_SECS: ${SONGBIRD_GENERATION_TIMEOUT_SECS:-60}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8080:8080"
+    # The ollama provider fails startup while Ollama is still booting.
+    restart: on-failure
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        SONGBIRD_API_URL: http://backend:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama
+    profiles: ["ollama"]
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  ollama:

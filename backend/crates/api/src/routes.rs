@@ -1,0 +1,64 @@
+use axum::extract::DefaultBodyLimit;
+use axum::http::{header, HeaderValue, Method};
+use axum::routing::get;
+use axum::{Json, Router};
+use serde_json::{json, Value};
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
+
+use crate::config::Config;
+use crate::error::ApiError;
+use crate::state::AppState;
+
+/// Generation bodies are a short description plus a few numbers, and export
+/// bodies are a pattern document of at most a few thousand notes.
+pub const MAX_BODY_BYTES: usize = 64 * 1024;
+
+async fn healthz() -> Json<Value> {
+    // Deliberately touches no provider or network so it reflects only this process.
+    Json(json!({"status": "ok"}))
+}
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(crate::patterns::router())
+}
+
+/// Split from `routes` so tests can exercise the same layers, in the same
+/// order, around routes of their own.
+pub fn middleware(router: Router, config: &Config) -> Router {
+    let origins: Vec<HeaderValue> = config
+        .cors_origins
+        .iter()
+        .filter_map(|o| o.parse().ok())
+        .collect();
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE]);
+
+    router
+        .fallback(|| async { ApiError::NotFound })
+        .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+        // Enforced by the body extractor rather than a tower layer because the
+        // layer answers oversize Content-Length with a plain-text 413, while
+        // the extractor's rejection is mapped into the standard JSON error.
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        // Outside the body limit so a 413 still carries CORS headers and the
+        // browser shows the real error instead of a CORS failure.
+        .layer(cors)
+        // INFO because the default log filter is info, and request logs are
+        // the only record of who called what.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
+}
+
+pub fn app(state: AppState) -> Router {
+    let config = state.config.clone();
+    middleware(routes().with_state(state), &config)
+}

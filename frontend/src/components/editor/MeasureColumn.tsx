@@ -1,0 +1,132 @@
+"use client";
+
+import { memo, useMemo } from "react";
+import type { Note } from "@/generated/Note";
+import type { Row } from "@/generated/Row";
+import { cellLabel } from "@/lib/pianoRoll";
+import { getPatternStore } from "@/lib/patternStore";
+import { NoteBar } from "./NoteBar";
+
+export interface ActiveCell {
+  row: number;
+  step: number;
+}
+
+interface Props {
+  instrumentId: string;
+  measureIndex: number;
+  rows: Row[];
+  stepsPerMeasure: number;
+  beatSteps: number;
+  notes: Note[];
+  carryIn: Note[];
+  activeCell: ActiveCell | null;
+}
+
+const sameItems = (a: Note[], b: Note[]) =>
+  a === b || (a.length === b.length && a.every((n, i) => n === b[i]));
+
+function cellClass(local: number, stepsPerMeasure: number, beatSteps: number) {
+  const parts = ["border-r border-b border-zinc-200 dark:border-zinc-800"];
+  if (local === stepsPerMeasure - 1) {
+    parts.push("border-r-2 border-r-zinc-500 dark:border-r-zinc-500");
+  } else if (local % beatSteps === beatSteps - 1) {
+    parts.push("border-r-zinc-300 dark:border-r-zinc-700");
+  }
+  parts.push(
+    Math.floor(local / beatSteps) % 2 === 1
+      ? "bg-zinc-50 dark:bg-zinc-900/50"
+      : "bg-white dark:bg-zinc-950",
+  );
+  return parts.join(" ");
+}
+
+function MeasureColumnImpl({
+  instrumentId,
+  measureIndex,
+  rows,
+  stepsPerMeasure,
+  beatSteps,
+  notes,
+  carryIn,
+  activeCell,
+}: Props) {
+  const start = measureIndex * stepsPerMeasure;
+  const rowIndex = useMemo(() => new Map(rows.map((r, i) => [r.id, i])), [rows]);
+
+  const coverage = useMemo(() => {
+    const map = new Map<string, Note>();
+    for (const n of [...carryIn, ...notes]) {
+      const from = Math.max(n.step, start);
+      const to = Math.min(n.step + n.length_steps, start + stepsPerMeasure);
+      for (let s = from; s < to; s++) map.set(`${n.row_id}:${s}`, n);
+    }
+    return map;
+  }, [notes, carryIn, start, stepsPerMeasure]);
+
+  const cells = [];
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    for (let local = 0; local < stepsPerMeasure; local++) {
+      const abs = start + local;
+      const covering = coverage.get(`${row.id}:${abs}`);
+      const isActive = activeCell?.row === r && activeCell.step === abs;
+      const description = covering
+        ? covering.step === abs
+          ? `Note, velocity ${covering.velocity}, ${covering.length_steps} ${covering.length_steps === 1 ? "step" : "steps"}`
+          : `Held from step ${(covering.step % stepsPerMeasure) + 1}`
+        : undefined;
+      cells.push(
+        // aria-description keeps the accessible name stable while note details stay available.
+        // eslint-disable-next-line jsx-a11y/role-supports-aria-props
+        <button
+          key={`${r}:${local}`}
+          type="button"
+          data-cell={`${r}:${abs}`}
+          aria-label={cellLabel(row.name, abs, stepsPerMeasure)}
+          aria-description={description}
+          aria-pressed={covering !== undefined}
+          tabIndex={isActive ? 0 : -1}
+          onClick={() => getPatternStore(instrumentId).getState().toggleNote(row.id, abs)}
+          className={`${cellClass(local, stepsPerMeasure, beatSteps)} touch-manipulation ${covering ? "" : "cursor-pointer hover:bg-indigo-600/10 dark:hover:bg-indigo-400/15"} focus-visible:relative focus-visible:z-20 focus-visible:bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white`}
+          style={{ gridColumn: local + 1, gridRow: r + 1 }}
+        />,
+      );
+    }
+  }
+
+  return (
+    <div
+      className="relative grid"
+      style={{
+        gridTemplateColumns: `repeat(${stepsPerMeasure}, var(--cell-w))`,
+        gridTemplateRows: `repeat(${rows.length}, var(--row-h))`,
+      }}
+    >
+      {cells}
+      {notes.map((n) => (
+        <NoteBar
+          key={`${n.row_id}:${n.step}`}
+          instrumentId={instrumentId}
+          note={n}
+          rowIndex={rowIndex.get(n.row_id) ?? 0}
+          measureStartStep={start}
+        />
+      ))}
+    </div>
+  );
+}
+
+// A default shallow compare would re-render every measure on each edit because note arrays are rebuilt per render.
+export const MeasureColumn = memo(MeasureColumnImpl, (a, b) =>
+  a.instrumentId === b.instrumentId &&
+  a.measureIndex === b.measureIndex &&
+  a.rows === b.rows &&
+  a.stepsPerMeasure === b.stepsPerMeasure &&
+  a.beatSteps === b.beatSteps &&
+  a.activeCell?.row === b.activeCell?.row &&
+  a.activeCell?.step === b.activeCell?.step &&
+  sameItems(a.notes, b.notes) &&
+  sameItems(a.carryIn, b.carryIn),
+);
+

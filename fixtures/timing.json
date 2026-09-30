@@ -1,0 +1,310 @@
+{
+  "$comment": "Shared timing fixture consumed by Rust (music::timing tests) and the frontend stepToSeconds tests. Each case is a pattern shape (tempo_bpm, time_signature, measures, swing) plus notes with step and length_steps. Expected values: start_*/end_* are the start and the end (start of step + length_steps) of each note; total_* is the pattern end. *_seconds are from pattern start (compare with 1e-6 tolerance); *_ticks are at 480 PPQ (exact integers, independent of tempo). Swing delays odd steps by swing * one sixteenth; ticks round the delay to the nearest tick.",
+  "ppq": 480,
+  "cases": [
+    {
+      "name": "straight 4/4 at 120 BPM",
+      "tempo_bpm": 120,
+      "time_signature": "4/4",
+      "measures": 4,
+      "swing": 0.0,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 1,
+          "start_seconds": 0.0,
+          "end_seconds": 0.125,
+          "start_ticks": 0,
+          "end_ticks": 120
+        },
+        {
+          "step": 4,
+          "length_steps": 1,
+          "start_seconds": 0.5,
+          "end_seconds": 0.625,
+          "start_ticks": 480,
+          "end_ticks": 600
+        },
+        {
+          "step": 5,
+          "length_steps": 3,
+          "start_seconds": 0.625,
+          "end_seconds": 1.0,
+          "start_ticks": 600,
+          "end_ticks": 960
+        },
+        {
+          "step": 15,
+          "length_steps": 1,
+          "start_seconds": 1.875,
+          "end_seconds": 2.0,
+          "start_ticks": 1800,
+          "end_ticks": 1920
+        }
+      ],
+      "total_seconds": 8.0,
+      "total_ticks": 7680
+    },
+    {
+      "name": "held note spans eight steps",
+      "tempo_bpm": 120,
+      "time_signature": "4/4",
+      "measures": 4,
+      "swing": 0.0,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 8,
+          "start_seconds": 0.0,
+          "end_seconds": 1.0,
+          "start_ticks": 0,
+          "end_ticks": 960
+        },
+        {
+          "step": 8,
+          "length_steps": 16,
+          "start_seconds": 1.0,
+          "end_seconds": 3.0,
+          "start_ticks": 960,
+          "end_ticks": 2880
+        }
+      ],
+      "total_seconds": 8.0,
+      "total_ticks": 7680
+    },
+    {
+      "name": "swing 0.5 delays odd sixteenths by half a step",
+      "tempo_bpm": 120,
+      "time_signature": "4/4",
+      "measures": 4,
+      "swing": 0.5,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 1,
+          "start_seconds": 0.0,
+          "end_seconds": 0.1875,
+          "start_ticks": 0,
+          "end_ticks": 180
+        },
+        {
+          "step": 1,
+          "length_steps": 1,
+          "start_seconds": 0.1875,
+          "end_seconds": 0.25,
+          "start_ticks": 180,
+          "end_ticks": 240
+        },
+        {
+          "step": 2,
+          "length_steps": 1,
+          "start_seconds": 0.25,
+          "end_seconds": 0.4375,
+          "start_ticks": 240,
+          "end_ticks": 420
+        },
+        {
+          "step": 3,
+          "length_steps": 1,
+          "start_seconds": 0.4375,
+          "end_seconds": 0.5,
+          "start_ticks": 420,
+          "end_ticks": 480
+        },
+        {
+          "step": 7,
+          "length_steps": 2,
+          "start_seconds": 0.9375,
+          "end_seconds": 1.1875,
+          "start_ticks": 900,
+          "end_ticks": 1140
+        }
+      ],
+      "total_seconds": 8.0,
+      "total_ticks": 7680
+    },
+    {
+      "name": "swing 0.33 rounds ticks and keeps seconds exact",
+      "tempo_bpm": 90,
+      "time_signature": "4/4",
+      "measures": 4,
+      "swing": 0.33,
+      "notes": [
+        {
+          "step": 1,
+          "length_steps": 1,
+          "start_seconds": 0.221666667,
+          "end_seconds": 0.333333333,
+          "start_ticks": 160,
+          "end_ticks": 240
+        },
+        {
+          "step": 3,
+          "length_steps": 2,
+          "start_seconds": 0.555,
+          "end_seconds": 0.888333333,
+          "start_ticks": 400,
+          "end_ticks": 640
+        },
+        {
+          "step": 5,
+          "length_steps": 4,
+          "start_seconds": 0.888333333,
+          "end_seconds": 1.555,
+          "start_ticks": 640,
+          "end_ticks": 1120
+        }
+      ],
+      "total_seconds": 10.666666667,
+      "total_ticks": 7680
+    },
+    {
+      "name": "maximum swing 0.75",
+      "tempo_bpm": 100,
+      "time_signature": "4/4",
+      "measures": 4,
+      "swing": 0.75,
+      "notes": [
+        {
+          "step": 1,
+          "length_steps": 1,
+          "start_seconds": 0.2625,
+          "end_seconds": 0.3,
+          "start_ticks": 210,
+          "end_ticks": 240
+        },
+        {
+          "step": 2,
+          "length_steps": 3,
+          "start_seconds": 0.3,
+          "end_seconds": 0.8625,
+          "start_ticks": 240,
+          "end_ticks": 690
+        }
+      ],
+      "total_seconds": 9.6,
+      "total_ticks": 7680
+    },
+    {
+      "name": "3/4 at 96 BPM crosses measure boundary",
+      "tempo_bpm": 96,
+      "time_signature": "3/4",
+      "measures": 4,
+      "swing": 0.0,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 1,
+          "start_seconds": 0.0,
+          "end_seconds": 0.15625,
+          "start_ticks": 0,
+          "end_ticks": 120
+        },
+        {
+          "step": 11,
+          "length_steps": 2,
+          "start_seconds": 1.71875,
+          "end_seconds": 2.03125,
+          "start_ticks": 1320,
+          "end_ticks": 1560
+        },
+        {
+          "step": 12,
+          "length_steps": 1,
+          "start_seconds": 1.875,
+          "end_seconds": 2.03125,
+          "start_ticks": 1440,
+          "end_ticks": 1560
+        },
+        {
+          "step": 36,
+          "length_steps": 12,
+          "start_seconds": 5.625,
+          "end_seconds": 7.5,
+          "start_ticks": 4320,
+          "end_ticks": 5760
+        }
+      ],
+      "total_seconds": 7.5,
+      "total_ticks": 5760
+    },
+    {
+      "name": "6/8 at 120 BPM with swing",
+      "tempo_bpm": 120,
+      "time_signature": "6/8",
+      "measures": 4,
+      "swing": 0.2,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 3,
+          "start_seconds": 0.0,
+          "end_seconds": 0.4,
+          "start_ticks": 0,
+          "end_ticks": 384
+        },
+        {
+          "step": 6,
+          "length_steps": 1,
+          "start_seconds": 0.75,
+          "end_seconds": 0.9,
+          "start_ticks": 720,
+          "end_ticks": 864
+        },
+        {
+          "step": 11,
+          "length_steps": 2,
+          "start_seconds": 1.4,
+          "end_seconds": 1.65,
+          "start_ticks": 1344,
+          "end_ticks": 1584
+        },
+        {
+          "step": 12,
+          "length_steps": 1,
+          "start_seconds": 1.5,
+          "end_seconds": 1.65,
+          "start_ticks": 1440,
+          "end_ticks": 1584
+        }
+      ],
+      "total_seconds": 6.0,
+      "total_ticks": 5760
+    },
+    {
+      "name": "32 measures at 120 BPM start of final measure is 62 s",
+      "tempo_bpm": 120,
+      "time_signature": "4/4",
+      "measures": 32,
+      "swing": 0.0,
+      "notes": [
+        {
+          "step": 0,
+          "length_steps": 1,
+          "start_seconds": 0.0,
+          "end_seconds": 0.125,
+          "start_ticks": 0,
+          "end_ticks": 120
+        },
+        {
+          "step": 496,
+          "length_steps": 1,
+          "start_seconds": 62.0,
+          "end_seconds": 62.125,
+          "start_ticks": 59520,
+          "end_ticks": 59640
+        },
+        {
+          "step": 511,
+          "length_steps": 1,
+          "start_seconds": 63.875,
+          "end_seconds": 64.0,
+          "start_ticks": 61320,
+          "end_ticks": 61440
+        }
+      ],
+      "total_seconds": 64.0,
+      "total_ticks": 61440
+    }
+  ]
+}

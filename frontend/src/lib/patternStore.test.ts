@@ -1,0 +1,279 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import type { Note } from "@/generated/Note";
+import { createPatternStore, storageKey } from "./patternStore";
+
+const drums: InstrumentInfo = {
+  id: "drums",
+  name: "Drums",
+  midi_channel: 10,
+  sustained: false,
+  rows: [
+    { id: "kick", name: "Kick", midi_note: 36 },
+    { id: "snare", name: "Snare", midi_note: 38 },
+  ],
+};
+
+const note = (row_id: string, step: number, length_steps = 1, velocity = 100): Note => ({
+  row_id,
+  step,
+  length_steps,
+  velocity,
+});
+
+function fresh(measures: 4 | 8 = 4) {
+  const store = createPatternStore("drums");
+  store.getState().newEmptyPattern(drums, measures);
+  return store;
+}
+
+const notes = (s: ReturnType<typeof fresh>) => s.getState().pattern!.notes;
+
+beforeEach(() => localStorage.clear());
+
+describe("pattern store", () => {
+  it("newEmptyPattern builds an empty grid with the instrument's rows", () => {
+    const p = fresh(8).getState().pattern!;
+    expect(p.measures).toBe(8);
+    expect(p.steps_per_measure).toBe(16);
+    expect(p.rows).toEqual(drums.rows);
+    expect(p.midi_channel).toBe(10);
+    expect(p.notes).toEqual([]);
+  });
+
+  it("newEmptyPattern honours time signature (3/4 is 12 steps)", () => {
+    const store = createPatternStore("drums");
+    store.getState().newEmptyPattern(drums, 4, "3/4", 90);
+    const p = store.getState().pattern!;
+    expect(p.steps_per_measure).toBe(12);
+    expect(p.tempo_bpm).toBe(90);
+  });
+
+  it("toggleNote adds a length-1 velocity-100 note on an empty cell", () => {
+    const s = fresh();
+    s.getState().toggleNote("snare", 4);
+    expect(notes(s)).toEqual([note("snare", 4)]);
+  });
+
+  it("toggleNote removes a note by clicking any cell it covers", () => {
+    const s = fresh();
+    s.getState().setPattern({ ...s.getState().pattern!, notes: [note("kick", 0, 4)] });
+    s.getState().toggleNote("kick", 2);
+    expect(notes(s)).toEqual([]);
+  });
+
+  it("toggleNote ignores unknown rows and out-of-range steps", () => {
+    const s = fresh();
+    s.getState().toggleNote("nope", 0);
+    s.getState().toggleNote("kick", 64);
+    expect(notes(s)).toEqual([]);
+    expect(s.getState().past).toHaveLength(0);
+  });
+
+  it("setVelocity changes and clamps velocity", () => {
+    const s = fresh();
+    s.getState().toggleNote("kick", 0);
+    s.getState().setVelocity("kick", 0, 40);
+    expect(notes(s)[0].velocity).toBe(40);
+    s.getState().setVelocity("kick", 0, 500);
+    expect(notes(s)[0].velocity).toBe(127);
+    s.getState().setVelocity("kick", 0, -3);
+    expect(notes(s)[0].velocity).toBe(1);
+  });
+
+  it("resizeNote lengthens a note", () => {
+    const s = fresh();
+    s.getState().toggleNote("kick", 0);
+    s.getState().resizeNote("kick", 0, 4);
+    expect(notes(s)[0].length_steps).toBe(4);
+  });
+
+  it("resizeNote stops at the next note on the row", () => {
+    const s = fresh();
+    s.getState().toggleNote("kick", 0);
+    s.getState().toggleNote("kick", 4);
+    s.getState().resizeNote("kick", 0, 8);
+    expect(notes(s).find((n) => n.step === 0)!.length_steps).toBe(4);
+  });
+
+  it("resizeNote is not blocked by notes on other rows and stops at the pattern end", () => {
+    const s = fresh();
+    s.getState().toggleNote("kick", 60);
+    s.getState().toggleNote("snare", 62);
+    s.getState().resizeNote("kick", 60, 20);
+    expect(notes(s).find((n) => n.row_id === "kick")!.length_steps).toBe(4);
+  });
+
+  it("resizeNote enforces a minimum of 1", () => {
+    const s = fresh();
+    s.getState().toggleNote("kick", 0);
+    s.getState().resizeNote("kick", 0, 3);
+    s.getState().resizeNote("kick", 0, 0);
+    expect(notes(s)[0].length_steps).toBe(1);
+  });
+
+  it("setMeasures lengthens 4 to 8 by repeating measures in order", () => {
+    const s = fresh(4);
+    s.getState().toggleNote("kick", 0);
+    s.getState().toggleNote("snare", 20);
+    s.getState().toggleNote("kick", 50);
+    s.getState().setMeasures(8);
+    const p = s.getState().pattern!;
+    expect(p.measures).toBe(8);
+    const spm = p.steps_per_measure;
+    for (let m = 0; m < 4; m++) {
+      const inMeasure = (k: number) =>
+        p.notes
+          .filter((n) => Math.floor(n.step / spm) === k)
+          .map((n) => ({ ...n, step: n.step - k * spm }));
+      expect(inMeasure(m + 4)).toEqual(inMeasure(m));
+    }
+    expect(p.notes).toHaveLength(6);
+  });
+
+  it("setMeasures shortens 8 to 4, dropping late notes and truncating a crossing note", () => {
+    const s = fresh(8);
+    s.getState().toggleNote("kick", 0);
+    s.getState().toggleNote("kick", 60);
+    s.getState().resizeNote("kick", 60, 4);
+    s.getState().toggleNote("snare", 64);
+    s.getState().toggleNote("snare", 100);
+    s.getState().setMeasures(4);
+    const p = s.getState().pattern!;
+    expect(p.notes.every((n) => n.step < 64)).toBe(true);
+    expect(p.notes.every((n) => n.step + n.length_steps <= 64)).toBe(true);
+    expect(p.notes.find((n) => n.step === 60)!.length_steps).toBe(4);
+    expect(p.notes).toHaveLength(2);
+  });
+
+  it("setMeasures truncates a note that crosses the new end", () => {
+    const s = fresh(8);
+    s.getState().toggleNote("kick", 62);
+    s.getState().resizeNote("kick", 62, 6);
+    s.getState().setMeasures(4);
+    expect(notes(s)[0].length_steps).toBe(2);
+  });
+
+  it("setMeasures to a non-multiple length never overflows the end", () => {
+    const s = fresh(8);
+    s.getState().toggleNote("kick", 60);
+    s.getState().resizeNote("kick", 60, 8);
+    s.getState().setMeasures(12);
+    const p = s.getState().pattern!;
+    expect(p.notes.every((n) => n.step + n.length_steps <= 12 * 16)).toBe(true);
+  });
+
+  it("setTempo and setSwing clamp to their ranges", () => {
+    const s = fresh();
+    s.getState().setTempo(120);
+    expect(s.getState().pattern!.tempo_bpm).toBe(120);
+    s.getState().setTempo(999);
+    expect(s.getState().pattern!.tempo_bpm).toBe(240);
+    s.getState().setTempo(1);
+    expect(s.getState().pattern!.tempo_bpm).toBe(40);
+    s.getState().setSwing(0.5);
+    expect(s.getState().pattern!.swing).toBe(0.5);
+    s.getState().setSwing(2);
+    expect(s.getState().pattern!.swing).toBe(0.75);
+    s.getState().setSwing(-1);
+    expect(s.getState().pattern!.swing).toBe(0);
+  });
+
+  it("clear removes all notes but keeps parameters", () => {
+    const s = fresh();
+    s.getState().setTempo(100);
+    s.getState().toggleNote("kick", 0);
+    s.getState().clear();
+    expect(notes(s)).toEqual([]);
+    expect(s.getState().pattern!.tempo_bpm).toBe(100);
+  });
+
+  it("setPattern replaces the pattern (e.g. after generation)", () => {
+    const s = fresh();
+    const generated = { ...s.getState().pattern!, name: "Generated", notes: [note("kick", 0)] };
+    s.getState().setPattern(generated);
+    expect(s.getState().pattern).toEqual(generated);
+  });
+
+  it("actions are no-ops before a pattern exists", () => {
+    const s = createPatternStore("drums");
+    s.getState().toggleNote("kick", 0);
+    s.getState().setTempo(100);
+    s.getState().clear();
+    expect(s.getState().pattern).toBeNull();
+    expect(s.getState().past).toEqual([]);
+  });
+
+  describe("undo and redo", () => {
+    it("undo restores a removed note and redo removes it again", () => {
+      const s = fresh();
+      s.getState().toggleNote("kick", 0);
+      s.getState().toggleNote("kick", 0);
+      expect(notes(s)).toEqual([]);
+      s.getState().undo();
+      expect(notes(s)).toEqual([note("kick", 0)]);
+      s.getState().redo();
+      expect(notes(s)).toEqual([]);
+    });
+
+    it("undoes resizes and parameter changes", () => {
+      const s = fresh();
+      s.getState().toggleNote("kick", 0);
+      s.getState().resizeNote("kick", 0, 4);
+      s.getState().setTempo(150);
+      s.getState().undo();
+      expect(s.getState().pattern!.tempo_bpm).toBe(120);
+      s.getState().undo();
+      expect(notes(s)[0].length_steps).toBe(1);
+      s.getState().setMeasures(8);
+      s.getState().undo();
+      expect(s.getState().pattern!.measures).toBe(4);
+    });
+
+    it("a new edit clears the redo stack", () => {
+      const s = fresh();
+      s.getState().toggleNote("kick", 0);
+      s.getState().undo();
+      s.getState().toggleNote("kick", 4);
+      expect(s.getState().future).toEqual([]);
+      s.getState().redo();
+      expect(notes(s)).toEqual([note("kick", 4)]);
+    });
+
+    it("undo and redo with empty stacks do nothing", () => {
+      const s = fresh();
+      const before = s.getState().pattern;
+      s.getState().redo();
+      s.getState().undo();
+      s.getState().undo();
+      expect(s.getState().pattern).toBe(before);
+    });
+
+    it("no-op edits do not create history entries", () => {
+      const s = fresh();
+      s.getState().setTempo(120);
+      s.getState().clear();
+      expect(s.getState().past).toHaveLength(0);
+    });
+  });
+
+  describe("persistence", () => {
+    it("stores under songbird.patterns.<instrument>.v1 and restores on recreate", () => {
+      const s = fresh();
+      s.getState().toggleNote("snare", 4);
+      s.getState().setPrompt("boom bap");
+      expect(localStorage.getItem(storageKey("drums"))).not.toBeNull();
+      expect(storageKey("drums")).toBe("songbird.patterns.drums.v1");
+
+      const reloaded = createPatternStore("drums");
+      expect(reloaded.getState().pattern).toEqual(s.getState().pattern);
+      expect(reloaded.getState().prompt).toBe("boom bap");
+      expect(reloaded.getState().past).toEqual([]);
+    });
+
+    it("keeps instruments separate", () => {
+      fresh().getState().toggleNote("kick", 0);
+      expect(createPatternStore("bass").getState().pattern).toBeNull();
+    });
+  });
+});

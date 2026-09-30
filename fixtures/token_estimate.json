@@ -1,0 +1,20 @@
+[
+  { "name": "empty", "prompt": "", "expected": 0 },
+  { "name": "whitespace only", "prompt": " \t\n  ", "expected": 0 },
+  { "name": "single char", "prompt": "a", "expected": 1 },
+  { "name": "exactly four", "prompt": "abcd", "expected": 1 },
+  { "name": "five rounds up", "prompt": "abcde", "expected": 2 },
+  { "name": "ascii sentence (40 chars)", "prompt": "laid-back boom-bap with ghosted snares!!", "expected": 10 },
+  { "name": "surrounding whitespace is trimmed", "prompt": "   \n\tfunky drummer\t \n ", "expected": 4 },
+  { "name": "inner whitespace counts", "prompt": "a   b", "expected": 2 },
+  { "name": "accented letters count as one each", "prompt": "café olé", "expected": 2 },
+  { "name": "emoji count as one each", "prompt": "🥁🥁🥁🥁🥁", "expected": 2 },
+  { "name": "CJK", "prompt": "太鼓のリズム", "expected": 2 },
+  { "name": "exactly at 256 (1024 ascii)", "unit": "a", "repeat": 1024, "expected": 256 },
+  { "name": "one over 256 (1025 ascii)", "unit": "a", "repeat": 1025, "expected": 257 },
+  { "name": "1024 emoji (4096 bytes) is 256", "unit": "🥁", "repeat": 1024, "expected": 256 },
+  { "name": "1024 chars plus surrounding whitespace is 256", "unit": "b", "repeat": 1024, "prefix": "   ", "suffix": "\n\n", "expected": 256 },
+  { "name": "BOM is trimmed (JS whitespace)", "prompt": "\uFEFFabcd\uFEFF", "expected": 1 },
+  { "name": "NEL is not trimmed (not JS whitespace)", "prompt": "\u0085abcd\u0085", "expected": 2 },
+  { "name": "NBSP and ideographic space are trimmed", "prompt": "\u00A0\u3000abcd\u2003", "expected": 1 }
+]

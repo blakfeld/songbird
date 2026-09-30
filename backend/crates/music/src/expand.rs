@@ -1,0 +1,355 @@
+use crate::draft::{MeasureNotes, NormalizedDraft, FALLBACK_TEMPO_BPM};
+use crate::instruments::Instrument;
+use crate::meter::{MeasureCount, TimeSignature};
+use crate::pattern::{Note, Pattern};
+use crate::request::GenerateRequest;
+
+/// Four-bar phrases are the most common unit in popular music, so variations
+/// placed at their ends sound intentional.
+pub const PHRASE_MEASURES: u32 = 4;
+
+/// Request tempo and swing win over the draft's because the user asked for
+/// them explicitly.
+pub fn build_pattern(draft: &NormalizedDraft, request: &GenerateRequest) -> Pattern {
+    let mut pattern = Pattern::empty(
+        request.instrument,
+        draft.name.clone(),
+        request
+            .tempo_bpm
+            .or(draft.tempo_bpm)
+            .unwrap_or(FALLBACK_TEMPO_BPM),
+        request.time_signature,
+        request.measures,
+        request.swing.or(draft.swing).unwrap_or(0.0),
+    );
+    pattern.notes = expand_notes(
+        draft,
+        request.instrument,
+        request.measures,
+        request.time_signature,
+    );
+    pattern
+}
+
+pub fn expand_notes(
+    draft: &NormalizedDraft,
+    instrument: &Instrument,
+    measures: MeasureCount,
+    time_signature: TimeSignature,
+) -> Vec<Note> {
+    let steps_per_measure = time_signature.steps_per_measure();
+    let n = measures.get() as usize;
+    let mut sections: Vec<MeasureNotes> = draft.sections.clone();
+    let mut layout: Vec<usize> = (0..n)
+        .map(|i| draft.arrangement[i % draft.arrangement.len()])
+        .collect();
+
+    if n > PHRASE_MEASURES as usize {
+        let primary = sections[layout[0]].clone();
+        let variation = choose_variation(&draft.arrangement, &sections, &primary).or_else(|| {
+            let hook = instrument.fallback_variation?;
+            sections.push(hook(&primary, steps_per_measure));
+            Some(sections.len() - 1)
+        });
+        if let Some(variation) = variation {
+            let phrase = PHRASE_MEASURES as usize;
+            for i in (phrase - 1..n).step_by(phrase) {
+                if sections[layout[i]] == primary {
+                    layout[i] = variation;
+                }
+            }
+        }
+    }
+
+    let raw: Vec<RawNote> = layout
+        .iter()
+        .enumerate()
+        .flat_map(|(measure, &section)| {
+            let offset = measure as u32 * steps_per_measure;
+            sections[section]
+                .iter()
+                .map(move |(&(row, step), note)| RawNote {
+                    row,
+                    step: offset + step,
+                    length: note.length,
+                    velocity: note.velocity,
+                })
+        })
+        .collect();
+
+    settle(raw, measures.get() * steps_per_measure)
+        .into_iter()
+        .map(|n| Note {
+            row_id: instrument.rows[n.row].id.to_string(),
+            step: n.step,
+            length_steps: n.length,
+            velocity: n.velocity,
+        })
+        .collect()
+}
+
+/// Prefer a section the model placed in its arrangement: that is the variation
+/// it intended. Empty sections are skipped because lanes with unknown rows are
+/// dropped, and an empty phrase-end measure would read as a silent glitch
+/// rather than a fill.
+fn choose_variation(
+    arrangement: &[usize],
+    sections: &[MeasureNotes],
+    primary: &MeasureNotes,
+) -> Option<usize> {
+    arrangement
+        .iter()
+        .rev()
+        .copied()
+        .find(|&i| is_variation(&sections[i], primary))
+        .or_else(|| {
+            (0..sections.len())
+                .rev()
+                .find(|&i| is_variation(&sections[i], primary))
+        })
+}
+
+fn is_variation(section: &MeasureNotes, primary: &MeasureNotes) -> bool {
+    !section.is_empty() && section != primary
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RawNote {
+    pub row: usize,
+    pub step: u32,
+    pub length: u32,
+    pub velocity: u8,
+}
+
+/// Sections are one measure long so they cannot overlap or overrun today, but
+/// the pattern invariants must hold however notes were produced, so they are
+/// enforced here in one place. An earlier note is shortened to end where the
+/// next one on its row begins.
+pub(crate) fn settle(mut notes: Vec<RawNote>, total_steps: u32) -> Vec<RawNote> {
+    notes.retain(|n| n.step < total_steps);
+    // Loudest first at a shared step so dedupe keeps the accent.
+    notes.sort_by_key(|n| (n.row, n.step, std::cmp::Reverse(n.velocity)));
+    notes.dedup_by_key(|n| (n.row, n.step));
+
+    for i in 0..notes.len() {
+        let mut end = total_steps;
+        if let Some(next) = notes.get(i + 1).filter(|next| next.row == notes[i].row) {
+            end = end.min(next.step);
+        }
+        notes[i].length = notes[i].length.max(1).min(end - notes[i].step);
+    }
+    notes.sort_by_key(|n| (n.step, n.row));
+    notes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::draft::PatternDraft;
+    use crate::instruments::drums::DRUMS;
+    use crate::instruments::InstrumentRegistry;
+    use crate::request::GenerateRequestBody;
+    use serde_json::json;
+
+    fn request(measures: i64, time_signature: &str) -> GenerateRequest {
+        GenerateRequestBody {
+            instrument: "drums".into(),
+            prompt: "groove".into(),
+            measures,
+            time_signature: Some(time_signature.into()),
+            ..Default::default()
+        }
+        .validate(&InstrumentRegistry::builtin(), 256)
+        .unwrap()
+    }
+
+    fn normalize(draft: PatternDraft, spm: u32) -> NormalizedDraft {
+        draft.normalize(&DRUMS, spm).unwrap()
+    }
+
+    fn one_section_draft() -> PatternDraft {
+        PatternDraft::from_json(json!({
+            "name": "Rock",
+            "tempo_bpm": 100,
+            "swing": 0.1,
+            "sections": [{"id": "A", "lanes": [
+                {"lane": "kick", "steps": "x.......x......."},
+                {"lane": "snare", "steps": "....x.......x..."},
+                {"lane": "hat_closed", "steps": "x.x.x.x.x.x.x.x."},
+            ]}],
+            "arrangement": ["A"]
+        }))
+        .unwrap()
+    }
+
+    fn measure_notes(p: &Pattern, m: u32) -> Vec<(String, u32, u32, u8)> {
+        let spm = p.steps_per_measure;
+        p.notes
+            .iter()
+            .filter(|n| n.step / spm == m)
+            .map(|n| (n.row_id.clone(), n.step % spm, n.length_steps, n.velocity))
+            .collect()
+    }
+
+    #[test]
+    fn every_allowed_length_expands_in_range() {
+        for ts in ["4/4", "3/4", "6/8"] {
+            for m in [4, 8, 12, 16, 32] {
+                let req = request(m, ts);
+                let draft = normalize(one_section_draft(), req.time_signature.steps_per_measure());
+                let p = build_pattern(&draft, &req);
+                assert_eq!(p.measures.get(), m as u32);
+                assert!(
+                    p.notes
+                        .iter()
+                        .all(|n| n.step + n.length_steps <= p.total_steps()),
+                    "{ts} {m}"
+                );
+                assert!(!measure_notes(&p, m as u32 - 1).is_empty(), "{ts} {m}");
+            }
+        }
+    }
+
+    #[test]
+    fn pattern_carries_instrument_rows_and_channel() {
+        let p = build_pattern(&normalize(one_section_draft(), 16), &request(4, "4/4"));
+        assert_eq!(p.instrument, "drums");
+        assert_eq!(p.midi_channel, 10);
+        assert_eq!(p.rows, DRUMS.row_list());
+    }
+
+    #[test]
+    fn request_tempo_and_swing_override_draft() {
+        let mut req = request(4, "4/4");
+        let draft = normalize(one_section_draft(), 16);
+        let p = build_pattern(&draft, &req);
+        assert_eq!((p.tempo_bpm, p.swing), (100, 0.1));
+        req.tempo_bpm = Some(140);
+        req.swing = Some(0.0);
+        let p = build_pattern(&draft, &req);
+        assert_eq!((p.tempo_bpm, p.swing), (140, 0.0));
+    }
+
+    #[test]
+    fn four_measures_repeat_without_forced_fill() {
+        let p = build_pattern(&normalize(one_section_draft(), 16), &request(4, "4/4"));
+        for m in 1..4 {
+            assert_eq!(measure_notes(&p, m), measure_notes(&p, 0));
+        }
+    }
+
+    #[test]
+    fn sixteen_measures_get_fallback_fills_at_phrase_ends() {
+        let p = build_pattern(&normalize(one_section_draft(), 16), &request(16, "4/4"));
+        let first = measure_notes(&p, 0);
+        for m in 0..16 {
+            let is_phrase_end = m % 4 == 3;
+            assert_eq!(measure_notes(&p, m) != first, is_phrase_end, "measure {m}");
+        }
+    }
+
+    #[test]
+    fn model_variation_is_used_at_phrase_ends() {
+        let draft = normalize(
+            PatternDraft::from_json(json!({
+                "name": "AB",
+                "sections": [
+                    {"id": "A", "lanes": [{"lane": "kick", "steps": "x...x...x...x..."}]},
+                    {"id": "fill", "lanes": [{"lane": "tom_low", "steps": "....xxxxxxxxXXXX"}]}
+                ],
+                "arrangement": ["A", "A"]
+            }))
+            .unwrap(),
+            16,
+        );
+        let p = build_pattern(&draft, &request(8, "4/4"));
+        for m in [3, 7] {
+            assert!(measure_notes(&p, m).iter().all(|n| n.0 == "tom_low"));
+        }
+        assert!(measure_notes(&p, 2).iter().all(|n| n.0 == "kick"));
+    }
+
+    #[test]
+    fn empty_section_is_not_used_as_the_variation() {
+        let draft = normalize(
+            PatternDraft::from_json(json!({
+                "name": "Ghost",
+                "sections": [
+                    {"id": "A", "lanes": [{"lane": "kick", "steps": "x...x...x...x..."}]},
+                    {"id": "gone", "lanes": [{"lane": "not_a_row", "steps": "x..............."}]}
+                ],
+                "arrangement": ["A", "gone", "A", "A"]
+            }))
+            .unwrap(),
+            16,
+        );
+        let p = build_pattern(&draft, &request(8, "4/4"));
+        for m in [3, 7] {
+            assert!(!measure_notes(&p, m).is_empty(), "measure {m}");
+            assert_ne!(measure_notes(&p, m), measure_notes(&p, 0), "measure {m}");
+        }
+    }
+
+    #[test]
+    fn held_notes_survive_expansion() {
+        let draft = normalize(
+            PatternDraft::from_json(json!({
+                "name": "Hold",
+                "sections": [{"id": "A", "lanes": [{"lane": "crash", "steps": "x---............"}]}],
+                "arrangement": ["A"]
+            }))
+            .unwrap(),
+            16,
+        );
+        let p = build_pattern(&draft, &request(4, "4/4"));
+        assert!(measure_notes(&p, 0).contains(&("crash".into(), 0, 4, 90)));
+    }
+
+    #[test]
+    fn notes_are_sorted_unique_and_valid() {
+        let p = build_pattern(&normalize(one_section_draft(), 16), &request(32, "4/4"));
+        let mut seen = std::collections::HashSet::new();
+        for pair in p.notes.windows(2) {
+            assert!(pair[0].step <= pair[1].step);
+        }
+        for n in &p.notes {
+            assert!(seen.insert((n.row_id.clone(), n.step)));
+            assert!(p.row(&n.row_id).is_some());
+            assert!((1..=127).contains(&n.velocity));
+            assert!(n.length_steps >= 1);
+        }
+    }
+
+    fn raw(row: usize, step: u32, length: u32, velocity: u8) -> RawNote {
+        RawNote {
+            row,
+            step,
+            length,
+            velocity,
+        }
+    }
+
+    #[test]
+    fn overlapping_notes_on_a_row_are_shortened() {
+        let settled = settle(
+            vec![raw(0, 0, 8, 90), raw(0, 4, 1, 90), raw(1, 2, 8, 90)],
+            64,
+        );
+        assert_eq!(
+            settled,
+            vec![raw(0, 0, 4, 90), raw(1, 2, 8, 90), raw(0, 4, 1, 90)]
+        );
+    }
+
+    #[test]
+    fn notes_are_truncated_at_pattern_end_and_out_of_range_dropped() {
+        let settled = settle(vec![raw(0, 60, 10, 90), raw(0, 64, 1, 90)], 64);
+        assert_eq!(settled, vec![raw(0, 60, 4, 90)]);
+    }
+
+    #[test]
+    fn same_step_duplicates_keep_the_loudest() {
+        let settled = settle(vec![raw(0, 0, 1, 35), raw(0, 0, 1, 120)], 16);
+        assert_eq!(settled, vec![raw(0, 0, 1, 120)]);
+    }
+}

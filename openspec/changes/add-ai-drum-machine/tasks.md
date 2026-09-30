@@ -1,0 +1,85 @@
+# Tasks
+
+## 1. Repository and toolchain scaffolding
+
+- [x] 1.1 Run `git init`, add a root `.gitignore` (Rust `target/`, `node_modules/`, `.next/`, `.env`), and verify `git status` shows no build artifacts
+- [x] 1.2 (rework: remove the `crates/drums` crate created earlier) Rust workspace `backend/` with exactly `crates/api` (binary) and `crates/music` (domain library) and pinned `rust-toolchain.toml`; verify `cargo build --workspace` succeeds and no `drums` crate remains
+- [x] 1.3 Scaffold `frontend/` with `create-next-app` (App Router, TypeScript, Tailwind, ESLint, pnpm); verify `pnpm build` succeeds
+- [x] 1.4 Add Vitest + React Testing Library and Playwright to `frontend/` with `test`, `test:e2e`, `typecheck`, `lint` scripts; verify a placeholder unit test passes via `pnpm test`
+- [x] 1.5 Add root `justfile` with `dev`, `test`, `test-live`, `lint`, `fmt` recipes per design D2; verify `just --list` shows them and `just lint` passes on the empty scaffold
+- [x] 1.6 Add `backend/.env.example` documenting `SONGBIRD_BIND_ADDR`, `SONGBIRD_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `SONGBIRD_AI_MODEL`, `SONGBIRD_CORS_ORIGINS`, `SONGBIRD_GENERATION_TIMEOUT_SECS`, `SONGBIRD_MAX_INPUT_TOKENS` (default 256), `SONGBIRD_OLLAMA_URL`, `SONGBIRD_OLLAMA_MODEL`, `SONGBIRD_CODEX_BIN`, `SONGBIRD_CODEX_MODEL`, with `SONGBIRD_AI_PROVIDER=ollama` as the example default for local dev; verify every variable is read by config in groups 2 and 4
+
+## 2. Backend service foundation (platform/service-operations)
+
+- [x] 2.1 Implement typed `Config` loaded from env/`.env` with `SecretString` API key, `max_input_tokens` (default 256, 16–4096), and startup validation; add tests that a missing required setting yields an error naming the variable, an out-of-range `SONGBIRD_MAX_INPUT_TOKENS` fails startup, and `Debug`/logging output never contains the key
+- [x] 2.2 Implement `ApiError` → `{"error":{"code","message"}}` responses, JSON extractor rejection → `400 invalid_json`, and API fallback → `404 not_found`; verify with `oneshot` integration tests
+- [x] 2.3 Add `GET /healthz`, `CorsLayer` from configured origins, 64 KiB body limit, and `TraceLayer` JSON logging; verify integration tests for healthz body, allowed vs disallowed origin headers, and `413` on a 1 MiB body
+- [x] 2.4 Wire `main.rs` to build the router with app state (`Arc<dyn PatternProvider>` placeholder and the instrument registry) and bind; verify `cargo run -p api` then `curl localhost:8080/healthz` returns `{"status":"ok"}`
+
+## 3. Pattern model, instruments, normalization, and expansion (music crate)
+
+- [x] 3.1 (rework: existing `drums`-crate model) In `music`, define `Pattern` (with `instrument`, `midi_channel`, `rows`, `notes`), `Row`, `Note` (`row_id`, `step`, `length_steps`, `velocity`), `TimeSignature`, `MeasureCount` (4/8/12/16/32 only) with serde and `ts-rs` derives; verify unit tests for `steps_per_measure` per time signature, `MeasureCount` rejecting 10 and 64, and JSON round-trip of a pattern
+- [x] 3.2 (rework: move out of `drums`) Instrument definition type and static registry in `music::instruments`, with `drums.rs` providing the rows and channel from design D6, `sustained: false`, row aliases (`bd`, `hh`, `oh`, ...), system-prompt text, four example drafts (rock, house, boom-bap, trap), and a snare-roll fallback-variation hook; verify tests that the registry lists exactly `drums`, lookup of an unknown id fails, and drums rows/channel match the `instruments/drums` spec
+- [x] 3.3 Implement `estimate_tokens` (`ceil(scalar values of trimmed prompt / 4)`) and a shared fixture `fixtures/token_estimate.json` (ASCII, multi-byte/emoji, surrounding whitespace, exactly-at and one-over 256); verify Rust tests consume the fixture
+- [x] 3.4 (rework: existing validation) Request validation (`instrument` known, `prompt` non-blank, estimate ≤ configured `max_input_tokens`, measures, tempo 40–240, time signature, swing 0–0.75) returning distinct error codes including `invalid_instrument` and `prompt_too_long`; verify one unit test per error code and the 1024-char accepted / 1025-char rejected boundary
+- [x] 3.5 (rework: existing draft parser) Instrument-agnostic `PatternDraft` (sections/lanes as arrays, each lane a step string in grammar `.gxX-` or a per-step velocity array) parser using the instrument's rows and aliases, with clamping, unknown-row dropping, dedupe, and `-` holds producing `length_steps`; verify unit tests including velocity 200 → 127, wrong-length step strings, `x---` → one note of length 4, and `-` after a rest being a rest
+- [x] 3.6 (rework: existing expansion) Expansion of a draft to the requested measure count with guaranteed variation at phrase ends for >4 measures (model section first, else the instrument's fallback hook), then per-row overlap removal and truncation at the pattern end; verify tests for every allowed length (notes end within range, `measures` correct), a 16-measure result differing from measure 1, and the step-0-length-8 / step-4 overlap scenario yielding length 4
+- [x] 3.7 (rework: existing ts-rs test) `ts-rs` export of `Pattern`, `Row`, `Note`, `InstrumentInfo`, `TimeSignature`, `MeasureCount`, the generate request, and limits to `frontend/src/generated/` with a test that fails if regenerated types differ from committed ones (`just gen-types` regenerates); verify `cargo test` passes, stale drum-only files are gone, and the TS files are committed
+
+## 4. AI providers and API endpoints (patterns/generation)
+
+- [x] 4.1 Define async `PatternProvider` trait (`generate(request, instrument)` and startup `check`), the shared system prompt combined with the instrument's prompt, the per-instrument `PatternDraft` JSON Schema via `schemars` (lane enum = instrument row ids), and `MockProvider` choosing among the instrument's example drafts by genre keyword else stable request hash; verify a test that identical requests yield identical drafts and a snapshot test of the drums schema
+- [x] 4.2 Implement `ClaudeProvider` using `reqwest` against the Anthropic Messages API with forced `emit_pattern` tool call, the combined system prompt, configurable model and `max_tokens`; verify unit tests against a mocked HTTP server (`wiremock`) for success, malformed tool input, and HTTP error
+- [x] 4.3 Implement `OllamaProvider` (`/api/chat`, `stream: false`, `format` = draft schema) and its `check()` via `/api/tags`; verify `wiremock` tests for success, schema-violating output, server down, and model missing (message includes `ollama pull <model>`)
+- [x] 4.4 Install the Codex CLI locally, confirm `codex login status` succeeds with the ChatGPT account, and record the exact `codex exec` flags for stdin prompt, output schema, last-message file, read-only sandbox, skipping the git-repo check, and model selection, plus the minimum CLI version, in `backend/README.md`; verify a manual `codex exec` run returns schema-valid JSON
+- [x] 4.5 Implement `CodexCliProvider` using the flags from 4.4, temp working dir, `Semaphore(1)`, child kill on timeout, and `check()` via `codex login status`; verify tests against a fake `codex` script covering success, invalid output, non-zero exit, signed-out status, exact arguments passed, and that two concurrent requests run sequentially
+- [x] 4.6 Implement provider selection from `SONGBIRD_AI_PROVIDER` (`claude|ollama|codex|mock`) with startup `check()`: missing `ANTHROPIC_API_KEY` for `claude`, unreachable/missing model for `ollama`, missing/signed-out CLI and non-loopback `SONGBIRD_BIND_ADDR` for `codex`, plus the local-only warning log; verify config tests for each failure message and the warning
+- [x] 4.7 Implement `POST /api/v1/patterns/generate`: validate → provider → one retry on invalid draft → normalize/expand for the instrument, with the configured overall timeout; verify integration tests for 200 (defaults, explicit tempo, rows/channel equal the instrument's), 422 codes (including `invalid_instrument` and `prompt_too_long`) with provider-not-called assertion, 502 `generation_failed` (failing double), 504 `generation_timeout` (slow double with short timeout), and identical normalization of the same bad draft from each provider's test double
+- [x] 4.8 Add `GET /api/v1/patterns/limits` returning `max_input_tokens` from config and `measure_options` `[4,8,12,16,32]`; verify an integration test with a custom limit of 128
+- [x] 4.9 Add `GET /api/v1/instruments` returning each registered instrument's `id`, `name`, `midi_channel`, `sustained`, and `rows`; verify an integration test that it lists exactly `drums` with channel 10, `sustained` false, and the 12 rows in order
+- [x] 4.10 Add `#[ignore]` live tests per real provider wired to `just test-live` (Claude), `just test-live-ollama`, and `just test-live-codex`; verify each passes locally with its prerequisite present and all are skipped by `just test` — *Claude live run skipped by owner decision (2026-09-29) to avoid API cost; Claude provider covered by wiremock tests; Ollama and Codex live tests pass.*
+- [x] 4.11 Document the API (request/response examples, error codes, the limits and instruments endpoints, `invalid_instrument`, and `prompt_too_long`), how to add an instrument, and a provider guide (when to use each, Ollama install/`ollama pull`, Codex install/`codex login`, env vars, local-only rule) in `backend/README.md`; verify the documented `curl` example works against the mock provider and `SONGBIRD_AI_PROVIDER=ollama just dev` works following the guide
+
+## 5. MIDI export (patterns/midi-export)
+
+- [x] 5.1 Implement `step_to_ticks` with swing and a shared fixture file `fixtures/timing.json` of pattern → expected note start and end times (including a held note); verify Rust tests consume the fixture
+- [x] 5.2 Implement the SMF writer with `midly` (Type 1, 480 PPQ, tempo/time-signature/track-name meta events, notes on the pattern's `midi_channel`, Note Off at the start of step `step + length_steps`, End of Track at pattern end); verify golden tests for the kick@0/snare@480 scenario with kick Note Off at 120, a length-8 note's Note Off at 960, 8-measure End of Track at tick 15360, and 3/4 @ 96 BPM meta events
+- [x] 5.3 Add `POST /api/v1/patterns/export/midi` returning `audio/midi` with a `Content-Disposition` filename derived from pattern name and tempo; verify integration test that the body parses with `midly` and notes (including durations) match the input
+- [ ] 5.4 Manually import an exported 8-measure drums file into Logic Pro onto a Drum Kit Designer track and confirm kick/snare/hats land on the right sounds and region length is 8 bars; record the result in `backend/README.md`
+
+## 6. Frontend shell, API client, and state (patterns/piano-roll-editor)
+
+- [x] 6.1 Add Next.js `rewrites` proxying `/api/*` to the backend URL from `SONGBIRD_API_URL`, a Songbird landing page at `/` linking to `/drum-machine`; verify `just dev` serves both and the landing link navigates
+- [x] 6.2 Implement a typed API client (`getInstruments`, `getLimits`, `generatePattern`, `exportMidi`) using generated types and mapping error JSON to messages; verify Vitest tests with mocked `fetch`
+- [x] 6.3 Implement `estimateTokens` in TypeScript mirroring the backend rule; verify Vitest tests consume the shared `fixtures/token_estimate.json` and match every expected value
+- [x] 6.4 Implement the Zustand store, keyed per instrument (`songbird.patterns.<instrument>.v1`): current pattern, toggle note, set velocity, resize note (clamped to next note on the row and pattern end), resize measures (repeat / drop and clamp), set tempo/swing, clear, new empty pattern from an instrument, undo/redo history, `localStorage` persistence; verify unit tests for each action including lengthen 4→8, shorten 8→4 with a note crossing the new end, note resize stopping at the next note, and undo of a removal
+
+## 7. Prompt form and piano roll UI (patterns/piano-roll-editor)
+
+- [x] 7.1 Build the prompt form (description with live "n / max" token counter, measure options and token limit loaded from the limits endpoint, optional tempo, time signature, Generate requesting the page's instrument) with loading state and error display that preserves the current pattern; verify RTL tests for measure options 4/8/12/16/32, counter showing "10 / 256" for 40 characters, disabled Generate on blank or over-limit prompt, the request naming `drums` on the Drum Machine page, and error-keeps-pattern
+- [x] 7.2 Build the generic piano roll (sticky row labels from the instrument, per-measure memoized columns, beat/measure gridlines, note bars spanning `length_steps` with velocity-scaled intensity, horizontal scroll) and the `/drum-machine` page using it with the drums instrument; verify RTL test that a fixture pattern renders every note at the right row, start, and span
+- [x] 7.3 Add editing interactions: click empty cell to add (length 1, vel 100), click a note to remove, drag or Alt-click to change velocity, toolbar for measures/tempo/swing/clear/new/undo/redo, and Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z shortcuts; verify RTL interaction tests for add, remove (clicking a covered cell of a held note), velocity 40, and keyboard undo
+- [x] 7.4 Add the note right-edge resize handle (pointer drag snapping to whole steps, clamped, one undoable edit on release); verify RTL tests for lengthening 1→4 and stopping at the next note
+- [ ] 7.5 Manually check a 32-measure pattern scrolls smoothly and edits feel instant in Chrome and Safari; if not, note profiling results and open a follow-up for canvas rendering (design D4)
+
+## 8. Playback (patterns/playback, instruments/drums)
+
+- [x] 8.1 Source a CC0 drum kit covering every drums row into `frontend/public/kits/drums/` with `LICENSE-samples.md`; verify every drums row's `midi_note` has a sample file
+- [x] 8.2 Implement `stepToSeconds` (with swing) and verify it against the shared `fixtures/timing.json` in Vitest, including note end times and the 32-measure @120 BPM → 62 s case
+- [x] 8.3 Implement the Tone.js audio engine with a frontend instrument sound-source registry (drums: one-shot sample players): `Tone.start()` on first Play, per-bar lookahead scheduling reading notes from the store, velocity → gain, passing start and end times to the sound source, full-pattern and measure-range looping; verify unit tests with a mocked Tone transport that scheduled times match `stepToSeconds`, that the drums source ignores length, and that an edit is picked up on the next pass
+- [ ] 8.4 Add transport UI (Play/Stop, Space toggle outside text fields, loop range selector) and playhead with auto-scroll; verify RTL tests for Space behavior and manual check that playhead follows a 32-measure pattern
+
+## 9. MIDI download in the UI (patterns/midi-export)
+
+- [x] 9.1 Add "Download MIDI" that posts the current pattern to the export endpoint and saves the blob as `songbird-<slug>-<bpm>bpm.mid`; verify an RTL test with mocked client that a download is triggered with the expected filename
+
+## 10. Run, containerize, and CI
+
+- [ ] 10.1 Add Dockerfiles for backend (multi-stage, slim runtime) and frontend (Next standalone output) and `docker-compose.yml` defaulting to the mock provider, with an optional `ollama` profile that runs an Ollama container and points the backend at it; verify `docker compose up` serves the app at `localhost:3000` and `/healthz` responds, and `docker compose --profile ollama up` generates a pattern after the model is pulled
+- [ ] 10.2 Add `.github/workflows/ci.yml` running `just lint` and `just test` (including Playwright with browsers installed); verify the workflow passes on a push
+- [x] 10.3 Write root `README.md`: prerequisites (Rust, Node, pnpm, just), `just dev`, `just test`, the three live-test recipes, choosing an AI provider (link to the provider guide), Docker path, env vars, and how to import the `.mid` into Logic; verify a fresh clone following the README reaches a running app
+
+## 11. End-to-end integration
+
+- [x] 11.1 Write Playwright tests booting the backend with the mock provider and the Next dev server: confirm the over-limit prompt disables Generate → generate a 16-measure drums pattern → add and remove notes → resize a note to 4 steps → reload and confirm persistence → download MIDI and parse it with `@tonejs/midi` confirming notes/velocities/start times/durations match the edited pattern; verify `pnpm test:e2e` passes locally and in CI
+- [ ] 11.2 Run `openspec validate add-ai-drum-machine --strict` and a manual smoke test with the real Claude provider (three different genre prompts, each playing and exporting cleanly); verify both succeed — *Owner decision (2026-09-29): run the smoke test with the Ollama provider instead of Claude to avoid API cost.*
