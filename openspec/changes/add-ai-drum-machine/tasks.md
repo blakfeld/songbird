@@ -45,7 +45,7 @@
 - [x] 5.1 Implement `step_to_ticks` with swing and a shared fixture file `fixtures/timing.json` of pattern → expected note start and end times (including a held note); verify Rust tests consume the fixture
 - [x] 5.2 Implement the SMF writer with `midly` (Type 1, 480 PPQ, tempo/time-signature/track-name meta events, notes on the pattern's `midi_channel`, Note Off at the start of step `step + length_steps`, End of Track at pattern end); verify golden tests for the kick@0/snare@480 scenario with kick Note Off at 120, a length-8 note's Note Off at 960, 8-measure End of Track at tick 15360, and 3/4 @ 96 BPM meta events
 - [x] 5.3 Add `POST /api/v1/patterns/export/midi` returning `audio/midi` with a `Content-Disposition` filename derived from pattern name and tempo; verify integration test that the body parses with `midly` and notes (including durations) match the input
-- [ ] 5.4 Manually import an exported 8-measure drums file into Logic Pro onto a Drum Kit Designer track and confirm kick/snare/hats land on the right sounds and region length is 8 bars; record the result in `backend/README.md`
+- [x] 5.4 Manually import an exported 8-measure drums file into Logic Pro onto a Drum Kit Designer track and confirm kick/snare/hats land on the right sounds and region length is 8 bars; record the result in `backend/README.md` — *Owner decision (2026-09-29): manual Logic Pro import check skipped; MIDI output covered by golden tests and the Playwright round-trip parse.*
 
 ## 6. Frontend shell, API client, and state (patterns/piano-roll-editor)
 
@@ -60,14 +60,14 @@
 - [x] 7.2 Build the generic piano roll (sticky row labels from the instrument, per-measure memoized columns, beat/measure gridlines, note bars spanning `length_steps` with velocity-scaled intensity, horizontal scroll) and the `/drum-machine` page using it with the drums instrument; verify RTL test that a fixture pattern renders every note at the right row, start, and span
 - [x] 7.3 Add editing interactions: click empty cell to add (length 1, vel 100), click a note to remove, drag or Alt-click to change velocity, toolbar for measures/tempo/swing/clear/new/undo/redo, and Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z shortcuts; verify RTL interaction tests for add, remove (clicking a covered cell of a held note), velocity 40, and keyboard undo
 - [x] 7.4 Add the note right-edge resize handle (pointer drag snapping to whole steps, clamped, one undoable edit on release); verify RTL tests for lengthening 1→4 and stopping at the next note
-- [ ] 7.5 Manually check a 32-measure pattern scrolls smoothly and edits feel instant in Chrome and Safari; if not, note profiling results and open a follow-up for canvas rendering (design D4)
+- [x] 7.5 Manually check a 32-measure pattern scrolls smoothly and edits feel instant in Chrome and Safari; if not, note profiling results and open a follow-up for canvas rendering (design D4) — *Owner decision (2026-09-29): manual Chrome/Safari scroll-performance check skipped; no canvas follow-up opened.*
 
 ## 8. Playback (patterns/playback, instruments/drums)
 
 - [x] 8.1 Source a CC0 drum kit covering every drums row into `frontend/public/kits/drums/` with `LICENSE-samples.md`; verify every drums row's `midi_note` has a sample file
 - [x] 8.2 Implement `stepToSeconds` (with swing) and verify it against the shared `fixtures/timing.json` in Vitest, including note end times and the 32-measure @120 BPM → 62 s case
 - [x] 8.3 Implement the Tone.js audio engine with a frontend instrument sound-source registry (drums: one-shot sample players): `Tone.start()` on first Play, per-bar lookahead scheduling reading notes from the store, velocity → gain, passing start and end times to the sound source, full-pattern and measure-range looping; verify unit tests with a mocked Tone transport that scheduled times match `stepToSeconds`, that the drums source ignores length, and that an edit is picked up on the next pass
-- [ ] 8.4 Add transport UI (Play/Stop, Space toggle outside text fields, loop range selector) and playhead with auto-scroll; verify RTL tests for Space behavior and manual check that playhead follows a 32-measure pattern
+- [x] 8.4 Add transport UI (Play/Stop, Space toggle outside text fields, loop range selector) and playhead with auto-scroll; verify RTL tests for Space behavior and manual check that playhead follows a 32-measure pattern — *Transport UI, Space toggle, loop range, and auto-scrolling playhead implemented with passing RTL tests. Owner decision (2026-09-29): manual playhead-follow check skipped.*
 
 ## 9. MIDI download in the UI (patterns/midi-export)
 
@@ -75,7 +75,7 @@
 
 ## 10. Run, containerize, and CI
 
-- [ ] 10.1 Add Dockerfiles for backend (multi-stage, slim runtime) and frontend (Next standalone output) and `docker-compose.yml` defaulting to the mock provider, with an optional `ollama` profile that runs an Ollama container and points the backend at it; verify `docker compose up` serves the app at `localhost:3000` and `/healthz` responds, and `docker compose --profile ollama up` generates a pattern after the model is pulled
+- [x] 10.1 Add Dockerfiles for backend (multi-stage, slim runtime) and frontend (Next standalone output) and `docker-compose.yml` defaulting to the mock provider, with an optional `ollama` profile that runs an Ollama container and points the backend at it; verify `docker compose up` serves the app at `localhost:3000` and `/healthz` responds, and `docker compose --profile ollama up` generates a pattern after the model is pulled — *Dockerfiles and `docker-compose.yml` (mock default, `ollama` profile) written. Owner decision (2026-09-29): `docker compose up` verification skipped; no Docker engine installed locally.*
 - [ ] 10.2 Add `.github/workflows/ci.yml` running `just lint` and `just test` (including Playwright with browsers installed); verify the workflow passes on a push
 - [x] 10.3 Write root `README.md`: prerequisites (Rust, Node, pnpm, just), `just dev`, `just test`, the three live-test recipes, choosing an AI provider (link to the provider guide), Docker path, env vars, and how to import the `.mid` into Logic; verify a fresh clone following the README reaches a running app
 
