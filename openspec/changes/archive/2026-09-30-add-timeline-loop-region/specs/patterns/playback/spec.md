@@ -1,10 +1,6 @@
-# patterns/playback Specification
+# Spec Delta
 
-## Purpose
-
-Lets songwriters hear the current pattern in the browser with its instrument's sounds, with transport controls, so they can judge and refine it before exporting to their DAW.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Play and stop
 The page SHALL provide Play and Stop controls. The Space bar SHALL toggle play and stop when focus is not in a text field.
@@ -32,20 +28,6 @@ With looping off, playback SHALL continue until the last measure has been schedu
 #### Scenario: Last note rings out
 - **WHEN** looping is off and a sustained note starts in the last measure and lasts to the end of the pattern
 - **THEN** the note sounds for its full length before playback stops
-
-### Requirement: Accurate timing
-Playback SHALL start each note at `step × (60 / tempo_bpm) / 4` seconds from pattern start (sixteenth-note steps), with swing applied by delaying every odd-numbered sixteenth by `swing × (sixteenth duration)`. Timing SHALL NOT drift audibly over a 32-measure pattern.
-
-#### Scenario: Steady tempo over long pattern
-- **WHEN** a 32-measure 4/4 pattern plays at 120 BPM
-- **THEN** the final measure begins 62 seconds (±20 ms) after playback starts
-
-### Requirement: Note length
-For a sustained instrument, each note SHALL sound until the start time of step `step + length_steps` (with swing applied to that step as above). For a one-shot instrument, each note SHALL play its full sound regardless of `length_steps`.
-
-#### Scenario: One-shot ignores length
-- **WHEN** a drums note has `length_steps` 4
-- **THEN** it plays the full drum sound once at its start time
 
 ### Requirement: Looping
 Looping SHALL be a setting that is either on or off, together with an optional loop region. When present, the loop region SHALL be a range of whole measures, at least 1 measure long and inside the pattern.
@@ -108,19 +90,8 @@ When the pattern's length changes:
 - **WHEN** a pattern has no region, looping is on, and it is lengthened from 8 to 16 measures
 - **THEN** there is still no region, and playback loops measures 1–16
 
-### Requirement: Playhead
-During playback the piano roll SHALL show a playhead at the current step and SHALL auto-scroll to keep it visible.
+## ADDED Requirements
 
-#### Scenario: Playhead follows playback
-- **WHEN** a 32-measure pattern plays past the visible area
-- **THEN** the piano roll scrolls so the playhead remains visible
-
-### Requirement: Velocity and live edits are audible
-Note loudness SHALL scale with velocity. Edits made during playback SHALL take effect no later than the next time the edited step is played.
-
-#### Scenario: Add note while playing
-- **WHEN** the user adds a note to a step while the pattern is looping
-- **THEN** the new note is heard on the next pass over that step
 ### Requirement: Editing the loop region on the ruler
 The measure ruler above the timeline SHALL show the loop region, when one exists, as a highlighted strip. Its start and end edges SHALL be visible. While looping is off, the strip SHALL remain visible but visibly dimmed. With no region, the ruler SHALL show only its measures, whether looping is on or off. Measures outside the region SHALL be shaded in the grid only while looping is on and a region exists that is not the whole length. All pointer edits SHALL snap to whole measures.
 - **Draw:** pressing on the ruler outside the region and dragging SHALL draw a new region from the measure pressed to the measure under the pointer, in either direction. With no region, the whole ruler SHALL count as outside. On release, the new region SHALL replace any previous region and turn looping on. A press and release with no drag outside the region SHALL NOT change anything.
