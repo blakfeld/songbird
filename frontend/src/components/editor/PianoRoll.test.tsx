@@ -359,8 +359,17 @@ const piano: InstrumentInfo = {
 };
 const pianoStore = () => getPatternStore("piano");
 const pianoId = (name: string) => pianoRows.find((r) => r.name === name)!.id;
-const pianoCell = (name: string, step: number) =>
-  screen.getByRole("button", { name: cellLabel(name, step, 16) });
+// getByRole computes the accessible tree of every button; with ~4000 cells that costs ~700ms per query
+// in jsdom, so these helpers go straight to the attribute the role query would have matched.
+const byLabel = (selector: string, label: string) => {
+  const el = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
+    (e) => e.getAttribute("aria-label") === label,
+  );
+  if (!el) throw new Error(`No ${selector} labelled ${label}`);
+  return el;
+};
+const pianoCell = (name: string, step: number) => byLabel("[data-cell]", cellLabel(name, step, 16));
+const pianoKey = (name: string) => byLabel("[data-key]", name);
 
 function PianoHarness({
   onAudition,
@@ -411,15 +420,15 @@ describe("melodic piano roll", () => {
     render(<PianoHarness />);
     const keys = document.querySelectorAll("[data-key]");
     expect(keys).toHaveLength(61);
-    expect(screen.getByRole("button", { name: "C4" })).toHaveTextContent("C4");
-    expect(screen.getByRole("button", { name: "E4" })).toBeEmptyDOMElement();
+    expect(pianoKey("C4")).toHaveTextContent("C4");
+    expect(pianoKey("E4")).toBeEmptyDOMElement();
   });
 
   it("styles sharps as black keys and gives every key its pitch as accessible name", () => {
     loadPiano();
     render(<PianoHarness />);
-    expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("data-key", "black");
-    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("data-key", "white");
+    expect(pianoKey("C#4")).toHaveAttribute("data-key", "black");
+    expect(pianoKey("C4")).toHaveAttribute("data-key", "white");
     const labels = Array.from(document.querySelectorAll("[data-key]"), (k) => k.getAttribute("aria-label"));
     expect(labels).toEqual(pianoRows.map((r) => r.name));
   });
@@ -428,7 +437,7 @@ describe("melodic piano roll", () => {
     loadPiano();
     render(<PianoHarness />);
     const idx = (name: string) => pianoRows.findIndex((r) => r.name === name);
-    const key = (name: string) => screen.getByRole("button", { name });
+    const key = pianoKey;
     expect(key("C4").style.height).toBe("calc(var(--row-h) * 5 / 3)");
     expect(key("A4").style.height).toBe("calc(var(--row-h) * 7 / 4)");
     expect(key("C#4").style.height).toBe("var(--row-h)");
@@ -442,21 +451,21 @@ describe("melodic piano roll", () => {
     render(<PianoHarness />);
     const keys = Array.from(document.querySelectorAll<HTMLElement>("[data-key]"));
     expect(keys.filter((k) => k.tabIndex === 0)).toHaveLength(1);
-    const c4 = screen.getByRole("button", { name: "C4" });
+    const c4 = pianoKey("C4");
     expect(c4.tabIndex).toBe(0);
     c4.focus();
     await userEvent.keyboard("{ArrowUp}");
-    expect(screen.getByRole("button", { name: "C#4" })).toHaveFocus();
+    expect(pianoKey("C#4")).toHaveFocus();
     expect(keys.filter((k) => k.tabIndex === 0)).toHaveLength(1);
     await userEvent.keyboard("{ArrowDown}{ArrowDown}");
-    expect(screen.getByRole("button", { name: "B3" })).toHaveFocus();
+    expect(pianoKey("B3")).toHaveFocus();
   });
 
   it("auditions the focused key with Enter and Space", async () => {
     loadPiano();
     const onAudition = vi.fn();
     render(<PianoHarness onAudition={onAudition} />);
-    screen.getByRole("button", { name: "A4" }).focus();
+    pianoKey("A4").focus();
     await userEvent.keyboard("{Enter} ");
     expect(onAudition).toHaveBeenCalledTimes(2);
   });
@@ -465,7 +474,7 @@ describe("melodic piano roll", () => {
     loadPiano();
     const onAudition = vi.fn();
     render(<PianoHarness onAudition={onAudition} />);
-    await userEvent.click(screen.getByRole("button", { name: "A4" }));
+    await userEvent.click(pianoKey("A4"));
     expect(onAudition).toHaveBeenCalledWith(pianoRows.find((r) => r.name === "A4"));
     expect(pianoStore().getState().past).toHaveLength(0);
   });
