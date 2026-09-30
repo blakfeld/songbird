@@ -28,6 +28,8 @@ interface ShortcutActions {
   togglePlayback?: () => void;
   undo: () => void;
   redo: () => void;
+  // Only the Studio has clips; other pages leave Cmd/Ctrl+D to the browser.
+  duplicate?: () => void;
 }
 
 // Shared by the single-instrument pages and the Studio so the key rules cannot drift apart.
@@ -58,6 +60,16 @@ export function useShortcuts(actions: ShortcutActions) {
       } else if (key === "y" && e.ctrlKey) {
         e.preventDefault();
         latest.current.redo();
+      } else if (
+        key === "d" &&
+        !e.shiftKey &&
+        latest.current.duplicate &&
+        !e.defaultPrevented &&
+        // A modal owns its keys, and a duplicate behind it would change the arrangement unseen.
+        !(e.target instanceof Element && e.target.closest("dialog, [role=dialog], [role=alertdialog]"))
+      ) {
+        e.preventDefault();
+        latest.current.duplicate();
       }
     };
     // Buttons fire click on Space keyup, which would toggle the focused cell.

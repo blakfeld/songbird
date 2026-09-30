@@ -1,5 +1,6 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { SongStore } from "@/lib/song/songStore";
+import { resolveTrackNotes } from "@/lib/song/clipOps";
 import { audibleTracks } from "@/lib/song/songOps";
 import type { PlaybackModel, Voice } from "./types";
 
@@ -39,7 +40,7 @@ export function createSongPlaybackModel(
             key: t.id,
             instrument: t.instrument,
             rows: info.rows,
-            notes: t.notes,
+            notes: resolveTrackNotes(song, t),
             volumeDb: t.volume_db,
             pan: t.pan,
             audible: audible.has(t.id),

@@ -190,7 +190,7 @@ When a section is duplicated, the copy SHALL get an identical progression. When 
 ### Requirement: Render chords to a track
 The user SHALL be able to render the chords in a range into a chosen melodic track. The range is either the selected section or the whole song. Drums tracks SHALL NOT be offered as targets.
 
-Rendering SHALL replace the track's notes that start within the range with one sustained voicing per chord. The notes SHALL have velocity 90, and each SHALL last the chord's full length. The voicing SHALL be deterministic:
+Rendering SHALL write one sustained voicing per chord into a new loop on the track, as long as the range, with note positions counted from the start of the range. The loop SHALL be named "<section name> chords", or "Song chords" when the range is the whole song, and SHALL be placed as one clip covering the range. The track's clips in the range SHALL be removed, split, or trimmed exactly as when a track generation result is applied (see `songs/track-generation`, "Generate a track in the Studio"), and the contents of existing loops SHALL NOT change. The notes SHALL have velocity 90, and each SHALL last the chord's full length. The voicing SHALL be deterministic:
 - **Instruments whose highest note is at or below MIDI 60**: the voicing SHALL contain only the slash bass, or the root when there is no slash bass. It SHALL be placed in the lowest octave within the instrument's range.
 - **All other instruments**: the voicing SHALL be the chord tones in close position. The root SHALL be placed in the octave C3–B3 (MIDI 48–59), and the remaining tones stacked upward. A slash bass SHALL be added in the octave below the root. Tones outside the instrument's range SHALL be moved by octaves until they are inside it.
 
@@ -198,11 +198,15 @@ The render SHALL be one undoable edit.
 
 #### Scenario: Pad gets full voicings
 - **WHEN** a 1-measure 4/4 section has chord `Am` and it is rendered to a Piano track
-- **THEN** the track has notes A3, C4, and E4 at step 0, each with `length_steps` 16 and velocity 90
+- **THEN** the track has a new 1-measure loop holding A3, C4, and E4 at loop step 0, each with `length_steps` 16 and velocity 90, placed as one clip covering the section
 
 #### Scenario: Bass gets roots
 - **WHEN** chord `C/E` is rendered to a track whose instrument's range tops out below MIDI 60
-- **THEN** the track has a single E note, in the lowest octave within its range, lasting the chord's full length
+- **THEN** the rendered loop has a single E note, in the lowest octave within its range, lasting the chord's full length
+
+#### Scenario: Linked clips elsewhere are unaffected
+- **WHEN** a Piano track plays the loop "Keys A" in both the Verse and the Chorus, and the user renders the Chorus chords to that track
+- **THEN** the Chorus gets a clip of the new loop "Chorus chords", and the Verse clip still plays "Keys A" unchanged
 
 #### Scenario: Drums not offered
 - **WHEN** the user opens "Render chords to track"

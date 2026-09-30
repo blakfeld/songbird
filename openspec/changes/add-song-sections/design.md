@@ -3,18 +3,19 @@
 ## Context
 
 See proposal.md for the motivation. This change builds on the song page and song store that #4 add-multitrack-song introduces.
-- **Song model**: `Song { version: 1, id, name, tempo_bpm, time_signature, swing, measures: 1–128, tracks[] }`.
-- **Notes**: each track's notes use the existing `Note` shape (`row_id`, `step`, `length_steps`, `velocity`). `step` is an absolute sixteenth-note index from the song start.
+- **Song model**: `Song { version: 2, id, name, tempo_bpm, time_signature, swing, measures: 1–128, tracks[] }`.
+- **Tracks** (add-arrangement-clips D1): each track holds `loops` (`{id, name, measures, notes}`, with note steps relative to the loop start) and `clips` (`{id, loop_id, start_measure, measures}`, in whole measures, sorted by `start_measure`, non-overlapping). What a track plays is derived by `resolveTrackNotes` (D2). Clip operations are pure `Song → Song` functions in `lib/song/clipOps.ts` (D5). A track holds at most 64 loops and 256 clips.
 - **Persistence**: songs persist in the browser in IndexedDB (`songbird.songs.v1.<id>`, #4), with undo and redo in the song store. #4's loader keeps unrecognised fields.
 - **Pattern editor**: the single-instrument editor keeps its stores in `frontend/src/lib/patternStore.ts` and pure operations in `frontend/src/lib/patternOps.ts`. It commits whole immutable documents to a 100-entry history (`patternStore.ts:11`). We assume the song store follows the same pattern.
 - **Loop range**: this is a `LoopRange { start, end }` in measures, passed to `Transport` (`frontend/src/components/editor/Transport.tsx:16-17`). Selecting a section only has to set it.
-- **Song type ownership**: since #5, `Song` and `Track` are defined in Rust (`music/src/song.rs`) and generated to `frontend/src/generated/` by ts-rs. The browser validates project files in `lib/song/projectFile.ts`, kept in step with Rust by `fixtures/song_validation.json`. #5's versioning policy applies: additive optional fields, `version` stays 1.
+- **Song type ownership**: since #5, `Song` and `Track` are defined in Rust (`music/src/song.rs`) and generated to `frontend/src/generated/` by ts-rs. The browser validates project files in `lib/song/projectFile.ts`, kept in step with Rust by `fixtures/song_validation.json`. #5's versioning policy applies: additive optional fields, `version` stays 2.
 - **Backend**: no backend behavior depends on sections. MIDI export ignores them. They are still declared on the Rust `Song` so the generated types carry them and validation checks their ranges.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Section edits are pure functions over `Song`, so the tiling and note-shifting rules are unit-testable without a DOM.
+- Section edits are pure functions over `Song`, so the tiling and clip-shifting rules are unit-testable without a DOM.
+- Measure edits never change a loop's contents, so every linked clip outside the edited measures keeps playing exactly as before.
 - There is no data migration. Songs from #4 and project files from #5 keep loading.
 
 **Non-Goals:**
@@ -35,21 +36,33 @@ Storing lengths makes tiling hold by construction: gaps and overlaps cannot be r
 ### D2. The implicit section is a view, not data
 When `sections` is absent or empty, `sectionsOf(song)` returns `[{ id: "implicit", name: "Song", kind: "other", measures: song.measures, notes: "" }]`. The first mutating section operation writes that section, with a fresh uuid, into the document and then applies the edit, all as one history entry.
 
-This keeps untouched old songs byte-identical, and the document `version` stays 1.
+This keeps untouched old songs byte-identical, and the document `version` stays 2.
 
 *Alternative:* migrate on load. This was rejected because it would rewrite every stored song, and project files from #5 would differ from what users exported.
 
-### D3. One measure-splice primitive
-All structural edits reduce to two operations on every track:
-- `insertMeasures(song, atMeasure, count, source?)`: inserts empty measures, or copies of `source`'s measures when duplicating.
-- `removeMeasures(song, fromMeasure, count)`: drops notes that start in the removed range, truncates notes that cross into it, and shifts later notes earlier.
+### D3. One measure-splice primitive, over clips
+All structural edits reduce to two operations on every track's `clips`. Loops are never touched:
+- `insertMeasures(song, atMeasure, count, source?)`: splits any clip that crosses `atMeasure`, then moves every clip starting at or after `atMeasure` later by `count`. With `source` (duplicating), it also copies each clip inside the source span into the inserted span, shifted by the span's offset. Copies keep their `loop_id`, so they are linked to the originals.
+- `removeMeasures(song, fromMeasure, count)`: splits clips crossing `fromMeasure` and `fromMeasure + count`, deletes the clips inside the removed span, and moves later clips earlier by `count`.
 
-Add, insert, resize, duplicate, and delete then only differ in how they update `sections`. These live in a new `frontend/src/lib/songSectionOps.ts` next to #4's song operations. Step arithmetic uses `steps_per_measure` from the song's time signature, as `patternOps.ts` does.
+Both primitives build on two helpers in `lib/song/clipOps.ts`. #6 (add-context-aware-track-generation) needs the same two for writing a generated range, so whichever of #6 and #7 is built first adds them and the other reuses them:
+- `splitClip(song, trackId, clipId, atMeasure)`: the head keeps the clip's loop and ends before `atMeasure`. The tail starts at `atMeasure` and keeps the same loop when `(atMeasure − clip.start_measure)` is a multiple of `loop.measures`, because it then starts on a repeat. Otherwise the tail gets a new loop, named "<loop name> (cont.)" (truncated to 40 characters), holding exactly the notes the tail played (`resolveTrackNotes` output re-based to the tail start), with the tail's length.
+- `clearMeasureRange(song, trackId, start, end)`: splits at `start` and `end + 1`, then deletes the clips inside.
 
-**Shortening a section rule:** notes that cross the cut are truncated to end at the cut, even if they originally continued into the next section. We chose truncation over deleting the note because it keeps the part that the user can still see.
+Add, insert, resize, duplicate, and delete then only differ in how they update `sections`. These live in a new `frontend/src/lib/songSectionOps.ts` next to #4's song operations. Clip arithmetic is in whole measures, so the time signature only matters inside `resolveTrackNotes` when a misaligned tail is baked.
 
-### D4. Duplicate copies notes that start inside the section
-A note that starts inside the section but extends past it is copied with its length truncated at the copy's end. That way the copy never bleeds into the material that follows it. The original note is untouched.
+**Cutting notes:** a note that sounds across a split point is cut there, because a clip cuts its notes at its end (add-arrangement-clips, "What a clip plays"). For shortening and deleting this matches the earlier rule of truncating notes at the cut. For inserting, a note that crosses the insertion point is also cut there rather than sustaining into the new empty measures, because clips have no way to let a note ring past their end.
+
+**Why bake a misaligned tail instead of rotating the loop:** a rotated copy would keep the loop short, but notes that wrap past its end would have to be cut, so the tail would sound different. Baking is exact. The cost is that the tail no longer repeats a short loop.
+
+**Limits:** splits can add clips and loops. An edit that would take any track past 64 loops or 256 clips is refused as a whole, and the user is told which track is full.
+
+*Alternative:* shift the notes inside each loop. That would change every other clip linked to the loop, which is exactly what the loop model exists to prevent.
+
+### D4. Duplicate places linked clips
+Duplicating first splits clips at the section's edges, so every clip in the source span lies inside it. Each is then copied as a clip of the **same loop**. The copy is linked, as in add-arrangement-clips' Duplicate, so a later edit to the chorus loop changes both choruses. The user can use Make unique to vary one.
+
+A note that starts inside the section but sustains past it is cut at the copy's end, because the copied clip ends there. That way the copy never bleeds into the material that follows it.
 
 ### D5. Structural edits go through the song history; notes typing does not
 Structural edits go through the song store's `commit` path and become one undo entry each.
@@ -67,6 +80,7 @@ The ruler reuses the existing grid geometry: `MeasureRuler.tsx`, and the 28 px c
 ## Risks / Trade-offs
 
 - **[Risk]** Rust and browser validation of `sections` drift apart. **Mitigation:** both consume the new section cases in `fixtures/song_validation.json` (task 1.1). An API test checks that a sectioned song exports, and a Vitest test checks that a project file round-trips.
+- **[Trade-off]** Splitting a long migrated clip (one whole-song loop per track) off a loop-repeat boundary bakes its tail into a new loop. Such songs gain "(cont.)" loops after section edits. They play correctly, and the user can delete unplaced ones from the loop menu.
 - **[Risk]** Structural edits on 16 tracks × 128 measures copy the whole song per history entry, so memory grows with the history. **Mitigation:** the history is already bounded (100 entries). A dense song is on the order of 100 KB, so the worst case stays around 10 MB. Revisit with structural sharing if profiling shows a problem.
 - **[Trade-off]** Without reordering, rearranging a song means deleting and re-inserting. We accept that for this PR and have noted it as a follow-up.
 - **[Risk]** Resizing near the 128-measure cap is confusing. **Mitigation:** the UI disables sizes that would exceed the cap and says why, as the spec requires.

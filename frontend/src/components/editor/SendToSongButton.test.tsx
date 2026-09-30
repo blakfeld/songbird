@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { emptyPattern } from "@/lib/patternOps";
 import { createSongLibrary, INDEX_KEY, type SongIndexEntry, type SongLibrary } from "@/lib/song/songLibrary";
 import { newSong, newTrack } from "@/lib/song/types";
-import { drums, note, patternWith } from "@/test/fixtures";
+import { drums, note, patternWith, trackWithNotes } from "@/test/fixtures";
 import { SendToSongButton } from "./SendToSongButton";
 
 let library: SongLibrary;
@@ -39,7 +39,8 @@ describe("send to song", () => {
     expect(song).toMatchObject({ tempo_bpm: 90, swing: 0.2, time_signature: "4/4", measures: 4 });
     expect(song.tracks).toHaveLength(1);
     expect(song.tracks[0]).toMatchObject({ name: "Boom Bap", instrument: "drums" });
-    expect(song.tracks[0].notes).toEqual([note("kick", 0), note("snare", 4)]);
+    expect(song.tracks[0].loops).toMatchObject([{ name: "Boom Bap", measures: 4, notes: [note("kick", 0), note("snare", 4)] }]);
+    expect(song.tracks[0].clips).toMatchObject([{ start_measure: 1, measures: 4 }]);
   });
 
   it("does not offer songs with a different time signature", async () => {
@@ -53,7 +54,7 @@ describe("send to song", () => {
 
   it("lengthens a shorter song to the pattern's length and leaves the pattern alone", async () => {
     const existing = { ...newSong(), name: "Demo" };
-    existing.tracks[0].notes = [note("kick", 0)];
+    existing.tracks[0] = trackWithNotes(existing.tracks[0], [note("kick", 0)], 8);
     await library.create(existing);
     const pattern = { ...emptyPattern(drums, 16), name: "Boom Bap", notes: [note("kick", 200)] };
     const before = structuredClone(pattern);
@@ -67,8 +68,9 @@ describe("send to song", () => {
     const saved = (await library.peek(existing.id))!;
     expect(saved.measures).toBe(16);
     expect(saved.tracks).toHaveLength(3);
-    expect(saved.tracks[0].notes).toEqual([note("kick", 0)]);
-    expect(saved.tracks[2].notes).toEqual([note("kick", 200)]);
+    expect(saved.tracks[0].loops[0].notes).toEqual([note("kick", 0)]);
+    expect(saved.tracks[2].loops[0].notes).toEqual([note("kick", 200)]);
+    expect(saved.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 16 }]);
     expect(pattern).toEqual(before);
   });
 

@@ -99,6 +99,8 @@ export function createPlaybackEngine(
   const positionListeners = new Set<(step: number | null) => void>();
 
   let loop: LoopRange | null = null;
+  // Consumed by the next bar so a seek lands on a bar boundary, and survives until Play when idle.
+  let jumpTo: number | null = null;
   let tone: ToneModule | null = null;
   const channels = new Map<string, VoiceChannel>();
   // Separate from `channels` because the scheduler's mute floor would otherwise fade a preview out mid-note.
@@ -164,7 +166,9 @@ export function createPlaybackEngine(
 
   const startBar = (timing: PlaybackTiming) => {
     const previous = bars.at(-1)?.measure ?? null;
-    const measure = nextMeasure(timing, previous);
+    const measure =
+      jumpTo === null ? nextMeasure(timing, previous) : Math.min(Math.max(jumpTo, 1), timing.measures);
+    jumpTo = null;
     const steps = timing.stepsPerMeasure;
     const tempo = timing.tempo;
     // Steps per measure is even, so swing delays cancel at each barline.
@@ -409,6 +413,9 @@ export function createPlaybackEngine(
     },
     setLoop(range) {
       loop = range;
+    },
+    seek(measure) {
+      jumpTo = measure;
     },
     async audition(row, options = {}) {
       // Started before any await for the same user-gesture reason as play().

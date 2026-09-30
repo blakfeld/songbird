@@ -4,7 +4,7 @@
 
 - **MIDI export** (`music/src/midi.rs:95`): `pattern_to_midi` validates the pattern, settles overlapping notes per row with `settle`, converts steps to ticks with swing via `step_to_ticks`, and writes a Type 1 file with two tracks: a conductor track and a single note track. The API wraps it at `api/src/patterns.rs` (`export_midi`).
 - **Body limit**: a global `DefaultBodyLimit::max(MAX_BODY_BYTES)` (64 KiB) is set in `api/src/routes.rs:16,48`, inside the CORS layer so that `413` responses still carry CORS headers.
-- **Song type**: #4 defines `Song`/`Track` as hand-written TypeScript in `frontend/src/lib/song/types.ts`, shaped for Rust. #1 adds `midi_program` and `kind` to instruments.
+- **Song type**: #4 defines `Song`/`Track` as hand-written TypeScript in `frontend/src/lib/song/types.ts`, shaped for Rust. add-arrangement-clips then replaces `Track.notes` with per-track `loops` and `clips` and sets `version: 2` (its design D1). It adds `validateClips` (D6) and `resolveTrackNotes` (D2), the single flattening point from clips to absolute song notes. #1 adds `midi_program` and `kind` to instruments.
 
 See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
 
@@ -13,6 +13,7 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
 **Goals:**
 - One source of truth for the song shape. It moves to Rust now because the export endpoint, and later #6, #8, and #9, deserialize it.
 - Reuse the pattern exporter's tick math and overlap handling so that song and pattern exports agree note for note.
+- Export exactly the notes the browser plays: the Rust flattener and `resolveTrackNotes` must agree on every clip.
 - Keep project files human-readable and forward-detectable (`format` plus `version`).
 
 **Non-Goals:**
@@ -22,14 +23,26 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
 ## Decisions
 
 ### D1. `Song` and `Track` in `music::song`, generated to TypeScript
-- **Types:** `music/src/song.rs` defines `Song { version, id, name, tempo_bpm, time_signature, swing, measures, tracks }` and `Track { id, name, instrument, volume_db, pan, muted, soloed, notes: Vec<Note> }`.
+- **Types:** `music/src/song.rs` defines, mirroring add-arrangement-clips D1 field for field (snake_case, so the generated TypeScript matches the browser shape exactly):
+  - `Song { version, id, name, tempo_bpm, time_signature, swing, measures, tracks }`, where `version` is 2;
+  - `Track { id, name, instrument, volume_db, pan, muted, soloed, loops: Vec<Loop>, clips: Vec<Clip> }`;
+  - `Loop { id, name, measures, notes: Vec<Note> }`, with note steps relative to the loop start;
+  - `Clip { id, loop_id, start_measure, measures }`, with `start_measure` 1-based.
   - They derive serde, ts-rs, and `JsonSchema`.
   - `Song` does not use `deny_unknown_fields`, so that later changes (#7 sections, #8 key and chords, #9 lyrics) can add optional fields without breaking older clients. Each later change adds its field here as `Option`/`#[serde(default)]` with `skip_serializing_if`, so songs without it serialize byte-identically.
-  - **Versioning policy (applies to #7, #8, #9):** additive optional fields keep the song `version` and the project-file `version` at 1. Each change that adds a field also extends the TypeScript validator in `lib/song/projectFile.ts`, adds valid and invalid cases to `fixtures/song_validation.json`, reruns `just gen-types`, and adds a project-file round-trip test. `version` increases only for a change older builds cannot read correctly. Such a change needs its own design decision and a migration.
+  - **Versioning policy (applies to #7, #8, #9):** additive optional fields keep the song `version` at 2 (set by add-arrangement-clips) and the project-file `version` at 1. The two numbers are independent: the project-file `version` describes the `{format, version, song}` envelope. Each change that adds a field also extends the TypeScript validator in `lib/song/projectFile.ts`, adds valid and invalid cases to `fixtures/song_validation.json`, reruns `just gen-types`, and adds a project-file round-trip test. `version` increases only for a change older builds cannot read correctly. Such a change needs its own design decision and a migration.
   - **Unknown fields** are ignored by Rust validation and preserved by the browser importer, so a file from a newer build that only added optional fields still opens.
 - **Validation:** `Song::validate(&InstrumentRegistry) -> Result<ValidSong, SongError>` checks the ranges and rows. Its errors name the offending track by index and name.
-  - `ValidSong` carries each track's resolved `&Instrument`. Consumers (export now, generation in #6) therefore never re-resolve rows.
-- **Frontend types:** the frontend drops `lib/song/types.ts` in favour of `@/generated/Song` and `@/generated/Track`.
+  - `version` must be 2. Older documents are migrated by the browser before they are ever sent, so the server needs no migration path.
+  - Clip rules mirror `validateClips` (add-arrangement-clips D6) so that a song the browser opens is exactly a song the server accepts:
+    - loop and clip ids are unique within the song, and loop names are 1–40 characters;
+    - each clip's `loop_id` names a loop on the **same** track;
+    - `start_measure ≥ 1`, `measures ≥ 1`, and every clip lies within the song (`start_measure + measures − 1 ≤ song.measures`);
+    - no two clips on a track overlap. The check sorts a copy by `start_measure`, so input order does not matter;
+    - each loop's `measures` is 1–128, and every loop note uses a row of the track's instrument and ends within the loop;
+    - a track has at most 64 loops and 256 clips.
+  - `ValidSong` carries each track's resolved `&Instrument` and its **resolved notes** (D5). Consumers (export now, generation in #6) therefore never re-resolve rows or re-flatten clips.
+- **Frontend types:** the frontend drops `lib/song/types.ts` in favour of `@/generated/Song`, `Track`, `Loop`, and `Clip`.
 - **Alternative:** keep the TS types and add a separate Rust DTO. That gives two definitions that can drift, which ts-rs exists to prevent.
 
 ### D2. Song MIDI builds on the pattern exporter's internals
@@ -39,7 +52,7 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
   - `TrackName`;
   - `ProgramChange(midi_program - 1)` for melodic instruments;
   - `Controller 7` and `Controller 10`;
-  - then `note_events`.
+  - then `note_events`, given the track's resolved notes from `ValidSong` (D5) and the song's total steps.
 - **Channels:** assigned by `assign_channels(&[Track]) -> Vec<u4>`, which gives drums channel 10 (index 9) and melodic tracks the next free channel from 1–9 and 11–16.
   - The 16-track cap means at most 15 melodic channels are ever needed. Songs with several drums tracks share channel 10, as General MIDI intends.
 - **Mixer mapping:** CC7 and CC10 values are pure functions (`volume_cc`, `pan_cc`), unit-tested at the spec's boundaries.
@@ -60,12 +73,20 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
   - ranges and rows, mirroring `Song::validate`.
 - **Parity:** a shared fixture, `fixtures/song_validation.json`, holds valid and invalid songs with expected error kinds. Both Rust and Vitest consume it, which keeps the two validators in lock-step, the same way `fixtures/timing.json` does for timing.
 - **Why client-side:** persistence is browser-only by product decision, and posting the file to the server just to validate it would add a round trip and an endpoint for no user benefit.
+- **Clips:** the song is passed through add-arrangement-clips' `migrateSong`, so the importer accepts exactly the song document versions the library opens and reuses `validateClips` rather than a second clip checker.
 - **Id collisions:** the imported song's id is regenerated when it collides.
 - **Size limit:** the 5 MB limit is checked before the file is read into memory.
+
+### D5. `resolve_track_notes` ports add-arrangement-clips D2
+- **Function:** `resolve_track_notes(track: &Track, steps_per_measure: u32) -> Vec<Note>` in `music/src/song.rs`, a direct port of `resolveTrackNotes`. For each clip and each repeat `k` of its loop, it emits the loop notes whose start falls inside the clip, at step `(clip.start_measure − 1 + k·loop.measures) × steps_per_measure + note.step`, with `length_steps` clamped to end at the clip's end. Loop notes past a short clip's end are not emitted.
+- **When it runs:** inside `Song::validate`, after the clip rules pass, so it can index loops by id without failing. `ValidSong` stores the result per track, and `song_to_midi` passes it to `note_events` unchanged. `note_events` and `settle` therefore see the same shape a pattern has, which keeps the pattern exporter untouched.
+- **Parity:** `fixtures/clip_resolution.json` holds cases of `{name, time_signature, song_measures, track, expected}` covering a repeating clip, a clip shorter than its loop, a note cut at the clip end, silence between clips, two clips of one loop, an empty track, and a 6/8 song. Rust and the frontend `resolveTrackNotes` Vitest both compare output sorted by `(step, row_id)`, because the two languages may emit clips in different orders. This follows the `fixtures/timing.json` pattern.
+- **Alternative:** have the browser send pre-flattened notes. The API would then accept a shape no stored song has, and the server could not validate what the user actually arranged.
 
 ## Risks / Trade-offs
 
 - [Rust and TypeScript validators diverge] → The shared fixture is consumed by both test suites (tasks 1.3 and 3.2).
+- [Rust and TypeScript clip flattening diverge, so the MIDI file differs from what the Studio plays] → `fixtures/clip_resolution.json` is consumed by both (tasks 1.4 and 3.2).
 - [DAWs interpret CC7 differently] → This is documented in `backend/README.md` beside the existing Logic import notes, and the manual Logic check is task 4.3.
 - [Replacing the hand-written TS types churns #4's imports] → It is a mechanical import rename. `pnpm typecheck` catches every site.
 - [Very large songs approach 1 MiB] → The export returns `413 payload_too_large`, and the Studio shows the standard error. At the 16-track and 128-measure caps the practical maximum stays well under the limit (estimate recorded in task 2.4).

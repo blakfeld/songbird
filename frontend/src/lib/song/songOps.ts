@@ -1,21 +1,18 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
-import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
-import type { Row } from "@/generated/Row";
+import { SWING_RANGE, TEMPO_RANGE } from "../patternOps";
+import { trimClips } from "./clipOps";
 import {
-  type NoteGrid,
-  SWING_RANGE,
-  TEMPO_RANGE,
-  normalizeNotes,
-} from "../patternOps";
-import {
+  LOOP_NAME_MAX,
   MAX_TRACKS,
   MEASURE_RANGE,
   PAN_RANGE,
   SONG_NAME_MAX,
   TRACK_NAME_MAX,
   VOLUME_DB_RANGE,
+  newId,
   newTrack,
+  type Loop,
   type Song,
   type Track,
 } from "./types";
@@ -40,13 +37,6 @@ const mapTrack = (
 };
 
 export const totalSteps = (song: Song) => song.measures * song.steps_per_measure;
-
-// Rows are passed in because tracks store only an instrument id, never a copy of its rows.
-export const trackGrid = (song: Song, track: Track, rows: Row[]): NoteGrid => ({
-  notes: track.notes,
-  rows,
-  totalSteps: totalSteps(song),
-});
 
 // The smallest free suffix keeps names distinguishable in the lane list without renumbering existing tracks.
 function uniqueTrackName(song: Song, base: string): string {
@@ -87,16 +77,6 @@ export function renameTrack(song: Song, trackId: string, name: string): Song {
   );
 }
 
-export function editTrackNotes(
-  song: Song,
-  trackId: string,
-  notes: Note[],
-): Song {
-  return mapTrack(song, trackId, (t) =>
-    notes === t.notes ? t : { ...t, notes },
-  );
-}
-
 export type MixerPatch = Partial<
   Pick<Track, "volume_db" | "pan" | "muted" | "soloed">
 >;
@@ -131,14 +111,13 @@ export function setSongLength(song: Song, measures: number): Song {
   );
   if (next === song.measures) return song;
   if (next > song.measures) return { ...song, measures: next };
-  const total = next * song.steps_per_measure;
   return {
     ...song,
     measures: next,
-    tracks: song.tracks.map((t) => ({
-      ...t,
-      notes: normalizeNotes(t.notes, total),
-    })),
+    tracks: song.tracks.map((t) => {
+      const clips = trimClips(t.clips, next);
+      return clips === t.clips ? t : { ...t, clips };
+    }),
   };
 }
 
@@ -170,12 +149,25 @@ export function addTrackFromPattern(song: Song, pattern: Pattern): Song {
     song,
     Math.max(song.measures, pattern.measures),
   );
-  const track: Track = {
-    ...newTrack(
-      pattern.instrument,
-      pattern.name.trim().slice(0, TRACK_NAME_MAX) || pattern.instrument,
-    ),
+  const name =
+    pattern.name.trim().slice(0, TRACK_NAME_MAX) || pattern.instrument;
+  const loop: Loop = {
+    id: newId(),
+    name: name.slice(0, LOOP_NAME_MAX),
+    measures: pattern.measures,
     notes: pattern.notes.map((n) => ({ ...n })),
+  };
+  const track: Track = {
+    ...newTrack(pattern.instrument, name),
+    loops: [loop],
+    clips: [
+      {
+        id: newId(),
+        loop_id: loop.id,
+        start_measure: 1,
+        measures: pattern.measures,
+      },
+    ],
   };
   return { ...lengthened, tracks: [...lengthened.tracks, track] };
 }

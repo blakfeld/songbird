@@ -190,11 +190,18 @@ On a melodic instrument's page, clicking or activating a key in the keyboard gut
 - **THEN** A4 sounds briefly and the pattern and undo history are unchanged
 
 ### Requirement: Send pattern to a song
-Each single-instrument editor page SHALL offer a "Send to song" action whenever a pattern is displayed. The action SHALL let the user choose a new song or an existing song whose time signature matches the pattern's. It SHALL add a new track using the page's instrument, named after the pattern, containing the pattern's notes starting at measure 1. If the pattern is longer than the chosen song, the song SHALL be lengthened to the pattern's length. A new song SHALL take the pattern's tempo, time signature, and swing. The action SHALL be unavailable for a song that already has 16 tracks, and SHALL NOT change the pattern on the editor page.
+Each single-instrument editor page SHALL offer a "Send to song" action whenever a pattern is displayed.
+- **Choosing a song:** the action SHALL let the user choose a new song, or an existing song whose time signature matches the pattern's.
+- **What is added:** the action SHALL add a new track that uses the page's instrument and is named after the pattern. The track SHALL have one loop, named after the pattern, holding the pattern's notes and as long as the pattern. That loop SHALL be placed as one clip starting at measure 1 and as long as the pattern.
+- **Song length:** if the pattern is longer than the chosen song, the song SHALL be lengthened to the pattern's length.
+- **New song settings:** a new song SHALL take the pattern's tempo, time signature, and swing.
+- **Availability:** the action SHALL be unavailable for a song that already has 16 tracks.
+- **The source pattern:** the action SHALL NOT change the pattern on the editor page.
 
 #### Scenario: Send a drum pattern to a new song
 - **WHEN** the user on the Drum Machine page sends an 8-measure 4/4 pattern named "Boom Bap" at 90 BPM to a new song
-- **THEN** a new song at 90 BPM in 4/4 exists with 8 measures and one Drums track named "Boom Bap" containing the pattern's notes
+- **THEN** a new song at 90 BPM in 4/4 exists with 8 measures
+- **AND** it has one Drums track named "Boom Bap", whose loop "Boom Bap" holds the pattern's notes and is placed as one clip covering measures 1–8
 
 #### Scenario: Mismatched time signature is not offered
 - **WHEN** the pattern is in 3/4 and the user opens the song chooser
@@ -202,7 +209,11 @@ Each single-instrument editor page SHALL offer a "Send to song" action whenever 
 
 #### Scenario: Song lengthened to fit
 - **WHEN** a 16-measure pattern is sent to an existing 8-measure song
-- **THEN** the song becomes 16 measures, and its existing tracks are empty in measures 9–16
+- **THEN** the song becomes 16 measures, and its existing tracks have no clips in measures 9–16
+
+#### Scenario: Short pattern into a longer song
+- **WHEN** a 2-measure pattern is sent to an existing 16-measure song
+- **THEN** the new track has one 2-measure clip covering measures 1–2, and the song stays 16 measures long
 
 ### Requirement: Placing a note previews it
 When the user adds a note by clicking an empty cell in a piano roll, the page SHALL immediately play that note once, with the row's sound, at the new note's velocity, whether or not playback is running. Removing a note, resizing it, and changing its velocity SHALL NOT play it. This applies to the single-instrument editor pages and to the Studio piano roll. On the Studio, the preview SHALL use the selected track's instrument, volume, and pan, and SHALL be heard even when that track is muted or another track is soloed, so that the user always hears the note they placed.

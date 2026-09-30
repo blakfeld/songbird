@@ -14,6 +14,8 @@ import { AddTrackMenu } from "./AddTrackMenu";
 import { TrackLane } from "./TrackLane";
 import type { InstrumentLookup } from "./TrackHeader";
 import type { TrackActions } from "./trackActions";
+import { CLIP_KEYS_HELP, CLIP_KEYS_HELP_ID } from "./ClipLane";
+import type { ClipActions } from "./useClipActions";
 
 // Wide enough that two neighbouring bar numbers never touch.
 const MIN_LABEL_GAP_PX = 32;
@@ -43,22 +45,26 @@ function useElementWidth(ref: React.RefObject<HTMLElement | null>) {
 export function Arrangement({
   song,
   selectedTrackId,
+  selectedClipId,
   instruments,
   onRetryInstruments,
   loop,
   subscribePosition,
   actions,
+  clipActions,
   onAddTrack,
   onSeek,
   sectionId,
 }: {
   song: Song;
   selectedTrackId: string | null;
+  selectedClipId: string | null;
   instruments: ResourceState<InstrumentInfo[]>;
   onRetryInstruments: () => void;
   loop: LoopRange;
   subscribePosition: Playback["subscribePosition"];
   actions: TrackActions;
+  clipActions: ClipActions;
   onAddTrack: (instrument: InstrumentInfo) => void;
   onSeek: (trackId: string, measureIndex: number) => void;
   sectionId: string;
@@ -84,6 +90,9 @@ export function Arrangement({
       aria-label="Arrangement"
       className="relative min-h-0 overflow-x-hidden overflow-y-auto overscroll-x-contain border-t border-zinc-200 bg-white max-md:max-h-[50dvh] dark:border-zinc-800 dark:bg-zinc-950"
     >
+      <p id={CLIP_KEYS_HELP_ID} className="sr-only">
+        {CLIP_KEYS_HELP}
+      </p>
       <div className="sticky top-0 z-40 grid grid-cols-[var(--gutter-w)_minmax(0,1fr)] bg-white dark:bg-zinc-950">
         <div className="flex h-7 items-center gap-2 border-r border-b border-zinc-300 px-2 dark:border-zinc-700">
           <AddTrackMenu
@@ -109,6 +118,7 @@ export function Arrangement({
       <div className="relative">
         {song.tracks.map((track, i) => (
           <TrackLane
+            song={song}
             key={track.id}
             track={track}
             number={i + 1}
@@ -116,9 +126,10 @@ export function Arrangement({
             audible={audible.has(track.id)}
             canDelete={song.tracks.length > 1}
             instrument={lookup(track.instrument)}
-            totalSteps={steps}
-            stepsPerMeasure={song.steps_per_measure}
+            selectedClipId={selectedClipId}
+            first={i === 0}
             actions={actions}
+            clipActions={clipActions}
             onSeek={onSeek}
           />
         ))}

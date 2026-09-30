@@ -99,7 +99,7 @@ Both modules are unit-tested without a DOM.
 ### D8. Chat state lives on the song
 The song document gains `lyrics: string` (default `""`) and `lyric_chat: {role, content, selection?, suggestions?}[]` (default `[]`, trimmed to the latest 20 on append).
 - Suggestions are stored with the assistant message so they remain applicable after a reload.
-- Both fields are declared on the Rust `Song` in `music/src/song.rs` with `#[serde(default, skip_serializing_if = ...)]` and generated to TypeScript. They are also covered by the browser project-file validator and `fixtures/song_validation.json`, under #5's versioning policy (optional fields, `version` stays 1). Existing browser songs and project files load unchanged. No endpoint receives the whole song with these fields, but declaring them keeps the generated type the single source of truth.
+- Both fields are declared on the Rust `Song` in `music/src/song.rs` with `#[serde(default, skip_serializing_if = ...)]` and generated to TypeScript. They are also covered by the browser project-file validator and `fixtures/song_validation.json`, under #5's versioning policy (optional fields, song `version` stays 2). Existing browser songs and project files load unchanged. No endpoint receives the whole song with these fields, but declaring them keeps the generated type the single source of truth.
 
 The request's `song_context` is derived from the song store at send time (`lib/lyrics/songContext.ts`). It is not stored.
 

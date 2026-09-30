@@ -5,13 +5,24 @@ import { inputClass } from "@/components/ui/classes";
 import { MEASURE_RANGE } from "@/lib/song/types";
 
 // Typed rather than picked from 128 options; committed on blur so "32" is not three undo steps.
-export function LengthField({ value, onCommit }: { value: number; onCommit: (measures: number) => void }) {
+export function LengthField({
+  value,
+  onCommit,
+  label = "Length",
+  range = MEASURE_RANGE,
+}: {
+  value: number;
+  onCommit: (measures: number) => void;
+  // A second field on the page needs its own name so the two are not confused.
+  label?: string;
+  range?: { min: number; max: number };
+}) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? String(value);
   const n = Number(shown);
   const invalid =
-    shown.trim() === "" || !Number.isInteger(n) || n < MEASURE_RANGE.min || n > MEASURE_RANGE.max;
+    shown.trim() === "" || !Number.isInteger(n) || n < range.min || n > range.max;
 
   function commit() {
     if (draft !== null && !invalid && n !== value) onCommit(n);
@@ -21,14 +32,14 @@ export function LengthField({ value, onCommit }: { value: number; onCommit: (mea
   return (
     <div className="flex items-center gap-2">
       <label htmlFor={id} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        Length
+        {label}
       </label>
       <input
         id={id}
         type="number"
         inputMode="numeric"
-        min={MEASURE_RANGE.min}
-        max={MEASURE_RANGE.max}
+        min={range.min}
+        max={range.max}
         value={shown}
         aria-invalid={draft !== null && invalid}
         onChange={(e) => setDraft(e.target.value)}

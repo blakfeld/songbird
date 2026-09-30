@@ -18,6 +18,7 @@ See proposal.md for the motivation. This change relies on the following existing
 - #5 adds the Rust `Song` mirror, the `/api/v1/songs/` route group, and its 1 MiB body limit.
 - #6 adds track generation and a context summarizer with `SONGBIRD_MAX_CONTEXT_TOKENS`. It adds no provider trait: it reuses `PatternProvider` and the lane-per-pitch draft format from #1, passing the context as `GenerateRequest.context`. `AppState` therefore still holds a single `Arc<dyn PatternProvider>` when this change starts.
 - #7 adds `Song.sections` (Rust `music::song`, generated to TypeScript, validated by `fixtures/song_validation.json`) and the section operations in `frontend/src/lib/songSectionOps.ts`.
+- add-arrangement-clips replaced `Track.notes` with per-track `loops` and `clips` (song `version` 2). #6 D13 adds `clearMeasureRange` and `splitClip` in `lib/song/clipOps.ts` and `songStore.applyGeneratedRange`, which writes a range of a track as a new loop placed as one clip without changing any existing loop. #6's context summarizer reads resolved notes, so chord context sits beside what the clips actually play.
 
 **Frontend:** the timing math is already mirrored between Rust and TypeScript through a shared fixture (`fixtures/timing.json`, verified by `frontend/src/lib/timing.test.ts`). This change uses the same pattern for chord parsing.
 
@@ -114,10 +115,14 @@ The route sits under `/api/v1/songs/` and inherits the 1 MiB limit from #5.
 
 The track-generation system prompt gains one instruction to fit parts to the sounding chords, and this instruction is included only when chords are present.
 
-The melodic mock (from #1 and #6) post-processes its canned notes: each note's pitch is moved to the nearest pitch whose pitch class is in the chord sounding at its step. The note is kept within the instrument's range, and ties resolve downward. This makes coherence assertable in Rust and in Playwright.
+The melodic mock (from #1 and #6) post-processes its canned notes: each note's pitch is moved to the nearest pitch whose pitch class is in the chord sounding at its step. #6 returns notes relative to the range start, so the lookup adds the range's first step to find the chord at the note's absolute song position. The note is kept within the instrument's range, and ties resolve downward. This makes coherence assertable in Rust and in Playwright.
 
 ### D7. Voicing for render-to-track is frontend-only
 The voicing rules in the spec live in `frontend/src/lib/chordVoicing.ts`. Rendering is a local, deterministic edit that needs no server round trip. The "bass-range" test is `instrument.range.high <= 60`, using the `range` from #1's instrument discovery.
+
+`chordVoicing` returns notes with steps counted from the range start, the same shape #6's generation returns. The render action then calls the same range write-back as #6 (`applyGeneratedRange`'s clear, split, and place rules), with the loop named "<section name> chords", or "Song chords" for the whole song, truncated to 40 characters. Reusing it means render and generation replace a range identically, and both leave other clips of shared loops alone.
+
+*Alternative:* write the voicings into the loop of the clip under the range. Every other clip linked to that loop would change too.
 
 ### D8. Chord edits keep the tiling invariant
 All chord operations are pure functions in `frontend/src/lib/chordOps.ts`. Each one returns a progression that satisfies tiling, and a shared test helper asserts that invariant after every operation. The operations are set symbol, split, delete, move boundary, add to empty, and the section-edit hooks.
@@ -134,6 +139,6 @@ All chord operations are pure functions in `frontend/src/lib/chordOps.ts`. Each 
 
 ## Migration Plan
 
-`Song.key` and `Section.chords` are optional. In Rust they use `#[serde(default)]` and are skipped when empty, so the documents from #4, #5, and #7 are unaffected, and the song `version` stays 1.
+`Song.key` and `Section.chords` are optional. In Rust they use `#[serde(default)]` and are skipped when empty, so the documents from #4, #5, and #7 are unaffected, and the song `version` stays 2.
 
 Rollback: builds before this change keep the fields untouched, because #4's loader and #5's importer preserve unrecognised fields (#5 design D1).

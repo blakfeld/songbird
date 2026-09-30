@@ -15,10 +15,15 @@ The system SHALL expose `POST /api/v1/songs/export/midi`. It SHALL accept a song
 
 ### Requirement: Song validation for export
 The endpoint SHALL reject a song with status `422` and error code `invalid_song` when any of the following is true:
-- a field is outside the ranges of the song document;
+- a field is outside the ranges of the song document, or the song document `version` is not 2;
 - the song has no tracks or more than 16 tracks;
-- a note references a row that is not a row of its track's instrument;
-- a note starts beyond the end of the song.
+- a loop note references a row that is not a row of its track's instrument, or extends past the end of its loop;
+- a loop or clip id is not unique within the song, or a loop's `measures` is outside 1–128;
+- a clip's `loop_id` does not name a loop on the same track;
+- a clip extends outside the song, or two clips on the same track overlap;
+- a track has more than 64 loops or more than 256 clips.
+
+These clip rules SHALL match the rules the browser applies when it opens a song, so a song the Studio can open is never rejected for its clips.
 
 A track whose instrument is not listed by `GET /api/v1/instruments` SHALL be rejected with `422` and error code `invalid_instrument`. The error message SHALL name the offending track.
 
@@ -30,6 +35,14 @@ A track whose instrument is not listed by `GET /api/v1/instruments` SHALL be rej
 - **WHEN** a track's instrument is `"kazoo"`
 - **THEN** the response is `422` with error code `invalid_instrument`
 
+#### Scenario: Clip names another track's loop
+- **WHEN** a Bass track has a clip whose `loop_id` names a loop on the Drums track
+- **THEN** the response is `422` with error code `invalid_song` and a message naming the Bass track
+
+#### Scenario: Overlapping clips
+- **WHEN** a track has one clip covering measures 1–4 and another starting at measure 3
+- **THEN** the response is `422` with error code `invalid_song`
+
 ### Requirement: Multitrack MIDI file contents
 The exported file SHALL be a Type 1 Standard MIDI File at 480 ticks per quarter note.
 - **First track (conductor):** the song name, a tempo meta-event matching `tempo_bpm`, and a time-signature meta-event matching `time_signature`.
@@ -37,7 +50,7 @@ The exported file SHALL be a Type 1 Standard MIDI File at 480 ticks per quarter 
   - a track-name meta-event with the track's name;
   - for melodic instruments, a Program Change to the instrument's `midi_program`;
   - a Control Change 7 (volume) and a Control Change 10 (pan) derived from the mixer.
-- **Notes:** each track then contains its notes as Note On / Note Off pairs. Timing, swing, overlap handling, and note-length rules SHALL be the same as single-pattern export.
+- **Notes:** each track then contains, as Note On / Note Off pairs, exactly the notes its clips play during song playback: each clip plays its loop from the clip's start measure, repeating when the clip is longer than the loop, playing only the loop's start when it is shorter, cutting notes off at the clip's end, and nothing outside clips (see `songs/clips`, "What a clip plays"). Timing, swing, overlap handling, and note-length rules SHALL be the same as single-pattern export.
 - **Channels:** drums tracks SHALL use channel 10. Melodic tracks SHALL be assigned channels 1–9 and then 11–16, in track order.
 - **End of track:** every track SHALL end with End of Track at the end of the song's final measure.
 
@@ -50,15 +63,23 @@ The exported file SHALL be a Type 1 Standard MIDI File at 480 ticks per quarter 
 - **THEN** its MIDI track contains a Program Change to program 1 (wire value 0) at tick 0 on its channel, and the drums track contains no Program Change
 
 #### Scenario: Notes are absolute song time
-- **WHEN** a Bass track has a note at step 32 with length 4 in a 4/4 song with no swing
+- **WHEN** in a 4/4 song with no swing, a Bass track's loop has a note at loop step 0 with length 4, and the loop is placed as one clip starting at measure 3
 - **THEN** its Note On is at tick 3840 and its Note Off is at tick 4320
+
+#### Scenario: Clips are expanded
+- **WHEN** in a 4/4 song, a 1-measure Drums loop has a kick at loop step 0, and it is placed as one 4-measure clip starting at measure 1
+- **THEN** the Drums MIDI track has four kicks, with Note Ons at ticks 0, 1920, 3840, and 5760
+
+#### Scenario: Note cut at the clip end
+- **WHEN** a 2-measure loop has a note starting at the first step of its second measure lasting 2 measures, and it is placed as a 2-measure clip
+- **THEN** that note's Note Off is at the clip's end, not 1 measure later
 
 #### Scenario: Region length is the song length
 - **WHEN** a 12-measure 4/4 song whose last note is in measure 3 is exported
 - **THEN** every track's End of Track event is at tick 23040
 
 #### Scenario: Empty track still exported
-- **WHEN** a song contains a track with no notes
+- **WHEN** a song contains a track with no clips
 - **THEN** the file still contains that track, with its name and controller events
 
 ### Requirement: Mixer values in exported MIDI
@@ -73,15 +94,15 @@ Volume SHALL be written as Control Change 7 with value `round(100 × 10^(volume_
 - **THEN** the first has CC7 value 3 and CC10 value 0, and the second has CC7 value 127 and CC10 value 127
 
 #### Scenario: Muted track keeps its notes
-- **WHEN** a muted track with 10 notes is exported
+- **WHEN** a muted track whose clips play 10 notes is exported
 - **THEN** its MIDI track contains all 10 notes
 
 ### Requirement: Multitrack DAW compatibility
-Exported song files SHALL parse without errors in standard MIDI parsers, and SHALL import into Logic Pro as one track per song track with the drums track's notes on General MIDI drum sounds.
+Exported song files SHALL parse without errors in standard MIDI parsers, and SHALL import into Logic Pro as one track per song track with the notes played by the drums track's clips on General MIDI drum sounds.
 
 #### Scenario: Round-trip parse
 - **WHEN** an exported song file is parsed by an independent MIDI library
-- **THEN** parsing succeeds, and for every track the recovered channel, notes, velocities, start times, and durations match the song
+- **THEN** parsing succeeds, and for every track the recovered channel, notes, velocities, start times, and durations match the notes its clips play
 
 ### Requirement: Download song MIDI from the Studio
 The Studio page SHALL provide a "Download MIDI" action that exports the currently open song, including unsaved edits, through the export endpoint and saves the returned file. If export fails, the page SHALL show the error message and leave the song unchanged.
@@ -91,7 +112,7 @@ The Studio page SHALL provide a "Download MIDI" action that exports the currentl
 - **THEN** a `.mid` file named from the song name and tempo is downloaded, containing every track
 
 ### Requirement: Project file download
-The Studio page SHALL provide a "Download project" action. It SHALL save the open song as a UTF-8 JSON file named `<slug of song name>.songbird.json` containing `{"format": "songbird-song", "version": 1, "song": <song document>}`. Undo history and UI state SHALL NOT be included.
+The Studio page SHALL provide a "Download project" action. It SHALL save the open song as a UTF-8 JSON file named `<slug of song name>.songbird.json` containing `{"format": "songbird-song", "version": 1, "song": <song document>}`. The project-file `version` is independent of the song document's own `version` (2), and the song document SHALL be saved with its loops and clips as they are, not flattened. Undo history and UI state SHALL NOT be included.
 
 #### Scenario: Download a project
 - **WHEN** the user clicks "Download project" for the song "Late Train"
@@ -100,9 +121,12 @@ The Studio page SHALL provide a "Download project" action. It SHALL save the ope
 ### Requirement: Project file import
 The Studio page SHALL provide an "Open project" action that accepts a `.songbird.json` file of at most 5 MB, validates it, and adds it to the browser song library as a new song, then opens it. The file SHALL be rejected, with a message stating the reason and without changing the library, when:
 - it is not valid JSON, or its `format` is not `"songbird-song"`;
-- its `version` is newer than the version this app supports;
+- its project-file `version` is newer than the version this app supports;
+- its song document cannot be opened by the song library, including when its loops and clips break the song document's rules;
 - any track uses an instrument this service does not list;
 - any value is outside the ranges of the song document.
+
+A song document from an older song `version` SHALL be converted exactly as the song library converts it on load.
 
 Fields of the song document that this app does not recognise SHALL NOT cause rejection and SHALL be kept unchanged, because later versions add optional fields without changing `version`. The `version` SHALL only increase for a change that older apps cannot read correctly.
 
@@ -110,15 +134,19 @@ If the file's song `id` already exists in the library, the imported song SHALL r
 
 #### Scenario: Round trip
 - **WHEN** the user downloads a project and then opens that file in another browser
-- **THEN** the song opens with identical name, settings, tracks, notes, and mixer values
+- **THEN** the song opens with identical name, settings, tracks, loops, clips, and mixer values
 
 #### Scenario: Newer version rejected
-- **WHEN** the user opens a file with `"version": 2`
+- **WHEN** the user opens a file with project-file `"version": 2`
 - **THEN** the import is rejected with a message saying the file was made by a newer version of Songbird, and the library is unchanged
 
 #### Scenario: Unrecognised optional field kept
 - **WHEN** the user opens a version 1 file whose song has an extra field `"mood": "wistful"` that this app does not know
 - **THEN** the import succeeds and downloading the project again produces a song that still contains `"mood": "wistful"`
+
+#### Scenario: Invalid clips rejected
+- **WHEN** the user opens a file in which two clips on the same track overlap
+- **THEN** the import is rejected with a message naming that track, and the library is unchanged
 
 #### Scenario: Unknown instrument rejected
 - **WHEN** the user opens a file containing a track with instrument `"theremin"` that the service does not list

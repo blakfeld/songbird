@@ -8,7 +8,8 @@ Chords are also what keeps multiple tracks musically coherent. When track genera
 
 **Depends on:**
 - #7 add-song-sections, for the sections that chords attach to.
-- #6 add-context-aware-track-generation, for the `songs/track-generation` capability that this change extends with chord context.
+- #6 add-context-aware-track-generation, for the `songs/track-generation` capability that this change extends with chord context, and for the store action that writes a range of a track as a new loop and clip.
+- add-arrangement-clips (through #5–#7), for tracks built from loops placed as clips.
 - #5 add-song-export (through #7), for the Rust `Song` type, the song validators and fixture, and the 1 MiB `/api/v1/songs/` body limit.
 
 This change introduces the backend `Providers` bundle that #9 extends.
@@ -30,7 +31,7 @@ Archive this change after both.
   
   All of these edits can be undone.
 - **Chords follow section edits**: when a section is resized, duplicated, or deleted (#7), its chords are shortened, extended, copied, or removed along with it.
-- **Render chords to a track**: this writes deterministic block voicings of the chords in a chosen range into a chosen melodic track. Bass-range instruments get root or slash-bass notes only. The action replaces that track's notes in the range and can be undone.
+- **Render chords to a track**: this writes deterministic block voicings of the chords in a chosen range into a chosen melodic track. Bass-range instruments get root or slash-bass notes only. The voicings become a new loop on that track, placed as one clip over the range. The track's clips in the range are replaced with the same rules as track generation (#6), existing loops are never changed, and the action can be undone.
 - **Chord-aware track generation**: when the generation range contains chords, the song key and those chords are included in the track-generation request as harmonic context. The mock provider draws melodic notes from the sounding chord, so the behavior is testable.
 
 Non-goals:
@@ -59,7 +60,7 @@ Non-goals:
 - **Backend (`api` crate)**: a new route, `POST /api/v1/songs/chords/generate`. It is under `/api/v1/songs/`, so the 1 MiB body limit from #5 applies. Provider wiring becomes a `Providers { patterns, chords }` bundle in `AppState` over one shared transport. #9 adds its lyrics provider to this bundle.
 - **Frontend**:
   - A chord parser in TypeScript, kept in sync with Rust through a shared fixture `fixtures/chords.json`.
-  - Song store actions for key, chords, and render-to-track.
+  - Song store actions for key, chords, and render-to-track (render reuses #6's range write-back into a new loop and clip).
   - The chord lane, the generate-chords dialog, and the key selector.
-- **Data**: `Song.key` and `Section.chords` are optional. Songs and project files from #4, #5, and #7 still load, and the song `version` stays 1.
+- **Data**: `Song.key` and `Section.chords` are optional. Songs and project files from #4, #5, and #7 still load, and the song `version` stays 2 (set by add-arrangement-clips).
 - **AI cost**: one provider call per chord generation. The prompt is capped at 256 tokens as today. Song context is capped by `SONGBIRD_MAX_CONTEXT_TOKENS` from #6.

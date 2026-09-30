@@ -1,32 +1,37 @@
 "use client";
 
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
-import type { Track } from "@/lib/song/types";
-import { NoteOverview } from "./NoteOverview";
+import type { Song, Track } from "@/lib/song/types";
+import { ClipLane } from "./ClipLane";
 import { TrackHeader, type InstrumentLookup } from "./TrackHeader";
 import type { TrackActions } from "./trackActions";
+import type { ClipActions } from "./useClipActions";
 
 export function TrackLane({
+  song,
   track,
   number,
   selected,
   audible,
   canDelete,
   instrument,
-  totalSteps,
-  stepsPerMeasure,
+  selectedClipId,
+  first,
   actions,
+  clipActions,
   onSeek,
 }: {
+  song: Song;
   track: Track;
   number: number;
   selected: boolean;
   audible: boolean;
   canDelete: boolean;
   instrument: InstrumentLookup;
-  totalSteps: number;
-  stepsPerMeasure: number;
+  selectedClipId: string | null;
+  first: boolean;
   actions: TrackActions;
+  clipActions: ClipActions;
   onSeek: (trackId: string, measureIndex: number) => void;
 }) {
   const info: InstrumentInfo | null = instrument.state === "ready" ? instrument.info : null;
@@ -47,15 +52,19 @@ export function TrackLane({
         canDelete={canDelete}
         instrument={instrument}
         actions={actions}
+        song={song}
+        selectedClipId={selectedClipId}
+        clipActions={clipActions}
       />
-      <NoteOverview
-        name={track.name}
-        notes={track.notes}
+      <ClipLane
+        song={song}
+        track={track}
         rows={info?.rows ?? null}
         melodic={info?.kind === "melodic"}
-        totalSteps={totalSteps}
-        stepsPerMeasure={stepsPerMeasure}
         audible={audible}
+        selectedClipId={selectedClipId}
+        first={first}
+        actions={clipActions}
         onSeek={(m) => onSeek(track.id, m)}
       />
     </div>

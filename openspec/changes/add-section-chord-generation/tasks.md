@@ -5,7 +5,7 @@
 - [ ] 1.1 Add `fixtures/chords.json` with at least 40 cases. Cover every quality, sharps and flats, slash bass, each alias, and rejections (`H7`, `Cmaj13#11`, empty). Each case gives the expected canonical symbol and pitch classes, or a rejection. Verify that the file parses as JSON.
 - [ ] 1.2 Implement `music/src/chords/symbol.rs`: parse, canonicalize, and `pitch_classes()`, with ts-rs and serde derives on `Chord`. Verify with a Rust test that consumes `fixtures/chords.json`.
 - [ ] 1.3 Implement `frontend/src/lib/chords.ts` with the same API. Verify with a Vitest test that consumes `fixtures/chords.json`.
-- [ ] 1.4 Add `key: Option<Key>` to the Rust `Song` in `music/src/song.rs`, and add `chords: Vec<Chord>` to #7's `Section`, using `#[serde(default)]` with `skip_serializing_if`. Extend `Song::validate` with the tiling rules, and export both with ts-rs. Run `just gen-types`. Extend `lib/song/projectFile.ts` validation to match, and add keyed and chorded songs, plus invalid key and invalid tiling cases, to `fixtures/song_validation.json` (#5's versioning policy: `version` stays 1). Verify that:
+- [ ] 1.4 Add `key: Option<Key>` to the Rust `Song` in `music/src/song.rs`, and add `chords: Vec<Chord>` to #7's `Section`, using `#[serde(default)]` with `skip_serializing_if`. Extend `Song::validate` with the tiling rules, and export both with ts-rs. Run `just gen-types`. Extend `lib/song/projectFile.ts` validation to match, and add keyed and chorded songs, plus invalid key and invalid tiling cases, to `fixtures/song_validation.json` (#5's versioning policy: `version` stays 2). Verify that:
   - the Rust and Vitest fixture tests pass;
   - a song without key or chords serializes byte-identically;
   - an invalid key is rejected by both validators.
@@ -45,7 +45,7 @@
 - [ ] 4.4 Add `generateChords` to `frontend/src/lib/api.ts`. Verify with a Vitest test using a mocked fetch for success and for an error-shape response.
 - [ ] 4.5 Build a key selector (with Auto) in the song toolbar and a `components/song/ChordLane.tsx` beneath the section ruler, in the same scroll container. It has inline symbol editing with a validation message, split and delete actions, and boundary drag in beats. Verify with React Testing Library tests for invalid symbol rejection, splitting at beat 3, and the boundary stopping at one beat.
 - [ ] 4.6 Build a "Generate chords" dialog with a prompt and token counter (reuse `TokenCounter` against `max_input_tokens` from #6's `GET /api/v1/songs/limits`, which the Studio already loads; no chord-specific limits are added there), a scope (selected section or all), and a key. It shows a loading state, and on error it shows the message and keeps the chords. Verify with React Testing Library tests for the disabled states, the error path, and the implicit section being made explicit before the request.
-- [ ] 4.7 Implement `frontend/src/lib/chordVoicing.ts` (D7) and a "Render chords to track" action that lists melodic tracks only. Verify with Vitest tests: `Am` on Piano gives A3, C4, E4 for 16 steps at velocity 90; `C/E` on a bass-range instrument gives a single low E; drums tracks are not offered; the action can be undone.
+- [ ] 4.7 Implement `frontend/src/lib/chordVoicing.ts` (D7), returning range-relative notes, and a "Render chords to track" action that lists melodic tracks only and writes a new "<section name> chords" loop and one clip through #6's range write-back. Verify with Vitest tests: `Am` on Piano gives a loop with A3, C4, E4 at loop step 0 for 16 steps at velocity 90 and a clip covering the section; `C/E` on a bass-range instrument gives a single low E; "Linked clips elsewhere are unaffected"; drums tracks are not offered; the action can be undone.
 - [ ] 4.8 Verify that key and chords persist across a reload and survive a project file round trip (Vitest).
 
 ## 5. End-to-end and checks
@@ -54,7 +54,7 @@
   1. Create Verse and Chorus sections.
   2. Generate chords for all sections and check the auto key and the lane symbols.
   3. Edit one chord.
-  4. Render the Chorus to the Piano track and check the notes appear.
+  4. Render the Chorus to the Piano track and check a "Chorus chords" clip appears over the Chorus with the voiced notes.
   5. Generate a Bass track over the Chorus and check that the notes are chord tones.
   6. Reload and check that the chords persist.
   

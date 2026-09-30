@@ -5,7 +5,8 @@
 - **Pipeline:** pattern generation flows through `GenerateRequestBody::validate` (`music/src/request.rs`), then `generate_pattern` (`music/src/generate.rs:21`, which makes 2 attempts on unusable drafts), then `PatternProvider::generate(request, instrument)` (`ai/mod.rs:60`), then `draft.normalize`, then `expand::build_pattern`.
 - **Prompt:** `ai/prompt.rs:33` builds the user message: instrument, measures, meter, tempo, swing, and the `<description>` fence escaped by `escape_for_fence`.
 - **Measure count:** `GenerateRequest.measures` is a `MeasureCount`, which allows only 4, 8, 12, 16, and 32 (`expand.rs:37-41`).
-- **Available from #5:** `Song` / `Track` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`.
+- **Available from #5:** `Song` / `Track` / `Loop` / `Clip` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`. `ValidSong` carries each track's resolved notes (#5 D5, a port of add-arrangement-clips D2), so the server never reads loops directly to learn what a track plays.
+- **Available from add-arrangement-clips:** tracks hold `loops` and `clips` (its D1), `resolveTrackNotes` (D2), and pure `Song → Song` clip operations in `lib/song/clipOps.ts` (D5), including the "<track name> <n>" loop naming used by New clip.
 - **Timeout:** the timeout wrapper lives in the API handler (`api/src/patterns.rs:26`).
 - **Provider seam:** track generation reuses `PatternProvider` and #1's lane-per-pitch draft format. The chat's planner is a second provider kind, so this change introduces the `Providers` bundle #8 had planned (D12).
 
@@ -29,7 +30,7 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 ### D1. A generation span decoupled from `MeasureCount`
 - **New type:** introduce `GenerationSpan { measures: u32 /* 1..=32 */, steps_per_measure }` in `music`.
 - **Refactor:** `expand::build_notes(draft, span, instrument)` becomes the inner function. `build_pattern` keeps its signature and calls it with a span derived from `MeasureCount`.
-- **Track generation:** the song path uses `build_notes` directly and then offsets steps by `(start_measure − 1) × steps_per_measure`.
+- **Track generation:** the song path uses `build_notes` directly and returns its notes **relative to the range start** (step 0 is the first step of `start_measure`). The browser stores them unchanged as a loop's notes (D6), so no offset is applied on either side.
 - **Variation rule:** the fallback-variation hook keeps using the phrase boundary "every 4th measure of the span". It also applies to spans of 5–32 measures that are not multiples of 4. Spans of 4 measures or fewer get no fallback.
 - **Alternative:** extend `MeasureCount` to 1–32. That would change the pattern API's accepted values, which the spec pins to five options.
 
@@ -41,9 +42,9 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Alternative:** structured context as JSON in the tool schema. The input schema would grow by track count, and small local models handle prose summaries better than nested JSON input.
 
 ### D3. Context rendering (`music/src/context.rs`)
-- **Input:** `render_context(&ValidSong, target, range, budget) -> String`.
+- **Input:** `render_context(&ValidSong, target, range, budget) -> String`. Every note it reads comes from `ValidSong`'s resolved notes, at absolute song steps. Loops that no clip plays, and the parts of loops a short clip does not reach, never appear in context, because the model should hear what the listener hears.
 - **Header:** tempo, meter, song length, and the target's name, instrument, and range.
-- **Target track surroundings:** the target track's notes in measures `start−1` and `end+1`, rendered in the draft lane grammar the model already writes, e.g. `C3: x---....x-......`.
+- **Target track surroundings:** the target track's resolved notes in measures `start−1` and `end+1`, rendered in the draft lane grammar the model already writes, e.g. `C3: x---....x-......`.
 - **Other tracks:** each unmuted other track, in song order, per measure from `start−1` to `end+1`:
   - Drums: one line per struck row, in the step-string grammar. Silent rows are omitted.
   - Melodic: per beat (`beatSteps`: 4 steps in 4/4 and 3/4, 6 in 6/8, as in #2 and #8), the sounding pitch names (sorted) and `bass=<lowest>`, e.g. `m5 b1: C3 E4 G4 (bass C3) | b2: …`. A pitch counts as "sounding on a beat" if any note covers the beat's first step.
@@ -57,7 +58,7 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 ### D4. Endpoint and validation
 - **Request type:** `TrackGenerateBody { song, track_id, prompt, range: Option<MeasureRange> }` (ts-rs exported).
 - **Validation order:** `Song::validate`, then track lookup (`invalid_track`), then prompt rules (reusing the existing validator functions), then the range rules (`invalid_range`).
-- **Handler:** it mirrors `patterns::generate`, with the same timeout wrapper and error mapping. It responds with `TrackGenerateResponse { track_id, range, notes }`.
+- **Handler:** it mirrors `patterns::generate`, with the same timeout wrapper and error mapping. It responds with `TrackGenerateResponse { track_id, range, notes }`, with `notes` relative to the range start (D1).
 - **Limits route:** `GET /api/v1/songs/limits` returns `SongLimits` built from config and constants in `music::song`.
 - **Config:** `SONGBIRD_MAX_CONTEXT_TOKENS` is parsed in `api/src/config.rs` like `SONGBIRD_MAX_INPUT_TOKENS`, bounded to 0–32000.
 
@@ -68,14 +69,14 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 
 ### D6. Studio flow
 - **Dialog:** `TrackGenerateDialog` holds the prompt, reuses `TokenCounter`, and offers the range options.
-- **Applying results:** `songStore.applyGeneratedRange(trackId, range, notes)` runs the replace and truncate rules from the spec as one history entry.
+- **Applying results:** `songStore.applyGeneratedRange(trackId, range, notes)` runs D13 as one history entry: it clears the range on the target track, then adds a new loop (`measures` = the range length, `notes` as returned, named by the New clip rule "<track name> <n>") and one clip of it covering the range. That clip becomes the selected clip, so the result opens in the dock.
 - **Concurrency:** a `generatingTrackId` field in the store disables that track's piano-roll edits and all other Generate buttons.
 - **Request snapshot:** the request uses a snapshot of the song taken at submit time. Edits to other tracks made while the request is in flight are kept, because the result only touches the target track's range.
 
 ### D7. Chat endpoint
-- **Contract:** `POST /api/v1/songs/chat` takes `ChatBody { song, messages, range? }`, where `messages` is `[{role: user|assistant, content}]` with the latest user message last, and `range` is the Studio's loop range if one is set. It returns `ChatResponse { reply, track: {name, instrument, notes} | null }`.
+- **Contract:** `POST /api/v1/songs/chat` takes `ChatBody { song, messages, range? }`, where `messages` is `[{role: user|assistant, content}]` with the latest user message last, and `range` is the Studio's loop range if one is set. It returns `ChatResponse { reply, track: {name, instrument, range, notes} | null }`. `range` is the range chosen by D10, and `notes` are relative to its start, as in D1.
 - **Stateless:** the browser holds the history, matching #10's lyric assistant, so the server stores nothing and any instance can serve any request.
-- **Ids stay on the client:** the browser assigns the new track's id and default mixer settings, as when a track is added by hand, so the song store remains the only source of ids.
+- **Ids stay on the client:** the browser assigns the new track's id, its loop and clip ids, and default mixer settings, as when a track is added by hand, so the song store remains the only source of ids. The new track holds one loop named after the track, as long as the range, placed as one clip covering the range.
 - **Validation:** `Song::validate`, then 1–20 messages with the last from the user, then the existing prompt rules on the last message. Assistant messages over 4,000 characters are rejected with `invalid_request`, the same limit #10 uses.
 - **Why one endpoint instead of two browser calls:** one round trip, and a failure in the second call cannot leave the browser holding a plan with no notes.
 - **Alternative:** the browser calls a plan endpoint, then `songs/tracks/generate`. This exposes a half-finished state and needs a placeholder track to generate into.
@@ -91,7 +92,7 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 ### D9. Conversation context
 - **Scope:** only the planner sees the transcript.
 - **Rendering:** messages are rendered as fenced `<message role=…>` blocks, each passed through `escape_for_fence`. This is the format #10 D1 designs, so the two assistants can later share the renderer.
-- **Arrangement summary:** alongside the transcript, one line per track gives its name, instrument, muted state, and the measures with notes. It is enough to resolve "to match" and "the bass" without full note detail.
+- **Arrangement summary:** alongside the transcript, one line per track gives its name, instrument, muted state, and the measures in which its resolved notes sound. It is enough to resolve "to match" and "the bass" without full note detail.
 - **Budget:** the transcript is trimmed oldest-first until the planner prompt fits `SONGBIRD_MAX_CONTEXT_TOKENS`. The latest user message and the summary are never trimmed.
 - **Generation budget:** the generation call gets the rewritten prompt plus the D3 context, under the same budget as before. Adding chat does not grow any single provider call beyond what the budget allows.
 
@@ -111,6 +112,15 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Bundle:** `api/src/provider.rs` builds `Providers { patterns, plans }` over one shared transport per configured provider, and `AppState.provider` becomes `AppState.providers`. `check()` runs once per transport.
 - **Why here:** this is the first change that needs a second provider kind. #8 then adds `chords` rather than introducing the bundle.
 
+### D13. Writing a range back: clear, split, then place
+- **Helpers:** `lib/song/clipOps.ts` gains two pure functions. #7 needs the same two for measure insert and remove, so whichever of #6 and #7 is built first adds them and the other reuses them.
+  - `splitClip(song, trackId, clipId, atMeasure)`: the head keeps the clip's loop and ends before `atMeasure`. The tail starts at `atMeasure` and keeps the same loop when `(atMeasure − clip.start_measure)` is a multiple of `loop.measures`, because it then starts on a repeat. Otherwise the tail gets a new loop, named "<loop name> (cont.)" (truncated to 40 characters), that holds exactly the notes the tail played, as resolved by `resolveTrackNotes` and re-based to the tail's start, with the tail's length. A note sustaining across `atMeasure` is cut there, as at any clip end.
+  - `clearMeasureRange(song, trackId, start, end)`: splits clips crossing `start` and `end + 1`, then deletes every clip inside the range.
+- **Loops are never edited.** Clearing or splitting only removes, shortens, or adds clips and adds loops. This keeps linked clips elsewhere in the song unchanged, which is the whole point of the loop model.
+- **Limits:** if the split and the new loop would exceed 64 loops or 256 clips on the track, the result is not applied and the user is told the track's limit is reached. The generated notes are lost; the user can free space and regenerate.
+- **Why bake a misaligned tail instead of rotating the loop:** a rotated copy keeps the loop short but must cut notes that wrap past its end, so the tail would sound different. Baking is exact. The tail loses its repeat structure, which Make unique would have broken anyway.
+- **Alternative:** write generated notes into the existing loop. Every other clip of that loop would change too, which the user did not ask for.
+
 ## Risks / Trade-offs
 
 - [The planner sees only each instrument's `id`, `name`, `kind`, and range] → This is fine with `drums` and `piano`. With #3's synth set it may choose poorly between similar instruments. Instrument names stay descriptive. A `description` field on `InstrumentInfo` is the follow-up if the live smoke test (task 6.3) shows poor choices.
@@ -119,3 +129,4 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - [Prompt-size growth raises latency and cost] → The 4000-token default budget is configurable, and the budget is measured in tests.
 - [Summaries lose voicing detail] → Accepted. Per-beat pitch sets plus bass carry harmony and rhythm, and #8 adds explicit chords.
 - [The user edits the target track's range during a request] → Prevented, because the target track is locked while generating.
+- [Each regeneration adds a loop, so loops pile up] → Unplaced loops are listed with a "0 clips" count and can be deleted from the loop menu (add-arrangement-clips). Regenerating the same range removes the previous generated clip and leaves its loop unplaced, so the user can place it again or delete it.

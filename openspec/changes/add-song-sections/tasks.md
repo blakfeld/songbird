@@ -7,16 +7,19 @@
   - a song without sections serializes byte-identically to before;
   - a Vitest test loads a stored song with and without `sections`;
   - `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings` pass from `backend/`.
-- [ ] 1.2 Create `frontend/src/lib/songSectionOps.ts` with:
+- [ ] 1.2 Add `splitClip` and `clearMeasureRange` to `lib/song/clipOps.ts` per D3 (skip if #6 already added them). Create `frontend/src/lib/songSectionOps.ts` with:
   - `sectionsOf` (the implicit section, D2)
   - `sectionStarts` (prefix sums)
   - `insertMeasures`
-  - `removeMeasures` (D3)
+  - `removeMeasures` (D3, over clips)
   
   Verify with Vitest tests for:
-  - an insert shifting later notes
-  - a removal dropping notes that start in range, truncating notes that cross it, and shifting later notes
-  - 3/4 and 6/8 step arithmetic
+  - an insert shifting later clips and splitting a clip that crosses the insertion point
+  - a removal deleting clips inside the range, splitting clips that cross it, and shifting later clips
+  - a split on a loop repeat keeping the loop, and a split off a repeat baking a "(cont.)" loop whose `resolveTrackNotes` output equals the original tail's
+  - every loop's notes being identical before and after each operation
+  - an edit refused when a split would pass 64 loops or 256 clips on a track
+  - a baked tail in 3/4 and 6/8
 - [ ] 1.3 Implement these section operations in `songSectionOps.ts`:
   - add
   - insert before/after
@@ -28,6 +31,7 @@
   
   Each one materializes the implicit section first, recomputes `Song.measures`, and enforces 1–32 per section and ≤ 128 per song. Verify with one Vitest test per spec scenario in `songwriting/sections`, covering:
   - insert shifts later material
+  - the three "Measure edits move clips, not loop contents" scenarios
   - "Verse 2" naming
   - lengthening and shortening
   - repeating a chorus
@@ -39,7 +43,7 @@
 
 ## 2. Store integration and persistence
 
-- [ ] 2.1 Expose the section operations as song-store actions, one history entry each. Verify with Vitest tests that undoing a delete restores the section and its notes, and that redo re-applies it.
+- [ ] 2.1 Expose the section operations as song-store actions, one history entry each. Verify with Vitest tests that undoing a delete restores the section and its clips, and that redo re-applies it.
 - [ ] 2.2 Add a `setSectionNotes` action that writes without a history entry (D5) and caps notes at 5,000 characters. Verify with Vitest tests that notes persist across a simulated reload of the store and that undo does not revert notes.
 
 ## 3. Section ruler, menu, and notes UI
@@ -66,7 +70,7 @@
 
 - [ ] 5.1 Add a Playwright test in `frontend/e2e/song-sections.spec.ts` that uses the mock provider. It should:
   1. Create a song and add Intro, Verse, and Chorus sections.
-  2. Add a note in Chorus, then duplicate Chorus and check the note appears in the copy.
+  2. Add a clip with a note in Chorus, then duplicate Chorus and check a linked clip of the same loop appears in the copy.
   3. Delete Intro and check the shift.
   4. Type section notes, reload, and check everything persisted.
   
