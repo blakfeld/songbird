@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets songwriters generate or regenerate a single track of a song, for the whole song or a chosen span of measures, while the AI takes the song's other tracks into account so the new part fits the existing arrangement.
+Lets songwriters generate or regenerate a single track of a song, for the whole song or a chosen span of measures, while the AI takes the song's other tracks into account so the new part fits the existing arrangement. A global song chat lets them build the arrangement one part at a time in plain language ("a piano that…", "drums to match", "now the bass").
 
 ## ADDED Requirements
 
@@ -139,3 +139,26 @@ On success, the target track's notes that start within the range SHALL be replac
 #### Scenario: Whole song unavailable for long songs
 - **WHEN** the song is 48 measures long
 - **THEN** the "Whole song" range option is not offered
+
+### Requirement: Global song chat builds the arrangement
+The Studio's assistant column (laid out by #4 `add-multitrack-song`) SHALL provide one chat for the whole song, not tied to a selected track. The user SHALL be able to describe a part in plain language, such as "give me a piano that plays slow jazzy chords". The system SHALL then add a new track, pick an instrument from `GET /api/v1/instruments` that suits the request, and fill the track with generated notes for the whole song.
+
+Later messages SHALL be understood in the light of the earlier conversation and the current arrangement. For example, "give me the drums to match" and then "now the bass" SHALL each add one new track whose part is generated with every other unmuted track as context, under the same rules as "Other tracks as generation context". Each message SHALL add at most one track. The chat history SHALL show, for each assistant reply, which track was added and with which instrument.
+
+While a chat request is in flight, the chat input SHALL be disabled, and editing, the mixer, and playback SHALL remain usable. A track added from the chat SHALL be recorded as one undo step. When the song already has 16 tracks, the reply SHALL say so and the song SHALL be unchanged. When generation fails, the error SHALL be shown in the chat and the song SHALL be unchanged.
+
+#### Scenario: Build a song one part at a time
+- **WHEN** in an empty song the user sends "give me a piano that plays slow jazzy chords", then "give me the drums to match", then "now the bass"
+- **THEN** the song gains a piano-family track, then a drums track, then a bass track, in that order, each with generated notes. The drums request carries the piano track as context, and the bass request carries both the piano and drums tracks.
+
+#### Scenario: Undo a chat-added track
+- **WHEN** the chat adds a Bass track and the user presses Cmd/Ctrl+Z
+- **THEN** the Bass track is removed and the other tracks are unchanged
+
+#### Scenario: Track limit in chat
+- **WHEN** the song has 16 tracks and the user asks the chat for another part
+- **THEN** the chat replies that the track limit is reached and no track is added
+
+#### Scenario: Chat failure leaves the song unchanged
+- **WHEN** a chat request fails
+- **THEN** the error is shown in the chat and no track is added

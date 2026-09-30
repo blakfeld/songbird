@@ -20,12 +20,13 @@
 
 ## 4. Studio UI
 
-- [ ] 4.1 Have `ui-designer` produce a layout spec for the Studio page (song header, lanes with mixer strip and note overview, selected-track piano roll, library menu); verify the spec is recorded in this change as `ui-spec.md`
+- [ ] 4.1 Have `ui-designer` produce a layout spec for the Studio page from `mockups/studio.png` (arrangement with track headers and lanes, editor dock, assistant column, song header, library menu) per design D5; verify the spec is recorded in this change as `ui-spec.md`, with any departures from the mockup explained
 - [ ] 4.2 Build `app/studio/page.tsx`, `StudioPage`, `SongHeader` (name, tempo, swing, length; time signature read-only), and `NewSongDialog` (time signature choice); verify RTL tests for rename, length change, and read-only time signature
-- [ ] 4.3 Build `TrackLane`, `MixerStrip` (volume slider/−60…+6 dB, pan with center reset, Mute, Solo, accessible labels), `NoteOverview`, and add/rename/delete track controls with limits; verify RTL tests for the add-limit and last-track-delete scenarios
+- [ ] 4.3 Build `TrackLane`, `TrackHeader` (number, instrument icon, name, Mute, Solo, volume slider −60…+6 dB, pan knob with center reset, accessible labels), `NoteOverview` (miniature notes, one SVG path per lane), and add/rename/delete track controls with limits; verify RTL tests for the add-limit and last-track-delete scenarios, and that a placed note appears in its lane's overview
 - [ ] 4.4 Wire the selected track into `PianoRoll` via the `NoteGrid` props and the song transport (Play/Stop/Space/loop/playhead across lanes); verify RTL test "Edit the selected track" and "Switching tracks keeps edits"
 - [ ] 4.5 Add the undo/redo buttons and Cmd/Ctrl+Z shortcuts on the Studio page, skipping text-entry targets via `isTextEntryTarget`; verify an RTL keyboard test
 - [ ] 4.6 Add a Studio entry to the landing page (`app/page.tsx`); verify `page.test.tsx` asserts the link
+- [ ] 4.7 Build the `AssistantPanel` shell in the right-hand column (chat history area with an empty state, disabled chat input) per design D5; verify an RTL test that the column, empty state, and disabled input render
 
 ## 5. Send to song
 
