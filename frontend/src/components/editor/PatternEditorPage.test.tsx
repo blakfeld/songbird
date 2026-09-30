@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import { usePlayback } from "@/lib/audio/usePlayback";
+import { registerSoundSource } from "@/lib/audio/registry";
+import { emptyPattern } from "@/lib/patternOps";
 import { drums, note, patternWith } from "@/test/fixtures";
 import * as api from "@/lib/api";
 import { getPatternStore } from "@/lib/patternStore";
@@ -16,15 +20,13 @@ vi.mock("@/lib/api", async (orig) => ({
 
 // The audio engine is exercised in its own tests; here it would only add Tone.js to every page render.
 vi.mock("@/lib/audio/usePlayback", () => ({
-  usePlayback: () => ({
-    isPlaying: false,
-    status: "idle",
-    error: null,
-    toggle: vi.fn(),
-    stop: vi.fn(),
-    preload: vi.fn(),
-    subscribePosition: () => () => {},
-  }),
+  usePlayback: vi.fn(),
+}));
+
+// Audition reaches the real engine, so only the AudioContext is faked.
+vi.mock("tone", () => ({
+  start: async () => {},
+  getContext: () => ({ currentTime: 0 }),
 }));
 
 const store = () => getPatternStore("drums");
@@ -38,6 +40,15 @@ async function renderPage() {
 }
 
 beforeEach(() => {
+  vi.mocked(usePlayback).mockReturnValue({
+    isPlaying: false,
+    status: "idle",
+    error: null,
+    toggle: vi.fn(),
+    stop: vi.fn(),
+    preload: vi.fn(),
+    subscribePosition: () => () => {},
+  });
   localStorage.clear();
   store().setState({ pattern: null, prompt: "", past: [], future: [] });
   vi.mocked(api.getLimits).mockResolvedValue({
@@ -292,5 +303,77 @@ describe("review fixes", () => {
     store().setState({ pattern: patternWith([]) });
     render(<PatternEditorPage instrumentId="drums" title="Drum Machine" />);
     expect(await screen.findByRole("group", { name: "Instrument piano roll" })).toBeInTheDocument();
+  });
+});
+
+// The engine caches its source per instrument, so every test must share one registered trigger.
+const trigger = vi.fn();
+registerSoundSource("piano", () => ({ load: async () => {}, trigger, stopAll: () => {} }));
+
+describe("pitch audition", () => {
+  it("plays half a second at velocity 100 without changing the pattern or history", async () => {
+    const piano: InstrumentInfo = {
+      ...drums,
+      id: "piano",
+      name: "Piano",
+      kind: "melodic",
+      sustained: true,
+      midi_channel: 1,
+      midi_program: 0,
+      range: { low: 69, high: 71 },
+      rows: [
+        { id: "b4", name: "B4", midi_note: 71 },
+        { id: "a4", name: "A4", midi_note: 69 },
+      ],
+    };
+    vi.mocked(api.getInstruments).mockResolvedValue([piano]);
+    const pianoStore = getPatternStore("piano");
+    pianoStore.getState().setPattern(emptyPattern(piano, 4));
+    const before = pianoStore.getState();
+
+    render(<PatternEditorPage instrumentId="piano" title="Piano" />);
+    await userEvent.click(await screen.findByRole("button", { name: "A4" }));
+
+    await waitFor(() => expect(trigger).toHaveBeenCalledTimes(1));
+    const [row, start, end, velocity] = trigger.mock.calls[0];
+    expect(row).toEqual(piano.rows[1]);
+    expect(end - start).toBeCloseTo(0.5);
+    expect(velocity).toBe(100);
+    expect(pianoStore.getState().pattern).toBe(before.pattern);
+    expect(pianoStore.getState().past).toEqual([]);
+  });
+
+  it("auditions on Space from a focused key instead of toggling playback", async () => {
+    const piano: InstrumentInfo = {
+      ...drums,
+      id: "piano",
+      name: "Piano",
+      kind: "melodic",
+      sustained: true,
+      midi_channel: 1,
+      midi_program: 0,
+      range: { low: 69, high: 69 },
+      rows: [{ id: "a4", name: "A4", midi_note: 69 }],
+    };
+    vi.mocked(api.getInstruments).mockResolvedValue([piano]);
+    getPatternStore("piano").getState().setPattern(emptyPattern(piano, 4));
+    const toggle = vi.fn();
+    vi.mocked(usePlayback).mockReturnValue({
+      isPlaying: false,
+      status: "idle",
+      error: null,
+      toggle,
+      stop: vi.fn(),
+      preload: vi.fn(),
+      subscribePosition: () => () => {},
+    });
+
+    render(<PatternEditorPage instrumentId="piano" title="Piano" />);
+    const key = await screen.findByRole("button", { name: "A4" });
+    key.focus();
+    await userEvent.keyboard(" ");
+
+    await waitFor(() => expect(trigger).toHaveBeenCalledTimes(1));
+    expect(toggle).not.toHaveBeenCalled();
   });
 });

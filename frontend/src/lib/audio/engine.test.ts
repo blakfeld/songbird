@@ -378,3 +378,26 @@ describe("playback engine", () => {
     expect(h.state.events.length).toBeLessThan(5);
   });
 });
+
+describe("audition", () => {
+  it("triggers one half-second note at velocity 100 without touching the store", async () => {
+    const trigger = vi.fn();
+    const load = vi.fn(async () => {});
+    registerSoundSource("audition-test", () => ({ load, trigger, stopAll: () => {} }));
+    const store = createPatternStore("audition-test");
+    const before = store.getState();
+    const engine = createPlaybackEngine("audition-test", { store });
+
+    await engine.audition(ROWS[0]);
+
+    expect(load).toHaveBeenCalledWith([ROWS[0]]);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    const [row, start, end, velocity] = trigger.mock.calls[0];
+    expect(row).toBe(ROWS[0]);
+    expect(start).toBeCloseTo(0.01);
+    expect(end - start).toBeCloseTo(0.5);
+    expect(velocity).toBe(100);
+    expect(h.state.startCalls).toBe(1);
+    expect(store.getState()).toBe(before);
+  });
+});

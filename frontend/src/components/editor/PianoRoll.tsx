@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { InstrumentKind } from "@/generated/InstrumentKind";
 import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
+import type { Row } from "@/generated/Row";
 import type { LoopRange, Playback } from "@/lib/audio/types";
-import { beatSteps, CELL_W_PX, nextVelocityPreset, noteCovers } from "@/lib/pianoRoll";
-import { getPatternStore } from "@/lib/patternStore";
+import {
+  beatSteps,
+  CELL_W_PX,
+  defaultNoteLength,
+  nextVelocityPreset,
+  noteCovers,
+} from "@/lib/pianoRoll";
+import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { totalSteps } from "@/lib/patternOps";
 import { LoopShade } from "./LoopShade";
 import { MeasureColumn, type ActiveCell } from "./MeasureColumn";
@@ -14,6 +22,27 @@ import { Playhead } from "./Playhead";
 import { RowLabels } from "./RowLabels";
 
 const NO_NOTES: Note[] = [];
+const MIDDLE_C = 60;
+const MELODIC_ROW_H_PX = 18;
+const MELODIC_ROW_H_COARSE_PX = 24;
+
+// When the range is taller than the viewport, the top is kept because melodies are read from their highest note.
+function initialScrollTop(pattern: Pattern, rowH: number, viewportH: number) {
+  const indexOf = new Map(pattern.rows.map((r, i) => [r.id, i]));
+  const noteRows = pattern.notes.flatMap((n) => indexOf.get(n.row_id) ?? []);
+  let first: number;
+  let last: number;
+  if (noteRows.length) {
+    first = Math.min(...noteRows);
+    last = Math.max(...noteRows);
+  } else {
+    first = last = pattern.rows.findIndex((r) => r.midi_note === MIDDLE_C);
+    if (first < 0) return 0;
+  }
+  const rangeH = (last - first + 1) * rowH;
+  if (rangeH >= viewportH) return first * rowH;
+  return Math.max(0, first * rowH - (viewportH - rangeH) / 2);
+}
 
 function groupByMeasure(pattern: Pattern) {
   const spm = pattern.steps_per_measure;
@@ -31,6 +60,9 @@ function groupByMeasure(pattern: Pattern) {
 export function PianoRoll({
   instrumentId,
   instrumentName,
+  kind = "drums",
+  sustained = false,
+  onAudition,
   pattern,
   loop,
   follow,
@@ -40,6 +72,9 @@ export function PianoRoll({
 }: {
   instrumentId: string;
   instrumentName: string;
+  kind?: InstrumentKind;
+  sustained?: boolean;
+  onAudition?: (row: Row) => void;
   pattern: Pattern;
   loop: LoopRange;
   follow: boolean;
@@ -50,12 +85,17 @@ export function PianoRoll({
   const helpId = useId();
   const scroller = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
+  const corner = useRef<HTMLDivElement>(null);
+  const patternRef = useRef(pattern);
   const followRef = useRef(follow);
   const labelWidth = useRef(0);
   const [active, setActive] = useState<ActiveCell>({ row: 0, step: 0 });
   const spm = pattern.steps_per_measure;
   const beat = beatSteps(pattern.time_signature);
   const total = totalSteps(pattern);
+  const melodic = kind === "melodic";
+  const noteLength = defaultNoteLength(sustained, pattern.time_signature);
+  const loadId = usePatternStore(instrumentId, (s) => s.loadId);
   const { starting, carry } = useMemo(() => groupByMeasure(pattern), [pattern]);
 
   // A resize or undo can shrink the grid below the remembered cell; fall back so the roll always has a tab stop.
@@ -65,6 +105,21 @@ export function PianoRoll({
   useEffect(() => {
     followRef.current = follow;
   }, [follow]);
+
+  // Layout effects run before passive ones, so the scroll effect below must see the pattern from this same commit.
+  useLayoutEffect(() => {
+    patternRef.current = pattern;
+  }, [pattern]);
+
+  // Keyed on loadId rather than the pattern so edits never move the viewport under the user.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || !melodic) return;
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches;
+    const rowH = coarse ? MELODIC_ROW_H_COARSE_PX : MELODIC_ROW_H_PX;
+    const rulerH = corner.current?.offsetHeight ?? 0;
+    el.scrollTop = initialScrollTop(patternRef.current, rowH, el.clientHeight - rulerH);
+  }, [loadId, melodic]);
 
   // Measuring per frame would force layout 60 times a second.
   useEffect(() => {
@@ -187,12 +242,12 @@ export function PianoRoll({
         onWheel={(e) => Math.abs(e.deltaX) > Math.abs(e.deltaY) && userScrolled()}
         onTouchStart={userScrolled}
         onPointerDown={(e) => e.target === e.currentTarget && userScrolled()}
-        className="relative max-h-[70vh] scroll-pl-28 overflow-auto overscroll-x-contain rounded-xl border border-zinc-200 [--cell-w:28px] [--row-h:32px] pointer-coarse:[--row-h:40px] max-sm:scroll-pl-20 dark:border-zinc-800"
+        className={`relative max-h-[70vh] ${melodic ? "scroll-pl-16 max-sm:scroll-pl-14" : "scroll-pl-28 max-sm:scroll-pl-20"} overflow-auto overscroll-x-contain rounded-xl border border-zinc-200 [--cell-w:28px] ${melodic ? "[--row-h:18px] pointer-coarse:[--row-h:24px]" : "[--row-h:32px] pointer-coarse:[--row-h:40px]"} dark:border-zinc-800`}
       >
         <div className="relative grid w-max grid-cols-[auto_1fr]">
-          <div className="sticky top-0 left-0 z-40 border-r border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950" />
+          <div ref={corner} className="sticky top-0 left-0 z-40 border-r border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950" />
           <MeasureRuler measures={pattern.measures} stepsPerMeasure={spm} beatSteps={beat} loop={loop} />
-          <RowLabels ref={labels} rows={pattern.rows} />
+          <RowLabels ref={labels} rows={pattern.rows} kind={kind} onAudition={onAudition} />
           <div className="relative flex">
             {starting.map((notes, m) => (
               <MeasureColumn
@@ -205,6 +260,8 @@ export function PianoRoll({
                 notes={notes.length ? notes : NO_NOTES}
                 carryIn={carry[m].length ? carry[m] : NO_NOTES}
                 activeCell={Math.floor(safeActive.step / spm) === m ? safeActive : null}
+                shadeBlackRows={melodic}
+                noteLength={noteLength}
               />
             ))}
             <LoopShade loop={loop} measures={pattern.measures} stepsPerMeasure={spm} />

@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import type { Row } from "@/generated/Row";
+import { emptyPattern } from "@/lib/patternOps";
 import { drums, note, patternWith } from "@/test/fixtures";
 import { cellLabel } from "@/lib/pianoRoll";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
@@ -305,5 +308,160 @@ describe("follow and manual scroll", () => {
     const { scroller } = withPosition({ isPlaying: false, onManualScroll });
     fireEvent.wheel(scroller, { deltaX: 40, deltaY: 0 });
     expect(onManualScroll).not.toHaveBeenCalled();
+  });
+});
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const pianoRows: Row[] = Array.from({ length: 61 }, (_, i) => {
+  const midi = 96 - i;
+  const name = `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+  return { id: name.toLowerCase().replace("#", "s"), name, midi_note: midi };
+});
+const piano: InstrumentInfo = {
+  id: "piano",
+  name: "Piano",
+  kind: "melodic",
+  midi_channel: 1,
+  midi_program: 0,
+  range: { low: 36, high: 96 },
+  sustained: true,
+  rows: pianoRows,
+};
+const pianoStore = () => getPatternStore("piano");
+const pianoId = (name: string) => pianoRows.find((r) => r.name === name)!.id;
+const pianoCell = (name: string, step: number) =>
+  screen.getByRole("button", { name: cellLabel(name, step, 16) });
+
+function PianoHarness({ onAudition }: { onAudition?: (row: Row) => void }) {
+  const pattern = usePatternStore("piano", (s) => s.pattern)!;
+  return <PianoRoll
+      instrumentId="piano"
+      instrumentName="Piano"
+      kind="melodic"
+      sustained
+      onAudition={onAudition}
+      pattern={pattern}
+      loop={{ start: 1, end: pattern.measures }}
+      follow
+      isPlaying={false}
+      onManualScroll={() => {}}
+      subscribePosition={() => () => {}}
+    />;
+}
+
+function loadPiano(notes: ReturnType<typeof note>[] = []) {
+  pianoStore().getState().setPattern({ ...emptyPattern(piano, 4), notes });
+}
+
+describe("melodic piano roll", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    pianoStore().setState({ pattern: null, loadId: 0, prompt: "", past: [], future: [] });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(360);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("renders 61 keys with only C rows visibly labelled", () => {
+    loadPiano();
+    render(<PianoHarness />);
+    const keys = document.querySelectorAll("[data-key]");
+    expect(keys).toHaveLength(61);
+    expect(screen.getByRole("button", { name: "C4" })).toHaveTextContent("C4");
+    expect(screen.getByRole("button", { name: "E4" })).toBeEmptyDOMElement();
+  });
+
+  it("styles sharps as black keys and gives every key its pitch as accessible name", () => {
+    loadPiano();
+    render(<PianoHarness />);
+    expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("data-key", "black");
+    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("data-key", "white");
+    const labels = Array.from(document.querySelectorAll("[data-key]"), (k) => k.getAttribute("aria-label"));
+    expect(labels).toEqual(pianoRows.map((r) => r.name));
+  });
+
+  it("draws white keys with real piano proportions and black keys on their own row", () => {
+    loadPiano();
+    render(<PianoHarness />);
+    const idx = (name: string) => pianoRows.findIndex((r) => r.name === name);
+    const key = (name: string) => screen.getByRole("button", { name });
+    expect(key("C4").style.height).toBe("calc(var(--row-h) * 5 / 3)");
+    expect(key("A4").style.height).toBe("calc(var(--row-h) * 7 / 4)");
+    expect(key("C#4").style.height).toBe("var(--row-h)");
+    expect(key("C#4").style.top).toBe(`calc(var(--row-h) * ${idx("C#4")})`);
+    // The top white key of a C-E group starts exactly on a row edge, as E does on a real keyboard.
+    expect(key("E4").style.top).toBe(`calc(var(--row-h) * ${idx("E4") * 3} / 3)`);
+  });
+
+  it("is a single tab stop and moves between keys with the arrow keys", async () => {
+    loadPiano();
+    render(<PianoHarness />);
+    const keys = Array.from(document.querySelectorAll<HTMLElement>("[data-key]"));
+    expect(keys.filter((k) => k.tabIndex === 0)).toHaveLength(1);
+    const c4 = screen.getByRole("button", { name: "C4" });
+    expect(c4.tabIndex).toBe(0);
+    c4.focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "C#4" })).toHaveFocus();
+    expect(keys.filter((k) => k.tabIndex === 0)).toHaveLength(1);
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    expect(screen.getByRole("button", { name: "B3" })).toHaveFocus();
+  });
+
+  it("auditions the focused key with Enter and Space", async () => {
+    loadPiano();
+    const onAudition = vi.fn();
+    render(<PianoHarness onAudition={onAudition} />);
+    screen.getByRole("button", { name: "A4" }).focus();
+    await userEvent.keyboard("{Enter} ");
+    expect(onAudition).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls onAudition with the clicked key's row", async () => {
+    loadPiano();
+    const onAudition = vi.fn();
+    render(<PianoHarness onAudition={onAudition} />);
+    await userEvent.click(screen.getByRole("button", { name: "A4" }));
+    expect(onAudition).toHaveBeenCalledWith(pianoRows.find((r) => r.name === "A4"));
+    expect(pianoStore().getState().past).toHaveLength(0);
+  });
+
+  it("adds a one-beat note and clips it to the next note in the row", async () => {
+    loadPiano([note(pianoId("E4"), 2, 2)]);
+    render(<PianoHarness />);
+    await userEvent.click(pianoCell("E4", 0));
+    expect(pianoStore().getState().pattern!.notes).toContainEqual(note(pianoId("E4"), 0, 2));
+    await userEvent.click(pianoCell("G4", 0));
+    expect(pianoStore().getState().pattern!.notes).toContainEqual(note(pianoId("G4"), 0, 4));
+  });
+
+  it("scrolls loaded notes into view", () => {
+    loadPiano([note(pianoId("C5"), 0), note(pianoId("G5"), 4)]);
+    render(<PianoHarness />);
+    const top = screen.getByRole("group").scrollTop;
+    const rowH = 18;
+    const g5 = pianoRows.findIndex((r) => r.name === "G5");
+    const c5 = pianoRows.findIndex((r) => r.name === "C5");
+    expect(top).toBeLessThanOrEqual(g5 * rowH);
+    expect(top + 360).toBeGreaterThanOrEqual((c5 + 1) * rowH);
+  });
+
+  it("shows C4 for an empty pattern", () => {
+    loadPiano();
+    render(<PianoHarness />);
+    const top = screen.getByRole("group").scrollTop;
+    const c4 = pianoRows.findIndex((r) => r.name === "C4");
+    expect(top).toBeLessThanOrEqual(c4 * 18);
+    expect(top + 360).toBeGreaterThanOrEqual((c4 + 1) * 18);
+  });
+
+  it("re-scrolls when a new pattern is loaded but not when a note is edited", async () => {
+    loadPiano();
+    render(<PianoHarness />);
+    const scroller = screen.getByRole("group");
+    scroller.scrollTop = 50;
+    await userEvent.click(pianoCell("E4", 0));
+    expect(scroller.scrollTop).toBe(50);
+    act(() => loadPiano([note(pianoId("C5"), 0)]));
+    expect(scroller.scrollTop).not.toBe(50);
   });
 });

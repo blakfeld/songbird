@@ -36,10 +36,10 @@
 ## Impact
 
 - **Frontend:**
-  - New `app/instruments/[id]/page.tsx`, and an updated `app/page.tsx` that lists instruments.
-  - `components/editor/RowLabels.tsx` becomes a keyboard gutter for pitch rows, alongside `PianoRoll.tsx` and `MeasureColumn.tsx` (black-key shading, row height, initial vertical scroll).
-  - `lib/patternOps.ts` changes the default note length.
-  - New `lib/audio/synthSource.ts` plus per-instrument synth presets, registered in `lib/audio/registry.ts`.
+  - New `app/instruments/[id]/page.tsx` and `components/editor/InstrumentPage.tsx`, and an updated `app/page.tsx` that lists instruments. `PatternEditorPage.tsx` accepts the already-fetched instrument.
+  - `components/editor/RowLabels.tsx` becomes a keyboard gutter for pitch rows, alongside `PianoRoll.tsx` and `MeasureColumn.tsx` (black-key shading, row height, initial vertical scroll). `useEditorShortcuts.ts` leaves Space on a key to audition.
+  - `lib/patternOps.ts` changes the default note length, and `lib/patternStore.ts` tracks pattern loads for the initial scroll.
+  - New `lib/audio/synthSource.ts` plus per-instrument synth presets, registered in `lib/audio/registry.ts`. `velocityToGain` moves to a shared `lib/audio/velocity.ts`, and `lib/audio/engine.ts` gains `audition`.
   - New Vitest tests and a new Playwright spec `e2e/piano.spec.ts`.
 - **Backend:** none.
 - **Dependencies:** none new. Tone.js already ships the synths.
