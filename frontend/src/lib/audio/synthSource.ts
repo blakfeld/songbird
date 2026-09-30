@@ -32,9 +32,10 @@ interface PooledVoice {
 // when stealing is needed, and it defers scheduled events to timeouts that
 // cannot be cancelled on stop.
 export function createSynthSource(preset: SynthPreset) {
-  return (tone: ToneModule): SoundSource => {
+  return (tone: ToneModule, output?: import("tone").InputNode): SoundSource => {
     const master = new tone.Gain(1);
-    master.chain(...(preset.effects?.(tone) ?? []), tone.getDestination());
+    const effects = preset.effects?.(tone) ?? [];
+    master.chain(...effects, output ?? tone.getDestination());
 
     const makePool = () => {
       const bus = new tone.Gain(1).connect(master);
@@ -63,6 +64,16 @@ export function createSynthSource(preset: SynthPreset) {
       return oldest;
     };
 
+    const stopAll = () => {
+      const old = pool;
+      pool = makePool();
+      old.bus.gain.rampTo(0, FADE_SECONDS);
+      setTimeout(() => {
+        old.voices.forEach((v) => v.synth.dispose());
+        old.bus.dispose();
+      }, DISPOSE_DELAY_MS);
+    };
+
     return {
       load: () => Promise.resolve(),
 
@@ -84,13 +95,14 @@ export function createSynthSource(preset: SynthPreset) {
 
       // Notes already handed to the audio graph for the near future cannot be
       // cancelled, so the whole pool is faded out and replaced.
-      stopAll() {
-        const old = pool;
-        pool = makePool();
-        old.bus.gain.rampTo(0, FADE_SECONDS);
+      stopAll,
+
+      dispose() {
+        stopAll();
+        // Deferred with the pool so the fade is not cut off by the master.
         setTimeout(() => {
-          old.voices.forEach((v) => v.synth.dispose());
-          old.bus.dispose();
+          master.dispose();
+          effects.forEach((e) => e.dispose());
         }, DISPOSE_DELAY_MS);
       },
     };

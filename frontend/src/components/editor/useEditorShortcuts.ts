@@ -17,9 +17,24 @@ const insideRoll = (t: EventTarget | null) => t instanceof Element && t.closest(
 const onKeyboardKey = (t: EventTarget | null) => t instanceof Element && t.closest("[data-key]") !== null;
 
 export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () => void) {
-  const toggle = useRef(onTogglePlayback);
+  useShortcuts({
+    togglePlayback: onTogglePlayback,
+    undo: () => getPatternStore(instrumentId).getState().undo(),
+    redo: () => getPatternStore(instrumentId).getState().redo(),
+  });
+}
+
+interface ShortcutActions {
+  togglePlayback?: () => void;
+  undo: () => void;
+  redo: () => void;
+}
+
+// Shared by the single-instrument pages and the Studio so the key rules cannot drift apart.
+export function useShortcuts(actions: ShortcutActions) {
+  const latest = useRef(actions);
   useEffect(() => {
-    toggle.current = onTogglePlayback;
+    latest.current = actions;
   });
 
   useEffect(() => {
@@ -29,21 +44,20 @@ export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () =
         const inRoll = insideRoll(e.target);
         if (!inRoll && e.target instanceof Element && e.target.closest(SELF_ACTIVATING)) return;
         e.preventDefault();
-        if (!e.repeat) toggle.current?.();
+        if (!e.repeat) latest.current.togglePlayback?.();
         return;
       }
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       // Text fields keep the browser's own text undo.
       if (isTextEditingTarget(e.target)) return;
       const key = e.key.toLowerCase();
-      const store = getPatternStore(instrumentId).getState();
       if (key === "z") {
         e.preventDefault();
-        if (e.shiftKey) store.redo();
-        else store.undo();
+        if (e.shiftKey) latest.current.redo();
+        else latest.current.undo();
       } else if (key === "y" && e.ctrlKey) {
         e.preventDefault();
-        store.redo();
+        latest.current.redo();
       }
     };
     // Buttons fire click on Space keyup, which would toggle the focused cell.
@@ -56,5 +70,5 @@ export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () =
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
     };
-  }, [instrumentId]);
+  }, []);
 }

@@ -7,6 +7,8 @@ import { useApiResource } from "@/lib/useApiResource";
 const linkClass =
   "rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:bg-white dark:text-black dark:hover:bg-zinc-200 dark:focus-visible:outline-white";
 
+const STUDIO = { href: "/studio", label: "Open the Studio" };
+
 const DRUM_MACHINE = { href: "/drum-machine", label: "Open the Drum Machine" };
 
 export default function Home() {
@@ -31,7 +33,7 @@ export default function Home() {
         Describe a groove and let AI write the pattern.
       </p>
       <nav aria-label="Instruments" className="flex flex-wrap justify-center gap-3">
-        {links.map((l) => (
+        {[...links, STUDIO].map((l) => (
           <Link key={l.href} href={l.href} className={linkClass}>
             {l.label}
           </Link>

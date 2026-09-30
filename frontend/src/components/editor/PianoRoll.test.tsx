@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Row } from "@/generated/Row";
-import { emptyPattern } from "@/lib/patternOps";
+import { emptyPattern, gridOf } from "@/lib/patternOps";
 import { drums, note, patternWith } from "@/test/fixtures";
 import { cellLabel } from "@/lib/pianoRoll";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
@@ -15,15 +15,23 @@ const rowName = (id: string) => drums.rows.find((r) => r.id === id)!.name;
 const cell = (row: string, step: number) =>
   screen.getByRole("button", { name: cellLabel(rowName(row), step, 16) });
 
-let harnessProps: { follow?: boolean; isPlaying?: boolean; onManualScroll?: () => void; subscribePosition?: (cb: (s: number | null) => void) => () => void } = {};
+let harnessProps: { onPlaceNote?: (row: Row, velocity: number) => void; follow?: boolean; isPlaying?: boolean; onManualScroll?: () => void; subscribePosition?: (cb: (s: number | null) => void) => () => void } = {};
 
 function Harness() {
   useEditorShortcuts("drums");
   const pattern = usePatternStore("drums", (s) => s.pattern)!;
+  const actions = getPatternStore("drums").getState();
   return <PianoRoll
-      instrumentId="drums"
       instrumentName="Drums"
-      pattern={pattern}
+      grid={gridOf(pattern)}
+      timeSignature={pattern.time_signature}
+      stepsPerMeasure={pattern.steps_per_measure}
+      resetKey={0}
+      onToggleNote={actions.toggleNote}
+      onSetVelocity={actions.setVelocity}
+      onResizeNote={actions.resizeNote}
+      onMoveNote={actions.moveNote}
+      onPlaceNote={harnessProps.onPlaceNote}
       loop={{ start: 1, end: pattern.measures }}
       follow={harnessProps.follow ?? true}
       isPlaying={harnessProps.isPlaying ?? false}
@@ -71,6 +79,28 @@ describe("piano roll rendering", () => {
   });
 });
 
+describe("previewing a placed note", () => {
+  it("reports the row and velocity when a note is added", async () => {
+    const onPlaceNote = vi.fn();
+    harnessProps = { onPlaceNote };
+    setup([]);
+    await userEvent.click(cell("snare", 4));
+    expect(onPlaceNote).toHaveBeenCalledTimes(1);
+    expect(onPlaceNote).toHaveBeenCalledWith(drums.rows[1], 100);
+  });
+
+  it("stays silent for removing, resizing and velocity changes", async () => {
+    const onPlaceNote = vi.fn();
+    harnessProps = { onPlaceNote };
+    setup([note("snare", 4, 4), note("kick", 0)]);
+    await userEvent.click(cell("snare", 6));
+    cell("kick", 0).focus();
+    await userEvent.keyboard("{Shift>}{ArrowUp}{ArrowRight}{/Shift}v{Delete}");
+    expect(store().getState().pattern!.notes).toEqual([note("snare", 4, 4)].slice(1));
+    expect(onPlaceNote).not.toHaveBeenCalled();
+  });
+});
+
 describe("editing", () => {
   it("adds a length-1 velocity-100 note by clicking an empty cell", async () => {
     setup([]);
@@ -105,7 +135,7 @@ describe("editing", () => {
   it("vertical drag sets velocity once on release", () => {
     setup([note("kick", 0, 1, 100)]);
     const bar = screen.getByTestId("note");
-    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0 });
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0, shiftKey: true });
     fireEvent.pointerMove(bar, { clientX: 5, clientY: 160 });
     expect(bar.dataset.velocity).toBe("40");
     expect(store().getState().past).toHaveLength(0);
@@ -117,7 +147,7 @@ describe("editing", () => {
   it("Escape cancels a velocity drag", () => {
     setup([note("kick", 0, 1, 100)]);
     const bar = screen.getByTestId("note");
-    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0 });
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0, shiftKey: true });
     fireEvent.pointerMove(bar, { clientX: 5, clientY: 160 });
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.pointerUp(bar, { clientX: 5, clientY: 160 });
@@ -221,7 +251,7 @@ describe("stale drag values", () => {
   it("commits the last pointermove value when pointerup follows in the same batch", () => {
     setup([note("kick", 0, 1, 100)]);
     const bar = screen.getByTestId("note");
-    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0 });
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0, shiftKey: true });
     fireEvent.pointerMove(bar, { clientX: 5, clientY: 110 });
     act(() => {
       fireEvent.pointerMove(bar, { clientX: 5, clientY: 160 });
@@ -332,15 +362,30 @@ const pianoId = (name: string) => pianoRows.find((r) => r.name === name)!.id;
 const pianoCell = (name: string, step: number) =>
   screen.getByRole("button", { name: cellLabel(name, step, 16) });
 
-function PianoHarness({ onAudition }: { onAudition?: (row: Row) => void }) {
+function PianoHarness({
+  onAudition,
+  onPlaceNote,
+}: {
+  onAudition?: (row: Row) => void;
+  onPlaceNote?: (row: Row, velocity: number) => void;
+}) {
   const pattern = usePatternStore("piano", (s) => s.pattern)!;
+  const loadId = usePatternStore("piano", (s) => s.loadId);
+  const actions = getPatternStore("piano").getState();
   return <PianoRoll
-      instrumentId="piano"
       instrumentName="Piano"
+      grid={gridOf(pattern)}
+      timeSignature={pattern.time_signature}
+      stepsPerMeasure={pattern.steps_per_measure}
+      resetKey={loadId}
+      onToggleNote={actions.toggleNote}
+      onSetVelocity={actions.setVelocity}
+      onResizeNote={actions.resizeNote}
+      onMoveNote={actions.moveNote}
+      onPlaceNote={onPlaceNote}
       kind="melodic"
       sustained
       onAudition={onAudition}
-      pattern={pattern}
       loop={{ start: 1, end: pattern.measures }}
       follow
       isPlaying={false}
@@ -463,5 +508,134 @@ describe("melodic piano roll", () => {
     expect(scroller.scrollTop).toBe(50);
     act(() => loadPiano([note(pianoId("C5"), 0)]));
     expect(scroller.scrollTop).not.toBe(50);
+  });
+});
+
+let originalOffsetHeight: PropertyDescriptor | undefined;
+function restoreOffsetHeight() {
+  if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+  else Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+}
+
+describe("moving a note between rows", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    pianoStore().setState({ pattern: null, loadId: 0, prompt: "", past: [], future: [] });
+    // jsdom has no layout; a 24px bar makes one row 32px.
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 24 });
+  });
+  afterEach(() => {
+    restoreOffsetHeight();
+  });
+
+  const dragBy = (bar: HTMLElement, dy: number) => {
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 500, button: 0 });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 500 + dy });
+    fireEvent.pointerUp(bar, { clientX: 5, clientY: 500 + dy });
+  };
+  const rowAbove = (name: string, n: number) =>
+    pianoRows[pianoRows.findIndex((r) => r.name === name) - n];
+
+  it("moves the note up two rows, previews each row once and records one undo step", () => {
+    loadPiano([note("c4", 8, 3, 70)]);
+    const onPlaceNote = vi.fn();
+    render(<PianoHarness onPlaceNote={onPlaceNote} />);
+    dragBy(screen.getByTestId("note"), -64);
+
+    expect(pianoStore().getState().pattern!.notes).toEqual([note(rowAbove("C4", 2).id, 8, 3, 70)]);
+    expect(onPlaceNote.mock.calls).toEqual([[rowAbove("C4", 1), 70], [rowAbove("C4", 2), 70]]);
+    expect(pianoStore().getState().past).toHaveLength(1);
+    act(() => pianoStore().getState().undo());
+    expect(pianoStore().getState().pattern!.notes).toEqual([note("c4", 8, 3, 70)]);
+  });
+
+  it("skips an occupied row and settles in the last row where the note fit", () => {
+    const blocker = note(rowAbove("C4", 2).id, 9, 1);
+    loadPiano([note("c4", 8, 3), blocker]);
+    render(<PianoHarness />);
+    dragBy(screen.getAllByTestId("note").find((b) => b.dataset.row === "c4")!, -64);
+
+    const notes = pianoStore().getState().pattern!.notes;
+    expect(notes).toContainEqual(note(rowAbove("C4", 1).id, 8, 3));
+    expect(notes).toContainEqual(blocker);
+  });
+
+  it("does not record a drag that ends in its starting row", () => {
+    loadPiano([note("c4", 8)]);
+    const onPlaceNote = vi.fn();
+    render(<PianoHarness onPlaceNote={onPlaceNote} />);
+    const bar = screen.getByTestId("note");
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 500, button: 0 });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 436 });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 500 });
+    fireEvent.pointerUp(bar, { clientX: 5, clientY: 500 });
+    expect(pianoStore().getState().past).toHaveLength(0);
+    expect(pianoStore().getState().pattern!.notes).toEqual([note("c4", 8)]);
+  });
+
+  it("still sets velocity with Shift-drag and resizes from the handle", () => {
+    loadPiano([note("c4", 8)]);
+    render(<PianoHarness />);
+    const bar = screen.getByTestId("note");
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 500, button: 0, shiftKey: true });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 540 });
+    fireEvent.pointerUp(bar, { clientX: 5, clientY: 540 });
+    expect(pianoStore().getState().pattern!.notes[0]).toMatchObject({ row_id: "c4", velocity: 60 });
+  });
+
+  it("moves a focused note one row with Alt+Up and Alt+Down, previewing the new row", async () => {
+    loadPiano([note("c4", 8)]);
+    const onPlaceNote = vi.fn();
+    render(<PianoHarness onPlaceNote={onPlaceNote} />);
+    pianoCell("C4", 8).focus();
+    await userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(pianoStore().getState().pattern!.notes).toEqual([note(rowAbove("C4", 1).id, 8)]);
+    expect(onPlaceNote).toHaveBeenCalledWith(rowAbove("C4", 1), 100);
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    expect(pianoStore().getState().pattern!.notes).toEqual([note("c4", 8)]);
+  });
+});
+
+describe("vertical drag: pitch or velocity", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    pianoStore().setState({ pattern: null, loadId: 0, prompt: "", past: [], future: [] });
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 24 });
+  });
+  afterEach(() => {
+    restoreOffsetHeight();
+  });
+
+  it("moves the note without Shift and changes velocity, in place, with Shift", () => {
+    loadPiano([note("c4", 8, 2, 80)]);
+    const onPlaceNote = vi.fn();
+    render(<PianoHarness onPlaceNote={onPlaceNote} />);
+
+    let bar = screen.getByTestId("note");
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 500, button: 0 });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 468 });
+    fireEvent.pointerUp(bar, { clientX: 5, clientY: 468 });
+    const moved = pianoStore().getState().pattern!.notes[0];
+    expect(moved.row_id).not.toBe("c4");
+    expect(moved).toMatchObject({ step: 8, length_steps: 2, velocity: 80 });
+    expect(onPlaceNote).toHaveBeenCalledTimes(1);
+
+    bar = screen.getByTestId("note");
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 500, button: 0, shiftKey: true });
+    fireEvent.pointerMove(bar, { clientX: 5, clientY: 470, shiftKey: true });
+    expect(screen.getByText("Vel 110")).toBeInTheDocument();
+    fireEvent.pointerUp(bar, { clientX: 5, clientY: 470, shiftKey: true });
+    const raised = pianoStore().getState().pattern!.notes[0];
+    expect(raised).toMatchObject({ row_id: moved.row_id, velocity: 110 });
+    expect(onPlaceNote).toHaveBeenCalledTimes(1);
+    expect(pianoStore().getState().past).toHaveLength(2);
+  });
+
+  it("tells the user about Shift-drag in the note tooltip", () => {
+    loadPiano([note("c4", 8, 2, 80)]);
+    render(<PianoHarness />);
+    expect(screen.getByTestId("note")).toHaveAttribute("title", "Velocity 80 · Shift-drag to change");
   });
 });

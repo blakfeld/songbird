@@ -6,7 +6,10 @@ type ToneModule = typeof import("tone");
 
 export const DRUM_KIT_BASE_URL = "/kits/drums/";
 
-export function createDrumsSource(tone: ToneModule): SoundSource {
+export function createDrumsSource(
+  tone: ToneModule,
+  output?: import("tone").InputNode,
+): SoundSource {
   let buffers: InstanceType<ToneModule["ToneAudioBuffers"]> | null = null;
   // Includes notes still being fetched so a play racing a preload reuses it.
   const loadedNotes = new Set<number>();
@@ -52,7 +55,9 @@ export function createDrumsSource(tone: ToneModule): SoundSource {
       const key = String(row.midi_note);
       if (!buffers?.has(key)) return;
       // Own gain per hit so a soft hit cannot change a still-ringing loud one.
-      const gain = new tone.Gain(velocityToGain(velocity)).toDestination();
+      const gain = new tone.Gain(velocityToGain(velocity));
+      if (output) gain.connect(output);
+      else gain.toDestination();
       const src = new tone.ToneBufferSource({
         url: buffers.get(key),
         onended: () => {
@@ -66,6 +71,10 @@ export function createDrumsSource(tone: ToneModule): SoundSource {
     },
 
     stopAll() {
+      for (const src of active) src.stop();
+    },
+
+    dispose() {
       for (const src of active) src.stop();
     },
   };
