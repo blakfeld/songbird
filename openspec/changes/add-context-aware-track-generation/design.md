@@ -7,6 +7,7 @@
 - **Measure count:** `GenerateRequest.measures` is a `MeasureCount`, which allows only 4, 8, 12, 16, and 32 (`expand.rs:37-41`).
 - **Available from #5:** `Song` / `Track` / `Loop` / `Clip` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`. `ValidSong` carries each track's resolved notes (#5 D5, a port of add-arrangement-clips D2), so the server never reads loops directly to learn what a track plays.
 - **Available from add-arrangement-clips:** tracks hold `loops` and `clips` (its D1), `resolveTrackNotes` (D2), and pure `Song → Song` clip operations in `lib/song/clipOps.ts` (D5), including the "<track name> <n>" loop naming used by New clip.
+- **Available from add-timeline-loop-region:** playback looping is a `LoopSetting { region: { start, end } | null, enabled }` (1-based, inclusive measures) with pure helpers in `frontend/src/lib/loopRegion.ts`. The Studio edits it on the arrangement ruler through `components/editor/LoopRegion.tsx` and a Loop toggle beside Play. The song store holds it as the song's optional `loop_region { region: { start_measure, end_measure } | null, enabled }`; absent or null means no region and looping off. A song starts with no region, and looping on with no region loops the whole song, so a loop range exists only when the user has drawn a region.
 - **Timeout:** the timeout wrapper lives in the API handler (`api/src/patterns.rs:26`).
 - **Provider seam:** track generation reuses `PatternProvider` and #1's lane-per-pitch draft format. The chat's planner is a second provider kind, so this change introduces the `Providers` bundle #8 had planned (D12).
 
@@ -69,12 +70,17 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 
 ### D6. Studio flow
 - **Dialog:** `TrackGenerateDialog` holds the prompt, reuses `TokenCounter`, and offers the range options.
+- **Active loop range:** one browser helper, `activeLoopRange(song)`, returns the song's `loop_region.region` span only when `enabled` is true, a region exists, the region covers less than the whole song, and it spans at most 32 measures; otherwise it returns nothing. The dialog offers "Loop range" only when the helper returns a span, and the chat sends it as `range` (D7).
+  - **Why require looping on:** with looping off, the region is dimmed and does not affect playback, so offering it would generate over measures the user is not listening to.
+  - **Why require a region:** with no region, looping on covers the whole song, which "Whole song" already offers.
+  - **Why exclude the whole song:** a drawn whole-song region plays the same as no region, and "Whole song" already covers it.
+  - **Why one helper:** the dialog and the chat then cannot disagree about when a loop range exists.
 - **Applying results:** `songStore.applyGeneratedRange(trackId, range, notes)` runs D13 as one history entry: it clears the range on the target track, then adds a new loop (`measures` = the range length, `notes` as returned, named by the New clip rule "<track name> <n>") and one clip of it covering the range. That clip becomes the selected clip, so the result opens in the dock.
 - **Concurrency:** a `generatingTrackId` field in the store disables that track's piano-roll edits and all other Generate buttons.
 - **Request snapshot:** the request uses a snapshot of the song taken at submit time. Edits to other tracks made while the request is in flight are kept, because the result only touches the target track's range.
 
 ### D7. Chat endpoint
-- **Contract:** `POST /api/v1/songs/chat` takes `ChatBody { song, messages, range? }`, where `messages` is `[{role: user|assistant, content}]` with the latest user message last, and `range` is the Studio's loop range if one is set. It returns `ChatResponse { reply, track: {name, instrument, range, notes} | null }`. `range` is the range chosen by D10, and `notes` are relative to its start, as in D1.
+- **Contract:** `POST /api/v1/songs/chat` takes `ChatBody { song, messages, range? }`, where `messages` is `[{role: user|assistant, content}]` with the latest user message last, and `range` is the active loop range from D6's `activeLoopRange`, omitted when there is none. It returns `ChatResponse { reply, track: {name, instrument, range, notes} | null }`. `range` is the range chosen by D10, and `notes` are relative to its start, as in D1.
 - **Stateless:** the browser holds the history, matching #10's lyric assistant, so the server stores nothing and any instance can serve any request.
 - **Ids stay on the client:** the browser assigns the new track's id, its loop and clip ids, and default mixer settings, as when a track is added by hand, so the song store remains the only source of ids. The new track holds one loop named after the track, as long as the range, placed as one clip covering the range.
 - **Validation:** `Song::validate`, then 1–20 messages with the last from the user, then the existing prompt rules on the last message. Assistant messages over 4,000 characters are rejected with `invalid_request`, the same limit #10 uses.
@@ -99,8 +105,8 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 ### D10. Chat range
 - **Rule:**
   - When the song has at most 32 measures, the range is the whole song.
-  - When the song is longer, the range is the supplied loop range if it spans at most 32 measures.
-  - Otherwise the server returns a `reply_only` response asking the user to set a loop range, and it makes no generation call.
+  - When the song is longer, the range is the supplied `range` if it spans at most 32 measures. The browser supplies one only while looping is on and a region exists that is not the whole song (D6).
+  - Otherwise the server returns a `reply_only` response asking the user to turn on looping and draw a loop region of at most 32 measures on the ruler, and it makes no generation call.
 - **Why:** this reuses the existing 32-measure span limit and does not quietly generate only part of a long song.
 
 ### D11. Chat persistence

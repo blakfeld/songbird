@@ -15,7 +15,7 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - A configurable context token budget (`SONGBIRD_MAX_CONTEXT_TOKENS`, default 4000) bounds cost. When the context would exceed the budget, the measures farthest from the range are dropped first.
 - **The song's settings are respected.** Tempo, time signature, and swing come from the song and are never changed by the AI. Notes are validated and normalized with the same rules as pattern generation: the same providers, retry, 60-second timeout, and error codes.
 - A new endpoint, `GET /api/v1/songs/limits`, publishes `max_input_tokens`, `max_range_measures` (32), `max_song_measures` (128), and `max_tracks` (16).
-- **Studio UI:** each track gets a Generate action with a prompt, a token counter, and a range choice (whole song, loop range, or a custom measure span).
+- **Studio UI:** each track gets a Generate action with a prompt, a token counter, and a range choice (whole song, loop range, or a custom measure span). "Loop range" uses the song's loop region (add-timeline-loop-region) and is offered only while looping is on and the region covers less than the whole song.
   - While a generation runs, the target track is locked and other tracks stay editable.
   - The result becomes a **new loop** on the track, placed as **one clip** covering the range, as one undoable step. Clips inside the range are removed, and clips crossing a range edge are split so that everything outside the range keeps playing exactly as before. No existing loop's contents are changed, so other clips linked to those loops are unaffected.
 - **Global song chat:** the Studio's right-hand assistant column (laid out by #4) becomes one chat for the whole song, and it is the main way to build an arrangement.
@@ -32,7 +32,7 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - Chord context. #8 adds that as a separate requirement.
   - Server-side memory of past generations.
 
-Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), and #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 1 MiB body limit on `/api/v1/songs/`).
+Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 1 MiB body limit on `/api/v1/songs/`), and `add-timeline-loop-region` (the song's `loop_region` and its on/off state, which decide when a loop range is offered).
 
 ## Capabilities
 

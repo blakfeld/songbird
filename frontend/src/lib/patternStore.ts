@@ -5,6 +5,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { MeasureCount } from "@/generated/MeasureCount";
 import type { Pattern } from "@/generated/Pattern";
 import type { TimeSignature } from "@/generated/TimeSignature";
+import { clampLoop, defaultLoop, parseLoop, type LoopSetting } from "./loopRegion";
 import * as ops from "./patternOps";
 
 // Bounded so a long editing session cannot grow memory without limit.
@@ -18,6 +19,8 @@ export interface PatternState {
   // Bumped only when a whole pattern is loaded, so views can react to loads without reacting to edits.
   loadId: number;
   prompt: string;
+  // Kept beside the pattern rather than in it so it stays out of undo history.
+  loop: LoopSetting;
   past: Pattern[];
   future: Pattern[];
 
@@ -37,11 +40,16 @@ export interface PatternState {
   setSwing: (swing: number) => void;
   clear: () => void;
   setPrompt: (prompt: string) => void;
+  setLoop: (loop: LoopSetting) => void;
   undo: () => void;
   redo: () => void;
 }
 
 export type PatternStore = StoreApi<PatternState>;
+
+// The loop has to follow every pattern swap, including undo and redo, because any of them can change the length.
+const loopFor = (s: Pick<PatternState, "loop">, next: Pattern): LoopSetting =>
+  clampLoop(s.loop, next.measures);
 
 export function createPatternStore(instrument: string): PatternStore {
   return createStore<PatternState>()(
@@ -53,6 +61,7 @@ export function createPatternStore(instrument: string): PatternStore {
               ? s
               : {
                   pattern: next,
+                  loop: loopFor(s, next),
                   loadId: s.loadId + 1,
                   past: s.pattern
                     ? [...s.past, s.pattern].slice(-HISTORY_LIMIT)
@@ -67,6 +76,7 @@ export function createPatternStore(instrument: string): PatternStore {
             if (next === s.pattern) return s;
             return {
               pattern: next,
+              loop: loopFor(s, next),
               past: [...s.past, s.pattern].slice(-HISTORY_LIMIT),
               future: [],
             };
@@ -76,6 +86,7 @@ export function createPatternStore(instrument: string): PatternStore {
           pattern: null,
           loadId: 0,
           prompt: "",
+          loop: defaultLoop(),
           past: [],
           future: [],
 
@@ -95,12 +106,18 @@ export function createPatternStore(instrument: string): PatternStore {
           setSwing: (swing) => edit((p) => ops.setSwing(p, swing)),
           clear: () => edit(ops.clearNotes),
           setPrompt: (prompt) => set({ prompt }),
+          setLoop: (loop) =>
+            set((s) => {
+              const m = s.pattern?.measures;
+              return { loop: m === undefined ? loop : clampLoop(loop, m) };
+            }),
           undo: () =>
             set((s) => {
               const previous = s.past[s.past.length - 1];
               if (!previous || !s.pattern) return s;
               return {
                 pattern: previous,
+                loop: loopFor(s, previous),
                 past: s.past.slice(0, -1),
                 future: [s.pattern, ...s.future],
               };
@@ -111,6 +128,7 @@ export function createPatternStore(instrument: string): PatternStore {
               if (!next || !s.pattern) return s;
               return {
                 pattern: next,
+                loop: loopFor(s, next),
                 past: [...s.past, s.pattern],
                 future: rest,
               };
@@ -121,7 +139,19 @@ export function createPatternStore(instrument: string): PatternStore {
         name: storageKey(instrument),
         storage: createJSONStorage(() => localStorage),
         // History is dropped so a reload never restores stale undo steps.
-        partialize: (s) => ({ pattern: s.pattern, prompt: s.prompt }),
+        partialize: (s) => ({
+          pattern: s.pattern,
+          prompt: s.prompt,
+          loop: s.loop,
+        }),
+        // Stored state from before loops existed, or hand-edited, must never leave the store without a usable loop.
+        merge: (persisted, current) => {
+          const p = (persisted ?? {}) as Partial<PatternState>;
+          const merged = { ...current, ...p };
+          const loop = parseLoop(p.loop);
+          const m = merged.pattern?.measures;
+          return { ...merged, loop: m === undefined ? loop : clampLoop(loop, m) };
+        },
       },
     ),
   );

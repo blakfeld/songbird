@@ -10,7 +10,8 @@ import { Transport } from "@/components/editor/Transport";
 import { useShortcuts } from "@/components/editor/useEditorShortcuts";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { getInstruments } from "@/lib/api";
-import type { LoopRange } from "@/lib/audio/types";
+import { defaultLoop, type LoopSetting } from "@/lib/loopRegion";
+import { songLoop } from "@/lib/song/songLoop";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
 import { beatSteps } from "@/lib/pianoRoll";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
@@ -55,11 +56,6 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const [follow, setFollow] = useState(true);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [loopState, setLoopState] = useState<LoopRange & { measures: number }>({
-    start: 1,
-    end: 8,
-    measures: 8,
-  });
   const requestedSong = useRef<string | null | undefined>(undefined);
   const detachAutosave = useRef<(() => void) | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -90,12 +86,8 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const dockHeight =
     storedDock === null ? null : Math.min(maxDock, Math.max(MIN_DOCK_PX, storedDock));
 
-  const measures = song?.measures ?? 1;
-  // A loop chosen for another length is meaningless, so it resets when the length changes.
-  const loop: LoopRange =
-    loopState.measures === measures
-      ? { start: loopState.start, end: loopState.end }
-      : { start: 1, end: measures };
+  const loop = useMemo(() => (song ? songLoop(song) : defaultLoop()), [song]);
+  const setLoop = useCallback((l: LoopSetting) => store.getState().setLoop(l), [store]);
   const playback = useSongPlayback(store, instruments.data, loop);
 
   // Re-attached per song so opening a song is not itself saved, which would reorder the library by open time.
@@ -104,7 +96,6 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
       detachAutosave.current?.();
       store.getState().loadSong(next);
       detachAutosave.current = library.autosave(store);
-      setLoopState({ start: 1, end: next.measures, measures: next.measures });
     },
     [store, library],
   );
@@ -328,14 +319,12 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
               <Transport
                 playback={playback}
                 onToggle={togglePlayback}
-                measures={song.measures}
                 stepsPerMeasure={song.steps_per_measure}
                 beatSteps={beatSteps(song.time_signature as TimeSignature)}
                 loop={loop}
-                onLoopChange={(r) => setLoopState({ ...r, measures: song.measures })}
+                onLoopChange={setLoop}
                 follow={follow}
                 onFollowChange={setFollow}
-                wholeLabel="Loop whole song"
               />
             </div>
           </>
@@ -357,6 +346,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
             instruments={instruments}
             onRetryInstruments={instruments.retry}
             loop={loop}
+            onLoopChange={setLoop}
             subscribePosition={playback.subscribePosition}
             actions={trackActions}
             clipActions={clipActions}

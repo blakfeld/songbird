@@ -1,5 +1,6 @@
 import type { Note } from "@/generated/Note";
 import { normalizeNotes } from "../patternOps";
+import { normalizeLoopRegion } from "./songLoop";
 import {
   LOOP_MEASURE_RANGE,
   LOOP_NAME_MAX,
@@ -135,7 +136,7 @@ function fromV1(raw: Raw): Song | null {
   });
   if (converted.some((t) => t === null)) return null;
   const song = { ...raw, version: 2, tracks: converted } as unknown as Song;
-  return validateClips(song) === null ? song : null;
+  return validateClips(song) === null ? normalizeLoopRegion(song) : null;
 }
 
 function migrate(raw: unknown): Song | null {
@@ -147,7 +148,9 @@ function migrate(raw: unknown): Song | null {
     const clips = sortedByStart(t.clips);
     return clips === t.clips ? t : { ...t, clips };
   });
-  return tracks.every((t, i) => t === song.tracks[i]) ? song : { ...song, tracks };
+  return normalizeLoopRegion(
+    tracks.every((t, i) => t === song.tracks[i]) ? song : { ...song, tracks },
+  );
 }
 
 // Null means the stored document is unusable; the library reports that as "could not be opened".

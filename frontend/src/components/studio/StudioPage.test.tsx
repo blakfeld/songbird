@@ -21,8 +21,12 @@ const seekTo = vi.fn();
 const positionListeners = new Set<(position: number | null) => void>();
 const toggle = vi.fn();
 // The engine has its own tests; here it would only pull Tone.js into every page render.
+type LoopArg = { region: { start: number; end: number } | null; enabled: boolean };
+const loops: LoopArg[] = [];
 vi.mock("@/lib/audio/useSongPlayback", () => ({
-  useSongPlayback: () => ({
+  useSongPlayback: (_store: unknown, _instruments: unknown, loop: LoopArg) => {
+    loops.push(loop);
+    return {
     isPlaying: false,
     status: "idle",
     error: null,
@@ -35,7 +39,8 @@ vi.mock("@/lib/audio/useSongPlayback", () => ({
       return () => positionListeners.delete(cb);
     },
     audition,
-  }),
+    };
+  },
 }));
 
 const piano: InstrumentInfo = {
@@ -78,6 +83,7 @@ beforeEach(async () => {
   library = createSongLibrary();
   audition.mockClear();
   toggle.mockClear();
+  loops.length = 0;
   vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
 });
 afterEach(() => vi.resetAllMocks());
@@ -115,7 +121,8 @@ describe("song settings", () => {
     await userEvent.clear(length);
     await userEvent.type(length, "12{Enter}");
     expect(length).toHaveValue(12);
-    expect(screen.getByRole("combobox", { name: "Loop end measure" })).toHaveValue("12");
+    expect(loops.at(-1)).toEqual({ region: null, enabled: false });
+    expect(screen.queryByTestId("loop-region")).not.toBeInTheDocument();
   });
 
   it("shows the time signature read-only", async () => {
@@ -925,5 +932,75 @@ describe("the dock edits the selected clip's loop", () => {
     await userEvent.type(length, "8{Enter}");
     expect(status()).toHaveTextContent("Shortened to 8 bars. Clips after bar 8 were trimmed or removed. Undo to restore.");
     expect(clipButton(/^Groove A, measures 7 to 8/)).toBeInTheDocument();
+  });
+});
+
+describe("loop region", () => {
+  const ruler = (measures: number) => {
+    const hit = screen.getByTestId("loop-hit-layer");
+    // 100px per measure keeps the pointer maths readable.
+    (hit.parentElement as HTMLElement).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: measures * 100, bottom: 28, width: measures * 100, height: 28, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    return hit;
+  };
+  const draw = (from: number, to: number, measures = 8) => {
+    const hit = ruler(measures);
+    fireEvent.pointerDown(hit, { clientX: (from - 1) * 100 + 50, button: 0 });
+    fireEvent.pointerMove(hit, { clientX: (to - 1) * 100 + 50 });
+    fireEvent.pointerUp(hit, { clientX: (to - 1) * 100 + 50 });
+  };
+
+  it("starts a new song with no region and looping off", async () => {
+    await renderStudio();
+    expect(loops.at(-1)).toEqual({ region: null, enabled: false });
+    expect(screen.queryByTestId("loop-region")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Loop playback" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("loops the whole song from the toggle without drawing a region", async () => {
+    await renderStudio();
+    await userEvent.click(screen.getByRole("button", { name: "Loop playback" }));
+    expect(loops.at(-1)).toEqual({ region: null, enabled: true });
+    expect(screen.queryByTestId("loop-region")).not.toBeInTheDocument();
+  });
+
+  it("loops a range drawn on the arrangement ruler across every track", async () => {
+    await renderStudio();
+    draw(5, 8);
+    expect(loops.at(-1)).toEqual({ region: { start: 5, end: 8 }, enabled: true });
+    expect(screen.getByRole("button", { name: "Loop playback" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("switches looping off from the transport so the song plays once", async () => {
+    await renderStudio();
+    draw(2, 3);
+    await userEvent.click(screen.getByRole("button", { name: "Loop playback" }));
+    expect(loops.at(-1)).toEqual({ region: { start: 2, end: 3 }, enabled: false });
+    expect(screen.getByTestId("loop-region")).toHaveAttribute("data-enabled", "false");
+  });
+
+  it("keeps the region out of undo and saves it with the song", async () => {
+    const song = await renderStudio();
+    const length = screen.getByRole("spinbutton", { name: "Length" });
+    await userEvent.clear(length);
+    await userEvent.type(length, "12{Enter}");
+    draw(2, 3, 12);
+    screen.getByTestId("loop-region").focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(length).toHaveValue(8);
+    expect(screen.getByTestId("loop-region")).toHaveAttribute("data-start", "2");
+    await waitFor(async () => {
+      const saved = (await library.open(song.id))!;
+      expect(saved.loop_region).toEqual({ region: { start_measure: 2, end_measure: 3 }, enabled: true });
+    });
+  });
+
+  it("shows the song's region only on the arrangement ruler, not in the dock", async () => {
+    await renderStudio();
+    draw(5, 8);
+    expect(screen.getAllByTestId("loop-region")).toHaveLength(1);
+    const arrangement = screen.getByRole("region", { name: "Arrangement" });
+    expect(within(arrangement).getByTestId("loop-region")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("loop-shade").every((el) => arrangement.contains(el))).toBe(true);
   });
 });

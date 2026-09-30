@@ -32,7 +32,7 @@ function Harness() {
       onResizeNote={actions.resizeNote}
       onMoveNote={actions.moveNote}
       onPlaceNote={harnessProps.onPlaceNote}
-      loop={{ start: 1, end: pattern.measures }}
+      loop={{ region: null, enabled: false }}
       follow={harnessProps.follow ?? true}
       isPlaying={harnessProps.isPlaying ?? false}
       onManualScroll={harnessProps.onManualScroll ?? (() => {})}
@@ -395,7 +395,7 @@ function PianoHarness({
       kind="melodic"
       sustained
       onAudition={onAudition}
-      loop={{ start: 1, end: pattern.measures }}
+      loop={{ region: null, enabled: false }}
       follow
       isPlaying={false}
       onManualScroll={() => {}}

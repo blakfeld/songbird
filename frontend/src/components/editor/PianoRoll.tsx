@@ -15,7 +15,8 @@ import type { InstrumentKind } from "@/generated/InstrumentKind";
 import type { Note } from "@/generated/Note";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import type { Row } from "@/generated/Row";
-import type { LoopRange, Playback } from "@/lib/audio/types";
+import type { Playback } from "@/lib/audio/types";
+import type { LoopSetting } from "@/lib/loopRegion";
 import {
   beatSteps,
   CELL_W_PX,
@@ -24,6 +25,7 @@ import {
   noteCovers,
 } from "@/lib/pianoRoll";
 import { moveGridNote, type NoteGrid } from "@/lib/patternOps";
+import { LoopRegion } from "./LoopRegion";
 import { LoopShade } from "./LoopShade";
 import { MeasureColumn, type ActiveCell } from "./MeasureColumn";
 import { MeasureRuler } from "./MeasureRuler";
@@ -84,6 +86,7 @@ export function PianoRoll({
   onMoveNote,
   onPlaceNote,
   loop,
+  onLoopChange,
   follow,
   isPlaying,
   onManualScroll,
@@ -110,7 +113,9 @@ export function PianoRoll({
   onResizeNote: (rowId: string, step: number, lengthSteps: number) => void;
   onMoveNote: (rowId: string, step: number, toRowId: string) => void;
   onPlaceNote?: (row: Row, velocity: number) => void;
-  loop: LoopRange;
+  // Without both, the ruler is static, as in the Studio dock where the song's region does not apply.
+  loop?: LoopSetting;
+  onLoopChange?: (loop: LoopSetting) => void;
   follow: boolean;
   isPlaying: boolean;
   onManualScroll: () => void;
@@ -338,7 +343,17 @@ export function PianoRoll({
           <div ref={corner} className="sticky top-0 left-0 z-40 border-r border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950">
             {cornerContent}
           </div>
-          <MeasureRuler measures={measures} stepsPerMeasure={spm} beatSteps={beat} loop={loop} beatLabels={beatLabels} />
+          <MeasureRuler measures={measures} stepsPerMeasure={spm} beatSteps={beat} beatLabels={beatLabels}>
+            {loop && onLoopChange && (
+              <LoopRegion
+                loop={loop}
+                measures={measures}
+                stepsPerMeasure={spm}
+                measurePx={spm * CELL_W_PX}
+                onChange={onLoopChange}
+              />
+            )}
+          </MeasureRuler>
           <RowLabels
             ref={labels}
             rows={grid.rows}
@@ -362,7 +377,7 @@ export function PianoRoll({
                 noteLength={noteLength}
               />
             ))}
-            <LoopShade loop={loop} measures={measures} stepsPerMeasure={spm} />
+            {loop && <LoopShade loop={loop} measures={measures} stepsPerMeasure={spm} />}
             <Playhead subscribePosition={subscribePosition} />
           </div>
         </div>

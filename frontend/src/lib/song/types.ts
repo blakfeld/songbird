@@ -42,7 +42,16 @@ export interface Song {
   steps_per_measure: number;
   swing: number;
   measures: number;
+  // Optional so songs saved before loop regions existed stay valid; absent or null means no region and looping off.
+  loop_region?: LoopRegion | null;
   tracks: Track[];
+}
+
+// snake_case so the field stays mirrorable by the backend Song type.
+// The flag sits beside the region because looping can be on with no region, which loops the whole song.
+export interface LoopRegion {
+  region: { start_measure: number; end_measure: number } | null;
+  enabled: boolean;
 }
 
 export const MAX_TRACKS = 16;

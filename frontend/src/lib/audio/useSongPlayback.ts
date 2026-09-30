@@ -4,7 +4,8 @@ import type { Row } from "@/generated/Row";
 import type { SongStore } from "@/lib/song/songStore";
 import { createPlaybackEngine, type AuditionOptions } from "./engine";
 import { createSongPlaybackModel } from "./songPlaybackModel";
-import type { LoopRange, Playback } from "./types";
+import { playRange, type LoopSetting } from "@/lib/loopRegion";
+import type { Playback } from "./types";
 
 export interface SongPlayback extends Playback {
   audition(row: Row, options?: AuditionOptions): Promise<void>;
@@ -13,7 +14,7 @@ export interface SongPlayback extends Playback {
 export function useSongPlayback(
   store: SongStore,
   instruments: InstrumentInfo[] | null,
-  loop: LoopRange,
+  loop: LoopSetting,
 ): SongPlayback {
   const [model] = useState(() => createSongPlaybackModel(store, instruments));
   useEffect(() => {
@@ -22,10 +23,17 @@ export function useSongPlayback(
   const [engine] = useState(() => createPlaybackEngine(model));
   const snapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
 
-  const { start, end } = loop;
+  const { enabled } = loop;
+  const range = playRange(loop);
+  const start = range?.start;
+  const end = range?.end;
   useEffect(() => {
-    engine.setLoop({ start, end });
+    // Primitives keep a fresh-but-equal region object from re-running this every render.
+    engine.setLoop(start === undefined || end === undefined ? null : { start, end });
   }, [engine, start, end]);
+  useEffect(() => {
+    engine.setLooping(enabled);
+  }, [engine, enabled]);
 
   useEffect(() => () => engine.dispose(), [engine]);
 

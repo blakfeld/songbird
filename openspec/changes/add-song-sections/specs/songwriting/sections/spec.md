@@ -131,11 +131,19 @@ The song page SHALL show a section ruler aligned with the tracks' measure grid. 
 - **THEN** the Verse label starts directly above the first step of measure 5 in every track
 
 ### Requirement: Selecting a section
-The user SHALL be able to select a section by clicking it on the ruler. Selecting a section SHALL set the playback loop range to that section's measures. When per-track generation is available, the selected section SHALL become its default measure range. At most one section SHALL be selected at a time, and the user SHALL be able to clear the selection.
+The user SHALL be able to select a section by clicking it on the ruler. Selecting a section SHALL set the song's loop region to that section's measures, creating the region if the song has none, and SHALL turn looping on. Clearing the selection SHALL NOT change the loop region or whether looping is on. Selecting a section SHALL NOT create an undo step. When per-track generation is available, the selected section SHALL become its default measure range. At most one section SHALL be selected at a time, and the user SHALL be able to clear the selection.
 
 #### Scenario: Loop the chorus
 - **WHEN** the user selects a Chorus covering measures 9–16 and presses Play
 - **THEN** only measures 9–16 play, and they repeat
+
+#### Scenario: Selecting turns looping on
+- **WHEN** the song has no loop region, looping is off, and the user selects a Chorus covering measures 9–16
+- **THEN** the loop region covers measures 9–16 and looping is on
+
+#### Scenario: Clearing the selection keeps the loop
+- **WHEN** the user has selected a Chorus covering measures 9–16 and then clears the selection
+- **THEN** the loop region still covers measures 9–16 and looping is still on
 
 ### Requirement: Section notes
 The song page SHALL provide a notes field for the selected section. Edits to that field SHALL be saved to the section. The field SHALL accept at most 5,000 characters and SHALL indicate when the limit is reached. The field SHALL be a text-entry target, so global editor shortcuts such as Space for play or stop SHALL NOT fire while it has focus.

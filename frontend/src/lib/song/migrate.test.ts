@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { note } from "@/test/fixtures";
 import { resolveTrackNotes } from "./clipOps";
 import { migrateSong } from "./migrate";
+import { songLoop } from "./songLoop";
 import { newSong } from "./types";
 
 const v2 = () => {
@@ -82,5 +83,39 @@ describe("migrateSong", () => {
   it("refuses a version 1 song that is not a song", () => {
     expect(migrateSong({ version: 1, tracks: "x" })).toBeNull();
     expect(migrateSong({ ...v1([]), tracks: [null] })).toBeNull();
+  });
+});
+
+describe("loop region on load", () => {
+  const R = (start: number, end: number, enabled = true) => ({
+    region: { start_measure: start, end_measure: end },
+    enabled,
+  });
+
+  it("opens a version 2 song without the field with no region and looping off", () => {
+    const song = migrateSong(v2())!;
+    expect(song.loop_region).toBeUndefined();
+    expect(songLoop(song)).toEqual({ region: null, enabled: false });
+  });
+
+  it("opens a migrated version 1 song with no region", () => {
+    expect(songLoop(migrateSong(v1([note("kick", 0)]))!)).toEqual({ region: null, enabled: false });
+  });
+
+  it("keeps a stored region and looping on with no region", () => {
+    expect(migrateSong({ ...v2(), loop_region: R(3, 4, false) })!.loop_region).toEqual(R(3, 4, false));
+    const none = { region: null, enabled: true };
+    expect(migrateSong({ ...v2(), loop_region: none })!.loop_region).toEqual(none);
+  });
+
+  it("clamps a stored region that extends past the song", () => {
+    expect(migrateSong({ ...v2(), loop_region: R(5, 40) })!.loop_region).toEqual(R(5, 8));
+  });
+
+  it("reads null, malformed and the flat shape as the default", () => {
+    for (const bad of [null, "x", { region: { start_measure: "a" }, enabled: true }, { start_measure: 2, end_measure: 3, enabled: true }]) {
+      const song = migrateSong({ ...v2(), loop_region: bad })!;
+      expect(songLoop(song)).toEqual({ region: null, enabled: false });
+    }
   });
 });

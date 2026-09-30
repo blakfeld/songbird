@@ -121,7 +121,7 @@ The system SHALL expose `GET /api/v1/songs/limits`, returning `200` with `{"max_
 ### Requirement: Generate a track in the Studio
 Each track in the Studio SHALL offer a Generate action. The action SHALL open a form with:
 - a prompt field, with the live token counter and over-limit behavior of the pattern editor;
-- a range choice: "Whole song" (offered only when the song has at most 32 measures), "Loop range" (offered when a loop range is set and spans at most 32 measures), or a custom start and end measure limited to 32 measures.
+- a range choice: "Whole song" (offered only when the song has at most 32 measures), "Loop range" (offered only while looping is on, the song has a loop region, and that region covers less than the whole song and spans at most 32 measures; it uses that region's measures), or a custom start and end measure limited to 32 measures.
 
 While the request is in flight:
 - the target track SHALL show a loading state, and its clips and loops SHALL NOT be editable;
@@ -161,6 +161,22 @@ The whole write SHALL be recorded as one undo step. On failure, the error messag
 - **WHEN** the song is 48 measures long
 - **THEN** the "Whole song" range option is not offered
 
+#### Scenario: Loop range follows the loop region
+- **WHEN** looping is on and the loop region covers measures 9–16 of a 48-measure song
+- **THEN** the "Loop range" option is offered and generates measures 9–16
+
+#### Scenario: Loop range needs looping on
+- **WHEN** looping is off and the loop region covers measures 9–16
+- **THEN** the "Loop range" option is not offered
+
+#### Scenario: Loop range needs a region
+- **WHEN** looping is on and the song has no loop region
+- **THEN** the "Loop range" option is not offered
+
+#### Scenario: Whole-song region is not a loop range
+- **WHEN** looping is on and the loop region covers every measure of a 16-measure song
+- **THEN** the "Loop range" option is not offered
+
 ### Requirement: Global song chat builds the arrangement
 The Studio's assistant column (laid out by #4 `add-multitrack-song`) SHALL provide one chat for the whole song, not tied to a selected track. The user SHALL be able to describe a part in plain language, such as "give me a piano that plays slow jazzy chords". The system SHALL then add a new track, pick an instrument from `GET /api/v1/instruments` that suits the request, and fill the track with generated notes over the chat range. The new track SHALL hold one loop named after the track and as long as the chat range, placed as one clip covering that range.
 
@@ -168,7 +184,7 @@ Later messages SHALL be understood in the light of the earlier conversation and 
 
 While a chat request is in flight, the chat input SHALL be disabled, and editing, the mixer, and playback SHALL remain usable. A track added from the chat SHALL be recorded as one undo step. When the song already has 16 tracks, the reply SHALL say so and the song SHALL be unchanged. When generation fails, the error SHALL be shown in the chat and the song SHALL be unchanged.
 
-The chat SHALL generate over the whole song when the song has at most 32 measures, and otherwise over the loop range when one is set and spans at most 32 measures. When neither applies, the reply SHALL ask the user to set a loop range and no track SHALL be added. The conversation, up to its latest 20 messages, SHALL be saved with the song and restored on reload.
+The chat SHALL generate over the whole song when the song has at most 32 measures, and otherwise over the song's loop region when looping is on, a region exists, it covers less than the whole song, and it spans at most 32 measures. When neither applies, the reply SHALL ask the user to turn on looping and set a loop region of at most 32 measures, and no track SHALL be added. The conversation, up to its latest 20 messages, SHALL be saved with the song and restored on reload.
 
 #### Scenario: Build a song one part at a time
 - **WHEN** in an empty song the user sends "give me a piano that plays slow jazzy chords", then "give me the drums to match", then "now the bass"
@@ -187,8 +203,8 @@ The chat SHALL generate over the whole song when the song has at most 32 measure
 - **THEN** the error is shown in the chat and no track is added
 
 #### Scenario: Long song without a loop range
-- **WHEN** the song is 48 measures long, no loop range is set, and the user asks the chat for a bass part
-- **THEN** the reply asks the user to set a loop range of at most 32 measures and no track is added
+- **WHEN** the song is 48 measures long, looping is off, and the user asks the chat for a bass part
+- **THEN** the reply asks the user to turn on looping and set a loop region of at most 32 measures, and no track is added
 
 #### Scenario: Conversation survives reload
 - **WHEN** the user has exchanged three messages with the chat and reloads the page
@@ -198,7 +214,7 @@ The chat SHALL generate over the whole song when the song has at most 32 measure
 The system SHALL expose `POST /api/v1/songs/chat`, accepting a JSON body with:
 - `song`: a song document;
 - `messages`: 1–20 `{role, content}` entries, where `role` is `user` or `assistant` and the last entry is from the user;
-- optional `range`: `{start_measure, end_measure}`, the Studio's loop range.
+- optional `range`: `{start_measure, end_measure}`, the song's loop region, sent only while looping is on and a region exists that covers less than the whole song.
 
 The last message SHALL follow the prompt rules of pattern generation. Assistant messages SHALL be at most 4,000 characters. On success it SHALL respond `200` with `{"reply", "track"}`. `track` is either `null` or `{"name", "instrument", "range", "notes"}`, where `instrument` is an id listed by `GET /api/v1/instruments`, `name` is 1–40 characters, `range` is the chat range `{start_measure, end_measure}`, and `notes` follow the "Generate one track of a song" note rules, counted from the start of `range`, for that instrument and range. The generated part SHALL use the other unmuted tracks as context, as in "Other tracks as generation context". The endpoint SHALL NOT store the song or the conversation. Invalid bodies SHALL be rejected with `400` and a validation error code. Provider failures and timeouts SHALL use the same codes as track generation.
 

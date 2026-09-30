@@ -58,7 +58,7 @@
   - insert before/after
   
   It should disable sizes that would exceed 128 measures and show the reason. Verify with Vitest and React Testing Library interaction tests.
-- [ ] 3.3 Add section selection (D6). Selecting a section sets the transport loop range, and clicking again or pressing Escape clears the selection. When #6's generation range control is present, pass the selection as its default. Verify with a Vitest test that selecting the chorus sets the loop to 9–16.
+- [ ] 3.3 Add section selection (D6). Selecting a section calls `songStore.setLoop` with the section's span and `enabled: true`, and clicking again or pressing Escape clears the selection without changing `loop_region`. When #6's generation range control is present, pass the selection as its default. Verify with Vitest tests that selecting the chorus while looping is off sets `loop_region` to 9–16 with looping on, that clearing the selection leaves `loop_region` unchanged, that selecting adds no undo entry, and that selecting a section on a song with no region creates one, and that deleting a section clamps the region with `clampLoop`.
 - [ ] 3.4 Add `components/song/SectionNotes.tsx`, a textarea for the selected section with a character count and a limit indicator. Verify with a Vitest test that Space inside it types a space and does not start playback, and that notes stay per section when the selection switches.
 
 ## 4. Compatibility with export and project files
