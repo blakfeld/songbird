@@ -61,7 +61,7 @@ The AI provider SHALL receive, in addition to the prompt, the following context:
 - the target track's own notes in the measure immediately before and the measure immediately after the range, where those exist;
 - a summary of every other track that is not muted, covering the range plus one measure on each side.
 
-Each track summary SHALL include the track's name and instrument. For melodic instruments it SHALL include the pitches sounding on each beat and the lowest sounding pitch. For drums it SHALL include which drum rows are struck on each step. Solo state SHALL NOT affect context. Track names and all other user-provided text in the context SHALL be escaped so that they cannot be read as instructions outside their delimited block.
+Each track summary SHALL include the track's name and instrument. For melodic instruments it SHALL include the pitches sounding on each beat (4 steps in 4/4 and 3/4, 6 steps in 6/8) and the lowest sounding pitch. For drums it SHALL include which drum rows are struck on each step. Solo state SHALL NOT affect context. Track names and all other user-provided text in the context SHALL be escaped so that they cannot be read as instructions outside their delimited block.
 
 #### Scenario: Other tracks reach the provider
 - **WHEN** a Bass track is generated for measures 1–4 while a Drums track has a kick on step 0 and a Piano track holds C4, E4, and G4 during beat 1 of measure 1

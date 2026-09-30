@@ -4,7 +4,7 @@
 
 After add-multitrack-song, a song is one undivided run of measures. Songwriters think in sections, though: intro, verse, chorus, bridge. They need to see that structure, grow or repeat a chorus without redrawing every track, and jot down what each section is for ("verse 2: the letter arrives"). Sections are also the unit that later tools key off. Chord generation (add-section-chord-generation) writes a progression per section. The lyric assistant (add-lyrics-assistant) reads section names and notes. So sections have to exist first.
 
-**Depends on:** #4 add-multitrack-song (the Song document, tracks, song page, and song persistence). Archive after it.
+**Depends on:** #4 add-multitrack-song (the Song document, tracks, song page, and song persistence) and #5 add-song-export (the Rust `Song` type that `sections` is added to, the project-file validator, and `fixtures/song_validation.json`). Archive after both.
 
 ## What Changes
 

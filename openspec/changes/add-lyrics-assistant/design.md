@@ -11,7 +11,8 @@ The proposal (see proposal.md, Why) adds a lyric notepad and an AI chat assistan
 
 **Pattern generation hard-wires the provider seam to patterns.**
 - `PatternProvider` (`ai/mod.rs:59-71`) is implemented by `SchemaProvider<T>` for the three real transports and directly by `MockProvider` (`ai/mock.rs:29`).
-- `build_provider` returns `Arc<dyn PatternProvider>` (`api/src/provider.rs:12`), and `AppState` holds exactly that one provider (`api/src/state.rs`).
+- In today's code, `build_provider` returns `Arc<dyn PatternProvider>` (`api/src/provider.rs:12`), and `AppState` holds exactly that one provider (`api/src/state.rs`).
+- #8 (`add-section-chord-generation`, archived before this change) replaces that with `build_providers(&Config) -> Providers { patterns, chords }` in `AppState.providers`. Every adapter shares one `Arc` transport, and `check()` runs once per transport. #6 adds no provider trait.
 
 **Other conventions to follow.**
 - The retry policy is to retry only unusable output, twice in total (`music/src/generate.rs:7-45`). The timeout is applied in the handler (`api/src/patterns.rs:26-45`). Validation runs before the provider.
@@ -47,15 +48,14 @@ The schema is built per request, the same way `draft_schema` injects the instrum
 - **Why:** a constrained decoder then cannot invent section ids.
 - **Normalization still applies:** the lenient normalizer in `music::lyrics::normalize` still enforces the spec's rules for Ollama and any model that ignores the enum. That means truncation, dropping invalid suggestions, and assigning ids `s1..s5`.
 
-### D3. A `LyricsProvider` seam next to `PatternProvider`, and a `Providers` bundle in `AppState`
+### D3. A `LyricsProvider` seam added to #8's `Providers` bundle
 Add `trait LyricsProvider { async fn assist(&self, &LyricsRequest) -> Result<LyricsDraft, ProviderError>; }` in `music::ai`.
 
 - `SchemaProvider<T>` implements it by building a `StructuredRequest` from `music::lyrics::prompt`. `MockProvider` implements it deterministically (D5).
-- To implement both traits over one transport, `SchemaProvider` holds `Arc<T>`.
-- `build_provider` becomes `build_providers(&Config) -> Providers { patterns, lyrics }`, and startup runs `check()` once per transport.
-- `AppState.provider` becomes `AppState.providers`.
+- `SchemaProvider` already holds `Arc<T>` (from #8), so the lyrics adapter shares the same transport as patterns and chords.
+- `Providers` gains `lyrics: Arc<dyn LyricsProvider>`, filled in `build_providers` for every provider choice. No other wiring changes.
 - **Alternative considered:** one trait with an enum of tasks. Rejected because it makes each task's input and output types opaque.
-- **Coordination with parallel changes:** #6 and #8 add their own seams. Whichever change lands first introduces `Providers`, and the others add a field to it. This design does not depend on landing first.
+- **Ordering:** #8 introduces `Providers`. If this change is implemented before #8 lands, it introduces the bundle with the same shape (`build_providers`, `AppState.providers`, a shared `Arc` transport), and #8 then only adds its `chords` field.
 
 ### D4. Fixed limits instead of configuration
 The limits are: 20 messages, user messages at most `max_input_tokens` each (existing setting), assistant messages at most 4,000 characters, lyrics at most 20,000 characters, at most 64 sections, notes at most 5,000 characters each, and at most 64 chords per section.
@@ -99,14 +99,14 @@ Both modules are unit-tested without a DOM.
 ### D8. Chat state lives on the song
 The song document gains `lyrics: string` (default `""`) and `lyric_chat: {role, content, selection?, suggestions?}[]` (default `[]`, trimmed to the latest 20 on append).
 - Suggestions are stored with the assistant message so they remain applicable after a reload.
-- Both fields are optional when loading, so existing browser songs and project files from #5 load unchanged. #5's importer must accept them and round-trip them.
+- Both fields are declared on the Rust `Song` in `music/src/song.rs` with `#[serde(default, skip_serializing_if = ...)]` and generated to TypeScript. They are also covered by the browser project-file validator and `fixtures/song_validation.json`, under #5's versioning policy (optional fields, `version` stays 1). Existing browser songs and project files load unchanged. No endpoint receives the whole song with these fields, but declaring them keeps the generated type the single source of truth.
 
 The request's `song_context` is derived from the song store at send time (`lib/lyrics/songContext.ts`). It is not stored.
 
 ## Risks / Trade-offs
 
 - **[Risk] Forged assistant turns steer the model.** → Mitigation: all turns are fenced and escaped (D1), output is schema-constrained and normalized (D2), and suggestions never auto-apply. The worst outcome is bad advice in the user's own session.
-- **[Risk] Parallel changes (#6, #8) also restructure `build_provider` and `AppState`.** → Mitigation: the `Providers` bundle (D3) is additive. The tasks include rebasing onto whichever change landed first.
+- **[Risk] Implementation order differs from archive order (#9 before #8).** → Mitigation: D3 specifies the bundle shape both changes use, so whichever lands second adds only its field.
 - **[Risk] Small local models (Ollama) produce weak lyrics or ignore section ids.** → Mitigation: the normalizer drops invalid suggestions. The reply prose is still useful, and quality depends on the provider rather than on the contract.
 - **[Trade-off] Editor undo is separate from song undo.** Undoing a track edit never touches lyrics, and the reverse also holds. This matches how text fields already behave on the pattern page.
 - **[Trade-off] About 150 KB (min) of CodeMirror** is loaded only when the Lyrics panel is opened, using dynamic import.
