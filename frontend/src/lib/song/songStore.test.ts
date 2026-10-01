@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { drums, note } from "@/test/fixtures";
+import { createTakeState } from "./clipOps";
 import { createSongStore } from "./songStore";
 import { normalizeSong } from "./songOps";
 import { newSong } from "./types";
@@ -394,5 +395,180 @@ describe("songStore clip resize gestures", () => {
     expect(store.getState().song!.tracks[0].loops[0].notes).toEqual([]);
     store.getState().undo();
     expect(store.getState().song!.tracks[0].loops[0]).toMatchObject({ measures: 4, notes: [note("kick", 3 * 16)] });
+  });
+});
+
+describe("generated ranges", () => {
+  const range = { start_measure: 5, end_measure: 8 };
+  const setupKeys = () => {
+    const base = newSong();
+    const keys = {
+      ...base.tracks[1],
+      id: "keys",
+      name: "Keys",
+      loops: [{ id: "a", name: "Keys A", measures: 4, notes: [note("C4", 0)] }],
+      clips: [{ id: "c", loop_id: "a", start_measure: 1, measures: 12 }],
+    };
+    return createSongStore(normalizeSong({ ...base, tracks: [base.tracks[0], keys] }));
+  };
+
+  it("applies as one undo step, selects the new clip, and undoes exactly", () => {
+    const store = setupKeys();
+    const before = store.getState().song!;
+    expect(store.getState().applyGeneratedRange("keys", range, [note("E4", 2)])).toBeNull();
+    const s = store.getState();
+    expect(s.past).toHaveLength(1);
+    const keys = s.song!.tracks[1];
+    const placed = keys.clips.find((c) => c.start_measure === 5)!;
+    expect(keys.loops.find((l) => l.id === placed.loop_id)!.name).toBe("Keys 1");
+    expect(s.selectedTrackId).toBe("keys");
+    expect(s.selectedClipId).toBe(placed.id);
+    s.undo();
+    expect(store.getState().song).toEqual(before);
+  });
+
+  it("refuses with a message at the loop limit and records nothing", () => {
+    const store = setupKeys();
+    const song = store.getState().song!;
+    const keys = song.tracks[1];
+    const loops = [...keys.loops, ...Array.from({ length: 63 }, (_, i) => ({ id: `x${i}`, name: `X${i}`, measures: 1, notes: [] }))];
+    store.getState().loadSong({ ...song, tracks: [song.tracks[0], { ...keys, loops }] });
+    const message = store.getState().applyGeneratedRange("keys", range, []);
+    expect(message).toMatch(/64 loops/);
+    expect(store.getState().past).toHaveLength(0);
+  });
+
+  it("locks the generating track's note edits and blocks a second generate", () => {
+    const store = setupKeys();
+    expect(store.getState().beginGenerating("keys")).toBe(true);
+    expect(store.getState().beginGenerating("keys")).toBe(false);
+    expect(store.getState().beginGenerating(store.getState().song!.tracks[0].id)).toBe(false);
+    const before = store.getState().song;
+    store.getState().editLoopNotes("keys", "a", [], () => []);
+    store.getState().recordNotes("keys", [note("C4", 0)], createTakeState());
+    expect(store.getState().song).toBe(before);
+    expect(store.getState().applyGeneratedRange("keys", range, [])).toBeNull();
+    store.getState().endGenerating();
+    expect(store.getState().generatingTrackId).toBeNull();
+    expect(store.getState().beginGenerating("missing")).toBe(false);
+  });
+});
+
+describe("generation lock on clip operations", () => {
+  it("refuses clip and loop ops on the locked track and allows other tracks", () => {
+    const base = newSong();
+    const keys = {
+      ...base.tracks[1],
+      id: "keys",
+      loops: [{ id: "a", name: "Keys A", measures: 2, notes: [] }],
+      clips: [{ id: "c", loop_id: "a", start_measure: 1, measures: 2 }],
+    };
+    const store = createSongStore(normalizeSong({ ...base, tracks: [base.tracks[0], keys] }));
+    store.getState().beginGenerating("keys");
+    const before = store.getState().song;
+    const s = store.getState();
+    expect(s.deleteClip("keys", "c")).toBe("generating");
+    expect(s.renameLoop("keys", "a", "New")).toBe("generating");
+    expect(s.moveClip("keys", "c", 3)).toBe("generating");
+    expect(store.getState().song).toBe(before);
+    expect(s.newClip(base.tracks[0].id, 1)).toBeNull();
+  });
+});
+
+describe("generation tokens", () => {
+  it("ignores an endGenerating from a stale token and honours the current one", () => {
+    const store = setup();
+    const id = store.getState().song!.tracks[0].id;
+    store.getState().beginGenerating(id);
+    const stale = store.getState().generationToken;
+    store.getState().loadSong(newSong());
+    const next = store.getState().song!.tracks[0].id;
+    store.getState().beginGenerating(next);
+    store.getState().endGenerating(stale);
+    expect(store.getState().generatingTrackId).toBe(next);
+    store.getState().endGenerating(store.getState().generationToken);
+    expect(store.getState().generatingTrackId).toBeNull();
+  });
+
+  it("clears the lock on load", () => {
+    const store = setup();
+    store.getState().beginGenerating(store.getState().song!.tracks[0].id);
+    store.getState().loadSong(newSong());
+    expect(store.getState().generatingTrackId).toBeNull();
+  });
+});
+
+describe("chat results", () => {
+  const range = { start_measure: 1, end_measure: 4 };
+  const part = { name: "Bass", instrument: "bass", range, notes: [note("C2", 0, 4)] };
+
+  it("adds the track with ids and defaults, labels the reply, and is one history entry", () => {
+    const store = setup();
+    expect(store.getState().applyChatResult("add bass", { reply: "Added a Bass track.", track: part })).toBeNull();
+    const s = store.getState();
+    const added = s.song!.tracks[2];
+    expect(added).toMatchObject({ name: "Bass", instrument: "bass", volume_db: 0, pan: 0, muted: false });
+    expect(added.loops).toHaveLength(1);
+    expect(added.clips).toEqual([
+      { id: expect.any(String), loop_id: added.loops[0].id, start_measure: 1, measures: 4 },
+    ]);
+    expect(added.loops[0].notes).toEqual(part.notes);
+    expect(s.song!.chat).toEqual([
+      { role: "user", content: "add bass" },
+      { role: "assistant", content: "Added a Bass track.", track_id: added.id },
+    ]);
+    expect(s.past).toHaveLength(1);
+    expect(s.selectedTrackId).toBe(added.id);
+  });
+
+  it("undo removes the track but keeps the conversation, and redo brings the track back", () => {
+    const store = setup();
+    store.getState().applyChatResult("add bass", { reply: "Added a Bass track.", track: part });
+    const id = store.getState().song!.tracks[2].id;
+    store.getState().undo();
+    expect(store.getState().song!.tracks).toHaveLength(2);
+    expect(store.getState().song!.chat).toHaveLength(2);
+    expect(store.getState().song!.chat![1].track_id).toBe(id);
+    store.getState().redo();
+    expect(store.getState().song!.tracks[2].id).toBe(id);
+    expect(store.getState().song!.chat).toHaveLength(2);
+  });
+
+  it("records a reply-only turn without an undo step or a track", () => {
+    const store = setup();
+    store.getState().applyChatResult("what tempo?", { reply: "120 BPM.", track: null });
+    const s = store.getState();
+    expect(s.song!.tracks).toHaveLength(2);
+    expect(s.past).toHaveLength(0);
+    expect(s.song!.chat).toEqual([
+      { role: "user", content: "what tempo?" },
+      { role: "assistant", content: "120 BPM." },
+    ]);
+  });
+
+  it("keeps only the latest 20 messages", () => {
+    const store = setup();
+    for (let i = 0; i < 12; i++)
+      store.getState().applyChatResult(`q${i}`, { reply: `a${i}`, track: null });
+    const chat = store.getState().song!.chat!;
+    expect(chat).toHaveLength(20);
+    expect(chat[0]).toEqual({ role: "user", content: "q2" });
+    expect(chat[19]).toEqual({ role: "assistant", content: "a11" });
+  });
+
+  it("refuses a track at the 16-track limit and records nothing", () => {
+    const base = newSong();
+    const store = createSongStore({
+      ...base,
+      tracks: Array.from({ length: 16 }, (_, i) => ({ ...base.tracks[0], id: `t${i}`, name: `T${i}` })),
+    });
+    expect(store.getState().applyChatResult("more", { reply: "ok", track: part })).toMatch(/16 tracks/);
+    expect(store.getState().song!.chat).toBeUndefined();
+  });
+
+  it("keeps unrecognised song fields through a chat turn", () => {
+    const store = createSongStore({ ...newSong(), future_field: { a: 1 } } as never);
+    store.getState().applyChatResult("add bass", { reply: "ok", track: part });
+    expect((store.getState().song as unknown as Record<string, unknown>).future_field).toEqual({ a: 1 });
   });
 });

@@ -1,45 +1,86 @@
 use std::sync::Arc;
 
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, PatternProvider, ProviderError,
-    SchemaProvider,
+    ClaudeProvider, CodexCliProvider, MockPlanProvider, MockProvider, OllamaProvider,
+    PatternProvider, PlanProvider, ProviderError, SchemaPlanProvider, SchemaProvider,
+    StructuredProvider,
 };
 
 use crate::config::{Config, ProviderKind, ANTHROPIC_API_KEY, BIND_ADDR};
 
+/// One transport serves both provider kinds, so a model is configured and
+/// checked once however many kinds the API needs.
+#[derive(Clone)]
+pub struct Providers {
+    pub patterns: Arc<dyn PatternProvider>,
+    pub plans: Arc<dyn PlanProvider>,
+}
+
+impl Providers {
+    pub fn mock() -> Self {
+        Self::with_patterns(MockProvider)
+    }
+
+    /// For tests that swap in a fake pattern provider but still want a working
+    /// planner.
+    pub fn with_patterns(patterns: impl PatternProvider + 'static) -> Self {
+        Self::new(patterns, MockPlanProvider)
+    }
+
+    pub fn new(
+        patterns: impl PatternProvider + 'static,
+        plans: impl PlanProvider + 'static,
+    ) -> Self {
+        Self {
+            patterns: Arc::new(patterns),
+            plans: Arc::new(plans),
+        }
+    }
+}
+
+async fn over_transport<T: StructuredProvider + 'static>(
+    transport: T,
+) -> Result<Providers, ProviderError> {
+    transport.check().await?;
+    let transport = Arc::new(transport);
+    Ok(Providers::new(
+        SchemaProvider::new(transport.clone()),
+        SchemaPlanProvider::new(transport),
+    ))
+}
+
 /// Fails startup, rather than the first request, when the selected provider is
 /// unusable; every message says how to fix it.
-pub async fn build_provider(config: &Config) -> Result<Arc<dyn PatternProvider>, ProviderError> {
-    let provider: Arc<dyn PatternProvider> = match config.ai_provider {
+pub async fn build_providers(config: &Config) -> Result<Providers, ProviderError> {
+    match config.ai_provider {
         ProviderKind::Claude => {
             let key = config.anthropic_api_key.clone().ok_or_else(|| {
                 ProviderError::Unavailable(format!(
                     "{ANTHROPIC_API_KEY} is required when SONGBIRD_AI_PROVIDER=claude"
                 ))
             })?;
-            Arc::new(SchemaProvider::new(ClaudeProvider::new(
-                key,
-                config.ai_model.clone(),
-            )))
+            over_transport(ClaudeProvider::new(key, config.ai_model.clone())).await
         }
-        ProviderKind::Ollama => Arc::new(SchemaProvider::new(OllamaProvider::new(
-            config.ollama_url.clone(),
-            config.ollama_model.clone(),
-        ))),
+        ProviderKind::Ollama => {
+            over_transport(OllamaProvider::new(
+                config.ollama_url.clone(),
+                config.ollama_model.clone(),
+            ))
+            .await
+        }
         ProviderKind::Codex => {
             require_loopback_for_codex(config)?;
             tracing::warn!(
                 "the codex provider uses a personal ChatGPT subscription and is for local testing only"
             );
-            Arc::new(SchemaProvider::new(CodexCliProvider::new(
+            over_transport(CodexCliProvider::new(
                 config.codex_bin.clone(),
                 config.codex_model.clone(),
-            )))
+            ))
+            .await
         }
-        ProviderKind::Mock => Arc::new(MockProvider),
-    };
-    provider.check().await?;
-    Ok(provider)
+        ProviderKind::Mock => Ok(Providers::mock()),
+    }
 }
 
 /// Exposing this provider on a network would let strangers spend the
@@ -59,6 +100,7 @@ fn require_loopback_for_codex(config: &Config) -> Result<(), ProviderError> {
 mod tests {
     use super::*;
     use crate::config::{AI_PROVIDER, BIND_ADDR, CODEX_BIN, OLLAMA_MODEL, OLLAMA_URL};
+    use music::ai::StructuredRequest;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -82,10 +124,42 @@ mod tests {
     }
 
     async fn error_of(config: &Config) -> String {
-        match build_provider(config).await {
+        match build_providers(config).await {
             Ok(_) => panic!("expected startup to fail"),
             Err(e) => e.to_string(),
         }
+    }
+
+    struct CountingTransport(Arc<std::sync::atomic::AtomicUsize>);
+
+    #[async_trait::async_trait]
+    impl StructuredProvider for CountingTransport {
+        fn name(&self) -> &'static str {
+            "counting"
+        }
+        async fn generate(
+            &self,
+            _: &StructuredRequest,
+        ) -> Result<serde_json::Value, ProviderError> {
+            unreachable!("only the startup check runs")
+        }
+        async fn check(&self) -> Result<(), ProviderError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_transport_is_checked_once_for_both_provider_kinds() {
+        let checks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let providers = over_transport(CountingTransport(checks.clone()))
+            .await
+            .unwrap();
+        assert_eq!(checks.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // The kinds still delegate to the shared transport when asked.
+        providers.patterns.check().await.unwrap();
+        providers.plans.check().await.unwrap();
+        assert_eq!(checks.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
@@ -97,7 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn mock_starts_without_any_setup() {
-        build_provider(&config(&[(AI_PROVIDER, "mock")]))
+        build_providers(&config(&[(AI_PROVIDER, "mock")]))
             .await
             .unwrap();
     }

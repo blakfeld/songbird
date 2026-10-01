@@ -349,11 +349,11 @@ describe("undo and redo", () => {
 });
 
 describe("assistant column", () => {
-  it("renders the empty state and a disabled input", async () => {
+  it("renders the empty state with an enabled input and Send disabled until there is text", async () => {
     await renderStudio();
     const panel = screen.getByRole("complementary", { name: "Assistant" });
     expect(within(panel).getByText("Your song assistant")).toBeInTheDocument();
-    expect(within(panel).getByRole("textbox", { name: "Message the assistant" })).toBeDisabled();
+    expect(within(panel).getByRole("textbox", { name: "Message the assistant" })).toBeEnabled();
     expect(within(panel).getByRole("button", { name: "Send message" })).toBeDisabled();
   });
 });

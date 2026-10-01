@@ -103,7 +103,10 @@ impl StructuredProvider for ClaudeProvider {
             })
             .map(|block| block["input"].clone())
             .ok_or_else(|| {
-                ProviderError::InvalidOutput("response contained no emit_pattern tool call".into())
+                ProviderError::InvalidOutput(format!(
+                    "response contained no {} tool call",
+                    request.tool_name
+                ))
             })
     }
 

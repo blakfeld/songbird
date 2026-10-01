@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 
 use super::{PatternProvider, ProviderError};
-use crate::draft::PatternDraft;
-use crate::instruments::Instrument;
+use crate::context::bass_by_beat_at_range_start;
+use crate::draft::{DraftLane, DraftSection, LaneSteps, PatternDraft};
+use crate::instruments::pitch::{parse_pitch, pitch_name};
+use crate::instruments::{Instrument, InstrumentKind};
 use crate::request::GenerateRequest;
 
 /// Deterministic and offline so tests and CI need no key, server, or model.
@@ -16,7 +18,7 @@ fn stable_hash(request: &GenerateRequest) -> u64 {
         "{}|{}|{}|{}|{:?}|{:?}",
         request.instrument.id,
         request.prompt,
-        request.measures.get(),
+        request.measures,
         request.time_signature.as_str(),
         request.tempo_bpm,
         request.swing,
@@ -24,6 +26,106 @@ fn stable_hash(request: &GenerateRequest) -> u64 {
     key.bytes().fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
     })
+}
+
+/// Lets end-to-end tests see context change the output without a model. Only
+/// the first section is adjusted, and each beat's first note moves to the
+/// nearest pitch with the bass's pitch class, folded into the instrument's range.
+fn follow_bass(
+    draft: &mut PatternDraft,
+    bass: &[Option<i32>],
+    instrument: &Instrument,
+    steps_per_beat: u32,
+) {
+    let Some(range) = instrument.range else {
+        return;
+    };
+    let Some(section) = draft.sections.first_mut() else {
+        return;
+    };
+    for (beat, bass) in bass.iter().enumerate() {
+        let Some(bass) = bass else { continue };
+        let window = beat as u32 * steps_per_beat..(beat as u32 + 1) * steps_per_beat;
+        let first = section
+            .lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(lane, l)| {
+                let LaneSteps::Pattern(steps) = &l.steps else {
+                    return None;
+                };
+                let step = window.clone().find(|&s| {
+                    matches!(steps.as_bytes().get(s as usize), Some(b'g' | b'x' | b'X'))
+                })?;
+                Some((step, parse_pitch(&l.lane)?, lane))
+            })
+            .min();
+        let Some((step, pitch, lane)) = first else {
+            continue;
+        };
+        let shift = (bass - pitch).rem_euclid(12);
+        let target = if shift > 6 {
+            pitch + shift - 12
+        } else {
+            pitch + shift
+        };
+        let Some(target) = range.fold(target) else {
+            continue;
+        };
+        let name = pitch_name(target);
+        if name == section.lanes[lane].lane {
+            continue;
+        }
+        let (moved, hold_end) = take_note(&mut section.lanes[lane], step);
+        put_note(section, &name, step, moved, hold_end);
+    }
+}
+
+/// The hold run moves with its onset, because leaving it behind would turn the
+/// note's sustain into a stray rest-then-hold sequence on the old lane.
+fn take_note(lane: &mut DraftLane, step: u32) -> (u8, u32) {
+    let LaneSteps::Pattern(steps) = &mut lane.steps else {
+        unreachable!("only step strings are selected");
+    };
+    let mut bytes = steps.clone().into_bytes();
+    let onset = bytes[step as usize];
+    let mut end = step as usize + 1;
+    bytes[step as usize] = b'.';
+    while bytes.get(end) == Some(&b'-') {
+        bytes[end] = b'.';
+        end += 1;
+    }
+    *steps = String::from_utf8(bytes).expect("ASCII step strings stay ASCII");
+    (onset, end as u32)
+}
+
+fn put_note(section: &mut DraftSection, lane: &str, step: u32, onset: u8, hold_end: u32) {
+    let spm = section
+        .lanes
+        .iter()
+        .find_map(|l| match &l.steps {
+            LaneSteps::Pattern(s) => Some(s.len()),
+            LaneSteps::Velocities(_) => None,
+        })
+        .unwrap_or(0);
+    let index = match section.lanes.iter().position(|l| l.lane == lane) {
+        Some(i) => i,
+        None => {
+            section.lanes.push(DraftLane {
+                lane: lane.to_string(),
+                steps: LaneSteps::Pattern(".".repeat(spm)),
+            });
+            section.lanes.len() - 1
+        }
+    };
+    if let LaneSteps::Pattern(steps) = &mut section.lanes[index].steps {
+        let mut bytes = steps.clone().into_bytes();
+        bytes[step as usize] = onset;
+        for hold in step + 1..hold_end {
+            bytes[hold as usize] = b'-';
+        }
+        *steps = String::from_utf8(bytes).expect("ASCII step strings stay ASCII");
+    }
 }
 
 #[async_trait]
@@ -49,7 +151,18 @@ impl PatternProvider for MockProvider {
                     instrument.id
                 ))
             })?;
-        Ok(example.draft())
+        let mut draft = example.draft();
+        if instrument.kind == InstrumentKind::Melodic {
+            if let Some(context) = &request.context {
+                follow_bass(
+                    &mut draft,
+                    &bass_by_beat_at_range_start(context),
+                    instrument,
+                    request.time_signature.steps_per_beat(),
+                );
+            }
+        }
+        Ok(draft)
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -111,5 +224,68 @@ mod tests {
             names.insert(draft.name);
         }
         assert!(names.len() > 1);
+    }
+
+    fn melodic_request(context: Option<&str>) -> GenerateRequest {
+        let mut request = GenerateRequestBody {
+            instrument: "piano".into(),
+            prompt: "slow jazzy chords".into(),
+            measures: 4,
+            ..Default::default()
+        }
+        .validate(&InstrumentRegistry::builtin(), 256)
+        .unwrap();
+        request.context = context.map(str::to_string);
+        request
+    }
+
+    fn bass_context(pitch: &str) -> String {
+        format!(
+            "Target track: \"Keys\" (piano), writing measures 1-4\nTrack \"Bass\" (bass):\n\
+             m1 b1: {pitch} (bass {pitch}) | b2: {pitch} (bass {pitch}) | b3: {pitch} (bass {pitch}) | b4: {pitch} (bass {pitch})"
+        )
+    }
+
+    async fn melodic_draft(context: Option<&str>) -> PatternDraft {
+        let request = melodic_request(context);
+        MockProvider
+            .generate(&request, request.instrument)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn melodic_output_with_context_is_deterministic() {
+        let context = bass_context("A2");
+        assert_eq!(
+            melodic_draft(Some(&context)).await,
+            melodic_draft(Some(&context)).await
+        );
+    }
+
+    #[tokio::test]
+    async fn changing_the_bass_in_the_context_changes_the_melodic_output() {
+        let low_c = melodic_draft(Some(&bass_context("C2"))).await;
+        let f_sharp = melodic_draft(Some(&bass_context("F#2"))).await;
+        assert_ne!(low_c, f_sharp);
+    }
+
+    #[tokio::test]
+    async fn bass_following_keeps_the_draft_usable() {
+        let request = melodic_request(Some(&bass_context("G#3")));
+        let draft = melodic_draft(request.context.as_deref()).await;
+        let normalized = draft.normalize(request.instrument, 16).unwrap();
+        assert!(!normalized.sections[0].is_empty());
+    }
+
+    #[tokio::test]
+    async fn drums_ignore_context() {
+        let mut request = request("rock", 4);
+        let without = MockProvider.generate(&request, &DRUMS).await.unwrap();
+        request.context = Some(bass_context("C2"));
+        assert_eq!(
+            MockProvider.generate(&request, &DRUMS).await.unwrap(),
+            without
+        );
     }
 }

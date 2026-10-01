@@ -7,6 +7,10 @@ pub const DEFAULT_MAX_INPUT_TOKENS: u32 = 256;
 pub const MIN_MAX_INPUT_TOKENS: u32 = 16;
 pub const MAX_MAX_INPUT_TOKENS: u32 = 4096;
 
+/// Zero is allowed so an operator can switch song context off entirely.
+pub const DEFAULT_MAX_CONTEXT_TOKENS: u32 = 4000;
+pub const MAX_MAX_CONTEXT_TOKENS: u32 = 32000;
+
 /// Exactly the set JavaScript's `String.prototype.trim` strips. Rust's own
 /// `trim` differs (it strips U+0085 but not U+FEFF), which would let the
 /// browser and server disagree on the same prompt.

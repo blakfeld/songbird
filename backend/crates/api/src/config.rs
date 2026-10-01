@@ -5,7 +5,10 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 
-use music::tokens::{DEFAULT_MAX_INPUT_TOKENS, MAX_MAX_INPUT_TOKENS, MIN_MAX_INPUT_TOKENS};
+use music::tokens::{
+    DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_INPUT_TOKENS, MAX_MAX_CONTEXT_TOKENS,
+    MAX_MAX_INPUT_TOKENS, MIN_MAX_INPUT_TOKENS,
+};
 use secrecy::SecretString;
 
 pub const BIND_ADDR: &str = "SONGBIRD_BIND_ADDR";
@@ -15,13 +18,14 @@ pub const AI_MODEL: &str = "SONGBIRD_AI_MODEL";
 pub const CORS_ORIGINS: &str = "SONGBIRD_CORS_ORIGINS";
 pub const GENERATION_TIMEOUT_SECS: &str = "SONGBIRD_GENERATION_TIMEOUT_SECS";
 pub const MAX_INPUT_TOKENS: &str = "SONGBIRD_MAX_INPUT_TOKENS";
+pub const MAX_CONTEXT_TOKENS: &str = "SONGBIRD_MAX_CONTEXT_TOKENS";
 pub const OLLAMA_URL: &str = "SONGBIRD_OLLAMA_URL";
 pub const OLLAMA_MODEL: &str = "SONGBIRD_OLLAMA_MODEL";
 pub const CODEX_BIN: &str = "SONGBIRD_CODEX_BIN";
 pub const CODEX_MODEL: &str = "SONGBIRD_CODEX_MODEL";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 11] = [
+pub const ALL_VARIABLES: [&str; 12] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -29,6 +33,7 @@ pub const ALL_VARIABLES: [&str; 11] = [
     CORS_ORIGINS,
     GENERATION_TIMEOUT_SECS,
     MAX_INPUT_TOKENS,
+    MAX_CONTEXT_TOKENS,
     OLLAMA_URL,
     OLLAMA_MODEL,
     CODEX_BIN,
@@ -99,6 +104,7 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     pub generation_timeout: Duration,
     pub max_input_tokens: u32,
+    pub max_context_tokens: u32,
     pub ollama_url: String,
     pub ollama_model: String,
     pub codex_bin: String,
@@ -181,6 +187,20 @@ impl Config {
                 })?,
         };
 
+        let max_context_tokens = match get(MAX_CONTEXT_TOKENS) {
+            None => DEFAULT_MAX_CONTEXT_TOKENS,
+            Some(v) => v
+                .parse::<u32>()
+                .ok()
+                .filter(|t| *t <= MAX_MAX_CONTEXT_TOKENS)
+                .ok_or_else(|| {
+                    invalid(
+                        MAX_CONTEXT_TOKENS,
+                        format!("\"{v}\" is not an integer between 0 and {MAX_MAX_CONTEXT_TOKENS}"),
+                    )
+                })?,
+        };
+
         Ok(Self {
             bind_addr,
             ai_provider,
@@ -189,6 +209,7 @@ impl Config {
             cors_origins,
             generation_timeout: Duration::from_secs(timeout_secs),
             max_input_tokens,
+            max_context_tokens,
             ollama_url: get(OLLAMA_URL)
                 .unwrap_or_else(|| DEFAULT_OLLAMA_URL.into())
                 .trim_end_matches('/')
@@ -276,6 +297,27 @@ mod tests {
     }
 
     #[test]
+    fn max_context_tokens_defaults_and_accepts_custom_values() {
+        assert_eq!(mock(&[]).unwrap().max_context_tokens, 4000);
+        for (ok, expected) in [("0", 0), ("500", 500), ("32000", 32000)] {
+            assert_eq!(
+                mock(&[(MAX_CONTEXT_TOKENS, ok)])
+                    .unwrap()
+                    .max_context_tokens,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn max_context_tokens_out_of_range_names_its_variable() {
+        for bad in ["50000", "32001", "-1", "abc", "1.5"] {
+            let err = mock(&[(MAX_CONTEXT_TOKENS, bad)]).unwrap_err();
+            assert!(err.to_string().contains(MAX_CONTEXT_TOKENS), "{bad}: {err}");
+        }
+    }
+
+    #[test]
     fn other_invalid_values_name_their_variable() {
         for (var, value) in [
             (BIND_ADDR, "not-an-address"),
@@ -357,6 +399,7 @@ mod tests {
             (CORS_ORIGINS, "http://x.example"),
             (GENERATION_TIMEOUT_SECS, "7"),
             (MAX_INPUT_TOKENS, "99"),
+            (MAX_CONTEXT_TOKENS, "1234"),
             (OLLAMA_URL, "http://o"),
             (OLLAMA_MODEL, "om"),
             (CODEX_BIN, "cb"),
@@ -369,6 +412,7 @@ mod tests {
         assert_eq!(c.cors_origins, ["http://x.example"]);
         assert_eq!(c.generation_timeout.as_secs(), 7);
         assert_eq!(c.max_input_tokens, 99);
+        assert_eq!(c.max_context_tokens, 1234);
         assert_eq!(c.ollama_url, "http://o");
         assert_eq!(c.ollama_model, "om");
         assert_eq!(c.codex_bin, "cb");

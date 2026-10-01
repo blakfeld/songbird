@@ -57,6 +57,7 @@ export function Arrangement({
   subscribePosition,
   actions,
   clipActions,
+  generatingTrackId,
   onAddTrack,
   onSeek,
   sectionId,
@@ -72,6 +73,7 @@ export function Arrangement({
   subscribePosition: Playback["subscribePosition"];
   actions: TrackActions;
   clipActions: ClipActions;
+  generatingTrackId: string | null;
   onAddTrack: (instrument: InstrumentInfo) => void;
   onSeek: (trackId: string, measureIndex: number) => void;
   sectionId: string;
@@ -151,6 +153,7 @@ export function Arrangement({
             first={i === 0}
             actions={actions}
             clipActions={clipActions}
+            generatingTrackId={generatingTrackId}
             onSeek={onSeek}
           />
         ))}

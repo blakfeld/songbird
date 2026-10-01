@@ -295,6 +295,99 @@ test("edit a song's length, meter and key, then select, move, copy and undo note
   expect(problems).toEqual([]);
 });
 
+test("generate the bass for measures 1 to 4 from the drums, then undo", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await newSong(page, "Generate Song");
+
+  await page.getByRole("button", { name: "Add track" }).click();
+  await page.getByRole("menuitem", { name: "Bass", exact: true }).click();
+  const bass = page.getByRole("group", { name: /^Track 3: Bass/ });
+  await expect(bass).toBeVisible();
+
+  await page.getByRole("button", { name: /^Select Drums track/ }).click();
+  const drumsTrack = page.getByRole("group", { name: "Track 1: Drums" });
+  await drumsTrack.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const drumClip = drumsTrack.getByRole("button", { name: /^Drums 1, measure 1/ });
+  await drumClip.focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+ArrowRight");
+  await expect(drumsTrack.getByRole("button", { name: "Drums 1, measures 1 to 4", exact: true })).toBeVisible();
+  const drumsEditor = page.getByRole("region", { name: "Editor: Drums 1 on Drums" });
+  await drumsEditor.getByRole("button", { name: "Kick, measure 1, step 1", exact: true }).click();
+  await drumsEditor.getByRole("button", { name: "Kick, measure 2, step 1", exact: true }).click();
+  await expect(drumsEditor.getByTestId("note")).toHaveCount(2);
+
+  await expect(bass.getByRole("button", { name: /^Bass 1/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Track options for Bass" }).click();
+  await page.getByRole("menuitem", { name: /Generate part with AI/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Generate Bass" });
+  await expect(dialog.getByRole("textbox", { name: "Describe the part" })).toBeFocused();
+  await dialog.getByRole("textbox", { name: "Describe the part" }).fill("a bass line that follows the kick");
+  await dialog.getByRole("radio", { name: "Custom measures" }).check();
+  await dialog.getByRole("spinbutton", { name: "From measure" }).fill("1");
+  await dialog.getByRole("spinbutton", { name: "To measure" }).fill("4");
+  await dialog.getByRole("button", { name: "Generate" }).click();
+
+  const generated = bass.getByRole("button", { name: "Bass 1, measures 1 to 4", exact: true });
+  await expect(generated).toBeVisible();
+  await expect(bass.locator("[data-clip-id]")).toHaveCount(1);
+  // The clip's notes are drawn inside it, so a note in the bass lane that is not in this clip would be a stray part.
+  await expect(bass.getByTestId("clip-notes")).toHaveCount(1);
+  await expect(generated.getByTestId("clip-notes")).toBeVisible();
+  const bassEditor = page.getByRole("region", { name: "Editor: Bass 1 on Bass" });
+  expect(await bassEditor.getByTestId("note").count()).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(bass.locator("[data-clip-id]")).toHaveCount(0);
+
+  expect(problems).toEqual([]);
+});
+
+test("build piano, drums and bass through the chat, then undo the bass", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await newSong(page, "Chat Song");
+  const input = page.getByRole("textbox", { name: "Message the assistant" });
+  const send = async (text: string, reply: string) => {
+    await input.fill(text);
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByRole("log", { name: "Conversation" }).getByText(reply)).toBeVisible();
+    await expect(input).toBeEnabled();
+  };
+
+  // A new song starts with Drums and Piano, so the chat's tracks are told apart from them by name and the
+  // defaults are removed once the first chat track exists, leaving exactly the three parts the chat built.
+  await send("give me a piano that plays slow jazzy chords", "Added a Piano track.");
+  for (const name of ["Drums", "Piano"]) {
+    await page.getByRole("button", { name: `Track options for ${name}` }).first().click();
+    await page.getByRole("menuitem", { name: "Delete track" }).click();
+  }
+  await expect(page.getByRole("group", { name: /^Track \d+:/ })).toHaveCount(1);
+  await send("give me the drums to match", "Added a Drums track.");
+  await send("now the bass", "Added a Bass track.");
+
+  const tracks = page.getByRole("group", { name: /^Track \d+:/ });
+  await expect(tracks).toHaveCount(3);
+  await expect(tracks.nth(0)).toHaveAccessibleName(/Piano/);
+  await expect(tracks.nth(1)).toHaveAccessibleName(/Drums/);
+  await expect(tracks.nth(2)).toHaveAccessibleName(/Bass/);
+  for (let i = 0; i < 3; i++) {
+    await expect(tracks.nth(i).locator("[data-clip-id]")).toHaveCount(1);
+    await expect(tracks.nth(i).getByTestId("clip-notes")).toHaveCount(1);
+  }
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(tracks).toHaveCount(2);
+  await expect(page.getByRole("group", { name: /^Track \d+: Bass/ })).toHaveCount(0);
+  await expect(page.getByText("Track removed")).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
 test("download a project, open it as a new song, and export a multitrack MIDI file", async ({ page }) => {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));

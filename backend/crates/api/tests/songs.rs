@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use api::config::{Config, AI_PROVIDER};
+use api::provider::Providers;
 use api::routes::SONG_MAX_BODY_BYTES;
 use api::state::AppState;
 use axum::body::Body;
@@ -18,7 +19,7 @@ const ONE_MIB: usize = 1024 * 1024;
 fn app() -> axum::Router {
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
     api::app(AppState {
-        provider: Arc::new(music::ai::MockProvider),
+        providers: Providers::mock(),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
     })

@@ -1,6 +1,6 @@
 use crate::draft::{MeasureNotes, NormalizedDraft, FALLBACK_TEMPO_BPM};
 use crate::instruments::{Instrument, Monophony};
-use crate::meter::{MeasureCount, TimeSignature};
+use crate::meter::MeasureCount;
 use crate::pattern::{Note, Pattern};
 use crate::request::GenerateRequest;
 
@@ -11,6 +11,8 @@ pub const PHRASE_MEASURES: u32 = 4;
 /// Request tempo and swing win over the draft's because the user asked for
 /// them explicitly.
 pub fn build_pattern(draft: &NormalizedDraft, request: &GenerateRequest) -> Pattern {
+    let measures = MeasureCount::new(request.measures)
+        .expect("pattern requests are validated to an allowed length");
     let mut pattern = Pattern::empty(
         request.instrument,
         draft.name.clone(),
@@ -19,26 +21,61 @@ pub fn build_pattern(draft: &NormalizedDraft, request: &GenerateRequest) -> Patt
             .or(draft.tempo_bpm)
             .unwrap_or(FALLBACK_TEMPO_BPM),
         request.time_signature,
-        request.measures,
+        measures,
         request.swing.or(draft.swing).unwrap_or(0.0),
     );
-    pattern.notes = expand_notes(
+    pattern.notes = build_notes(
         draft,
+        GenerationSpan {
+            measures: request.measures,
+            steps_per_measure: request.time_signature.steps_per_measure(),
+        },
         request.instrument,
-        request.measures,
-        request.time_signature,
     );
     pattern
 }
 
-pub fn expand_notes(
+pub const MAX_SPAN_MEASURES: u32 = 32;
+
+/// Separate from `MeasureCount` because song ranges can be any length up to
+/// 32 measures, while the pattern API's five accepted lengths are a published
+/// contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GenerationSpan {
+    measures: u32,
+    steps_per_measure: u32,
+}
+
+impl GenerationSpan {
+    pub fn new(measures: u32, steps_per_measure: u32) -> Option<Self> {
+        ((1..=MAX_SPAN_MEASURES).contains(&measures) && steps_per_measure > 0).then_some(Self {
+            measures,
+            steps_per_measure,
+        })
+    }
+
+    pub fn measures(self) -> u32 {
+        self.measures
+    }
+
+    pub fn steps_per_measure(self) -> u32 {
+        self.steps_per_measure
+    }
+
+    pub fn total_steps(self) -> u32 {
+        self.measures * self.steps_per_measure
+    }
+}
+
+/// Notes are counted from the span's first step so callers can store them
+/// without an offset, whether the span is a whole pattern or a song range.
+pub fn build_notes(
     draft: &NormalizedDraft,
+    span: GenerationSpan,
     instrument: &Instrument,
-    measures: MeasureCount,
-    time_signature: TimeSignature,
 ) -> Vec<Note> {
-    let steps_per_measure = time_signature.steps_per_measure();
-    let n = measures.get() as usize;
+    let steps_per_measure = span.steps_per_measure;
+    let n = span.measures as usize;
     let mut sections: Vec<MeasureNotes> = draft.sections.clone();
     let mut layout: Vec<usize> = (0..n)
         .map(|i| draft.arrangement[i % draft.arrangement.len()])
@@ -79,7 +116,7 @@ pub fn expand_notes(
 
     let raw = enforce_monophony(raw, instrument);
 
-    settle(raw, measures.get() * steps_per_measure)
+    settle(raw, span.total_steps())
         .into_iter()
         .map(|n| Note {
             row_id: instrument.rows[n.row].id.to_string(),
@@ -272,6 +309,48 @@ mod tests {
             let is_phrase_end = m % 4 == 3;
             assert_eq!(measure_notes(&p, m) != first, is_phrase_end, "measure {m}");
         }
+    }
+
+    fn span_measure_notes(measures: u32, m: u32) -> Vec<(String, u32)> {
+        let span = GenerationSpan::new(measures, 16).unwrap();
+        let notes = build_notes(&normalize(one_section_draft(), 16), span, &DRUMS);
+        assert!(notes
+            .iter()
+            .all(|n| n.step + n.length_steps <= span.total_steps()));
+        notes
+            .iter()
+            .filter(|n| n.step / 16 == m)
+            .map(|n| (n.row_id.clone(), n.step % 16))
+            .collect()
+    }
+
+    #[test]
+    fn a_one_measure_span_has_no_fallback_and_stays_in_bounds() {
+        assert!(!span_measure_notes(1, 0).is_empty());
+        assert!(span_measure_notes(1, 1).is_empty());
+    }
+
+    #[test]
+    fn a_five_measure_span_varies_only_its_fourth_measure() {
+        let first = span_measure_notes(5, 0);
+        for m in 0..5 {
+            assert_eq!(span_measure_notes(5, m) != first, m == 3, "measure {m}");
+        }
+    }
+
+    #[test]
+    fn a_seven_measure_span_varies_only_its_fourth_measure() {
+        let first = span_measure_notes(7, 0);
+        for m in 0..7 {
+            assert_eq!(span_measure_notes(7, m) != first, m == 3, "measure {m}");
+        }
+    }
+
+    #[test]
+    fn spans_longer_than_a_song_range_are_refused() {
+        assert!(GenerationSpan::new(0, 16).is_none());
+        assert!(GenerationSpan::new(33, 16).is_none());
+        assert!(GenerationSpan::new(32, 16).is_some());
     }
 
     #[test]
