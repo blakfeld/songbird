@@ -9,6 +9,7 @@ import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { Menu, menuItemClass } from "./Menu";
 import { PanKnob } from "./PanKnob";
+import { Spinner } from "@/components/ui/Spinner";
 import type { TrackActions } from "./trackActions";
 import type { ClipActions } from "./useClipActions";
 import { VolumeSlider } from "./VolumeSlider";
@@ -32,6 +33,8 @@ export function TrackHeader({
   actions,
   selectedClipId,
   clipActions,
+  generating,
+  generateBlocked,
 }: {
   song: Song;
   track: Track;
@@ -42,6 +45,9 @@ export function TrackHeader({
   actions: TrackActions;
   selectedClipId: string | null;
   clipActions: ClipActions;
+  generating: boolean;
+  // Only one generation runs per song, so the others wait for it.
+  generateBlocked: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
   const info = instrument.state === "ready" ? instrument.info : null;
@@ -90,10 +96,17 @@ export function TrackHeader({
             className={`min-w-0 flex-1 rounded text-left ${focusRing}`}
           >
             <span className="block truncate text-sm font-medium">{track.name}</span>
-            {showInstrument && (
-              <span className="block truncate text-xs text-zinc-600 dark:text-zinc-400">
-                {instrumentName}
+            {generating ? (
+              <span className="flex items-center gap-1 text-xs text-indigo-700 dark:text-indigo-300">
+                <Spinner />
+                Generating…
               </span>
+            ) : (
+              showInstrument && (
+                <span className="block truncate text-xs text-zinc-600 dark:text-zinc-400">
+                  {instrumentName}
+                </span>
+              )
             )}
           </button>
         )}
@@ -112,6 +125,25 @@ export function TrackHeader({
               close={close}
               extra={
               <>
+              <button
+                type="button"
+                role="menuitem"
+                aria-disabled={generating || generateBlocked}
+                aria-describedby={generating || generateBlocked ? `${track.id}-generate-hint` : undefined}
+                className={menuItemClass}
+                onClick={() => {
+                  if (generating || generateBlocked) return;
+                  close();
+                  actions.generate(track.id);
+                }}
+              >
+                Generate part with AI…
+              </button>
+              {(generating || generateBlocked) && (
+                <p id={`${track.id}-generate-hint`} className="px-3 pb-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  {generating ? "Already generating this track" : "Another track is generating"}
+                </p>
+              )}
               <button
                 type="button"
                 role="menuitem"

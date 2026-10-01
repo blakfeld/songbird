@@ -49,10 +49,15 @@ pub struct GenerateRequestBody {
 pub struct GenerateRequest {
     pub instrument: &'static Instrument,
     pub prompt: String,
-    pub measures: MeasureCount,
+    /// A plain count because song ranges can be any length up to 32; pattern
+    /// requests are still limited to `MeasureCount`'s options by `validate`.
+    pub measures: u32,
     pub tempo_bpm: Option<u32>,
     pub time_signature: TimeSignature,
     pub swing: Option<f64>,
+    /// Already rendered and fence-escaped by `context::render_context`, so the
+    /// prompt can embed it verbatim.
+    pub context: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -87,6 +92,23 @@ impl ValidationError {
     }
 }
 
+/// Shared so every endpoint that takes a description applies the same rules and
+/// returns the same error codes.
+pub fn validate_prompt(prompt: &str, max_input_tokens: u32) -> Result<String, ValidationError> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err(ValidationError::InvalidPrompt);
+    }
+    let estimate = estimate_tokens(prompt);
+    if estimate > max_input_tokens {
+        return Err(ValidationError::PromptTooLong {
+            estimate,
+            limit: max_input_tokens,
+        });
+    }
+    Ok(prompt.to_string())
+}
+
 impl GenerateRequestBody {
     pub fn validate(
         &self,
@@ -96,17 +118,7 @@ impl GenerateRequestBody {
         let instrument = instruments
             .get(&self.instrument)
             .ok_or(ValidationError::InvalidInstrument)?;
-        let prompt = self.prompt.trim();
-        if prompt.is_empty() {
-            return Err(ValidationError::InvalidPrompt);
-        }
-        let estimate = estimate_tokens(prompt);
-        if estimate > max_input_tokens {
-            return Err(ValidationError::PromptTooLong {
-                estimate,
-                limit: max_input_tokens,
-            });
-        }
+        let prompt = validate_prompt(&self.prompt, max_input_tokens)?;
         let measures = u32::try_from(self.measures)
             .ok()
             .and_then(MeasureCount::new)
@@ -132,11 +144,12 @@ impl GenerateRequestBody {
         };
         Ok(GenerateRequest {
             instrument,
-            prompt: prompt.to_string(),
-            measures,
+            prompt,
+            measures: measures.get(),
             tempo_bpm,
             time_signature,
             swing,
+            context: None,
         })
     }
 }
@@ -167,7 +180,7 @@ mod tests {
         let r = validate(&body("  four on the floor  "), 256).unwrap();
         assert_eq!(r.instrument.id, "drums");
         assert_eq!(r.prompt, "four on the floor");
-        assert_eq!(r.measures.get(), 4);
+        assert_eq!(r.measures, 4);
         assert_eq!(r.time_signature, TimeSignature::FourFour);
         assert_eq!(r.tempo_bpm, None);
         assert_eq!(r.swing, None);

@@ -3,7 +3,7 @@ use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use music::ValidationError;
+use music::{ChatRequestError, SongError, TrackRequestError, ValidationError};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
@@ -31,6 +31,15 @@ pub enum ApiError {
     /// handles an unknown instrument one way wherever it appears.
     #[error("The song is not exportable: {0}")]
     InvalidSongInstrument(String),
+    /// The chat spec rejects every invalid body with 400, unlike the other song
+    /// routes whose specs say 422, so its errors keep their codes but carry
+    /// their own status.
+    #[error("{message}")]
+    ChatRejected { code: &'static str, message: String },
+    #[error("The song has no track with that id.")]
+    InvalidTrack,
+    #[error("The range must lie within the song and span at most 32 measures; a song longer than 32 measures needs a range.")]
+    InvalidRange,
     #[error("Something went wrong on our side. Please try again.")]
     Internal,
     #[error("{0}")]
@@ -45,13 +54,15 @@ pub enum ApiError {
 impl ApiError {
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::InvalidJson => StatusCode::BAD_REQUEST,
+            Self::InvalidJson | Self::ChatRejected { .. } => StatusCode::BAD_REQUEST,
             Self::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             Self::InvalidPattern(_)
             | Self::InvalidSong(_)
             | Self::InvalidSongInstrument(_)
+            | Self::InvalidTrack
+            | Self::InvalidRange
             | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
@@ -68,10 +79,43 @@ impl ApiError {
             Self::InvalidPattern(_) => "invalid_pattern",
             Self::InvalidSong(_) => "invalid_song",
             Self::InvalidSongInstrument(_) => "invalid_instrument",
+            Self::ChatRejected { code, .. } => code,
+            Self::InvalidTrack => "invalid_track",
+            Self::InvalidRange => "invalid_range",
             Self::Internal => "internal_error",
             Self::Validation(e) => e.code(),
             Self::GenerationFailed => "generation_failed",
             Self::GenerationTimeout => "generation_timeout",
+        }
+    }
+}
+
+impl From<TrackRequestError> for ApiError {
+    fn from(error: TrackRequestError) -> Self {
+        match error {
+            TrackRequestError::Song(SongError::UnknownInstrument { message }) => {
+                Self::InvalidSongInstrument(message)
+            }
+            TrackRequestError::Song(SongError::Invalid { message, .. }) => {
+                Self::InvalidSong(message)
+            }
+            TrackRequestError::InvalidTrack => Self::InvalidTrack,
+            TrackRequestError::Prompt(e) => Self::Validation(e),
+            TrackRequestError::InvalidRange => Self::InvalidRange,
+        }
+    }
+}
+
+impl From<ChatRequestError> for ApiError {
+    fn from(error: ChatRequestError) -> Self {
+        // Reuses the codes of the other routes so a client maps them one way.
+        let code = match &error {
+            ChatRequestError::Song(SongError::UnknownInstrument { .. }) => "invalid_instrument",
+            other => other.code(),
+        };
+        Self::ChatRejected {
+            code,
+            message: error.to_string(),
         }
     }
 }

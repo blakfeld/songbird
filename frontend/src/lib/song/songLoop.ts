@@ -63,3 +63,30 @@ export function normalizeLoopRegion(song: Song): Song {
   }
   return withSongLoop(song, loop);
 }
+
+// Generation reads 32 measures at most, the same bound the backend enforces on a range.
+export const MAX_GENERATE_MEASURES = 32;
+
+// Only a region the user is actually hearing counts; "Whole song" already covers the other cases, so the
+// dialog and the chat share this one rule and cannot disagree about when a loop range exists.
+export function activeLoopRange(
+  song: Song,
+): { start_measure: number; end_measure: number } | null {
+  const { region, enabled } = songLoop(song);
+  if (!enabled || !region) return null;
+  if (region.start <= 1 && region.end >= song.measures) return null;
+  if (region.end - region.start + 1 > MAX_GENERATE_MEASURES) return null;
+  return { start_measure: region.start, end_measure: region.end };
+}
+
+// Chat is conversation state, not arrangement: undo must remove an added track but keep the message that
+// explains it, so snapshots restored by undo or redo take the live history.
+export function withLiveChat(snapshot: Song, current: Song): Song {
+  if (snapshot.chat === current.chat) return snapshot;
+  if (current.chat === undefined) {
+    const { chat: _dropped, ...rest } = snapshot;
+    void _dropped;
+    return rest;
+  }
+  return { ...snapshot, chat: current.chat };
+}

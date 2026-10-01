@@ -1,9 +1,12 @@
+use std::future::Future;
+use std::time::Duration;
+
 use axum::extract::State;
 use axum::http::{header, HeaderValue};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use music::generate::generate_pattern;
+use music::generate::{generate_pattern, GenerationError};
 use music::midi::{pattern_to_midi, MidiError};
 use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
 
@@ -24,24 +27,30 @@ async fn generate(
 ) -> Result<Json<Pattern>, ApiError> {
     // Validation precedes the provider so rejected requests never cost tokens.
     let request = body.validate(&state.instruments, state.config.max_input_tokens)?;
-    let outcome = tokio::time::timeout(
+    let pattern = with_timeout(
         state.config.generation_timeout,
-        generate_pattern(state.provider.as_ref(), &request),
+        generate_pattern(state.providers.patterns.as_ref(), &request),
     )
-    .await;
-    match outcome {
+    .await?;
+    Ok(Json(pattern))
+}
+
+/// Shared with the song endpoints so a provider failure or hang reads the same
+/// to clients wherever generation happens.
+pub(crate) async fn with_timeout<T>(
+    timeout: Duration,
+    generation: impl Future<Output = Result<T, GenerationError>>,
+) -> Result<T, ApiError> {
+    match tokio::time::timeout(timeout, generation).await {
         Err(_elapsed) => {
-            tracing::warn!(
-                timeout_secs = state.config.generation_timeout.as_secs(),
-                "generation timed out"
-            );
+            tracing::warn!(timeout_secs = timeout.as_secs(), "generation timed out");
             Err(ApiError::GenerationTimeout)
         }
         Ok(Err(error)) => {
             tracing::warn!(%error, "generation failed");
             Err(ApiError::GenerationFailed)
         }
-        Ok(Ok(pattern)) => Ok(Json(pattern)),
+        Ok(Ok(value)) => Ok(value),
     }
 }
 

@@ -1,8 +1,13 @@
+import type { ChatBody } from "@/generated/ChatBody";
+import type { ChatResponse } from "@/generated/ChatResponse";
 import type { GenerateRequestBody } from "@/generated/GenerateRequestBody";
 import type { GenerationLimits } from "@/generated/GenerationLimits";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
 import type { Song } from "@/generated/Song";
+import type { SongLimits } from "@/generated/SongLimits";
+import type { TrackGenerateBody } from "@/generated/TrackGenerateBody";
+import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
 import { midiFilename, songMidiFilename } from "./midiFilename";
 
 export class ApiError extends Error {
@@ -25,16 +30,21 @@ const USER_MESSAGES: Record<string, string> = {
   invalid_instrument: "That instrument is not supported.",
   generation_failed: "The AI could not generate a pattern. Please try again.",
   generation_timeout: "Generation took too long. Please try again.",
+  invalid_range: "That measure range can't be generated. Choose a range of up to 32 measures inside the song.",
+  invalid_track: "That track is no longer in the song.",
 };
 
 const NETWORK_MESSAGE = "Could not reach the Songbird service. Check your connection and try again.";
 const FALLBACK_MESSAGE = "Something went wrong. Please try again.";
 
+// The chat route reports these at 400 where the track route uses 422; the reason is just as readable either way.
+const READABLE_VALIDATION_CODES = new Set(["invalid_song", "invalid_prompt"]);
+
 function messageFor(code: string, status: number, serverMessage?: string): string {
   const mapped = USER_MESSAGES[code];
   if (mapped) return mapped;
   // Other 422 validation codes carry a specific, already-readable reason.
-  if (status === 422 && serverMessage) return serverMessage;
+  if ((status === 422 || READABLE_VALIDATION_CODES.has(code)) && serverMessage) return serverMessage;
   return FALLBACK_MESSAGE;
 }
 
@@ -80,6 +90,18 @@ export async function getLimits(): Promise<GenerationLimits> {
 
 export async function generatePattern(body: GenerateRequestBody): Promise<Pattern> {
   return (await postJson("/api/v1/patterns/generate", body)).json();
+}
+
+export async function getSongLimits(): Promise<SongLimits> {
+  return (await request("/api/v1/songs/limits")).json();
+}
+
+export async function generateTrack(body: TrackGenerateBody): Promise<TrackGenerateResponse> {
+  return (await postJson("/api/v1/songs/tracks/generate", body)).json();
+}
+
+export async function sendChat(body: ChatBody): Promise<ChatResponse> {
+  return (await postJson("/api/v1/songs/chat", body)).json();
 }
 
 export interface MidiExport {

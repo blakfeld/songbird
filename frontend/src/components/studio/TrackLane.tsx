@@ -20,6 +20,7 @@ export function TrackLane({
   first,
   actions,
   clipActions,
+  generatingTrackId,
   onSeek,
 }: {
   song: Song;
@@ -34,8 +35,10 @@ export function TrackLane({
   first: boolean;
   actions: TrackActions;
   clipActions: ClipActions;
+  generatingTrackId: string | null;
   onSeek: (trackId: string, measureIndex: number) => void;
 }) {
+  const generating = generatingTrackId === track.id;
   const info: InstrumentInfo | null = instrument.state === "ready" ? instrument.info : null;
   return (
     <div
@@ -57,7 +60,11 @@ export function TrackLane({
         song={song}
         selectedClipId={selectedClipId}
         clipActions={clipActions}
+        generating={generating}
+        generateBlocked={generatingTrackId !== null && !generating}
       />
+      {/* Inert rather than disabled so the lane keeps its layout while its clips cannot be touched. */}
+      <div inert={generating} aria-busy={generating} className="grid min-w-0">
       <ClipLane
         song={song}
         timeline={timeline}
@@ -70,6 +77,7 @@ export function TrackLane({
         actions={clipActions}
         onSeek={(m) => onSeek(track.id, m)}
       />
+      </div>
     </div>
   );
 }

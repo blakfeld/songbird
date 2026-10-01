@@ -510,3 +510,168 @@ describe("newClipWithNotes", () => {
     expect(track(r.song).clips[0].measures).toBe(2);
   });
 });
+
+const sorted = (notes: Note[]) => [...notes].sort(bySortKey);
+const playedBy = (song: Song) => sorted(clips.resolveTrackNotes(song, track(song)));
+
+describe("splitClip", () => {
+  it("keeps the loop when the tail starts on a repeat", () => {
+    const song = songWith([loop("a", 2, [note("kick", 0)])], [clip("c", "a", 1, 6)]);
+    const before = playedBy(song);
+    const next = ok(clips.splitClip(song, "t", "c", 5)).song;
+    expect(track(next).clips.map((c) => [c.loop_id, c.start_measure, c.measures])).toEqual([
+      ["a", 1, 4],
+      ["a", 5, 2],
+    ]);
+    expect(track(next).loops).toHaveLength(1);
+    expect(playedBy(next)).toEqual(before);
+  });
+
+  it("bakes a misaligned tail into a (cont.) loop that plays the same notes", () => {
+    const song = songWith(
+      [loop("a", 2, [note("kick", 0), note("snare", 20, 4)], "Groove")],
+      [clip("c", "a", 1, 6)],
+    );
+    const before = playedBy(song);
+    const next = ok(clips.splitClip(song, "t", "c", 4)).song;
+    const tail = track(next).clips.find((c) => c.start_measure === 4)!;
+    const baked = track(next).loops.find((l) => l.id === tail.loop_id)!;
+    expect(baked.name).toBe("Groove (cont.)");
+    expect(baked.measures).toBe(3);
+    expect(track(next).loops.find((l) => l.id === "a")!.notes).toEqual(song.tracks[0].loops[0].notes);
+    expect(playedBy(next)).toEqual(before);
+  });
+
+  it("cuts a note sustaining across the split at the edge", () => {
+    const song = songWith([loop("a", 2, [note("kick", 14, 6)])], [clip("c", "a", 1, 2)]);
+    const next = ok(clips.splitClip(song, "t", "c", 2)).song;
+    expect(playedBy(next)).toEqual([note("kick", 14, 2)]);
+  });
+
+  it("truncates a long (cont.) loop name to the limit", () => {
+    const name = "x".repeat(40);
+    const song = songWith([loop("a", 2, [note("kick", 0)], name)], [clip("c", "a", 1, 4)]);
+    const next = ok(clips.splitClip(song, "t", "c", 2)).song;
+    expect(track(next).loops.at(-1)!.name).toHaveLength(40);
+    expect(track(next).loops.at(-1)!.name.endsWith(" (cont.)")).toBe(true);
+  });
+
+  it("is a no-op at a clip edge and refuses at the limits", () => {
+    const song = songWith([loop("a", 2)], [clip("c", "a", 1, 4)]);
+    expect(ok(clips.splitClip(song, "t", "c", 1)).song).toBe(song);
+    expect(ok(clips.splitClip(song, "t", "c", 5)).song).toBe(song);
+    expect(reason(clips.splitClip(song, "t", "nope", 2))).toBe("not-found");
+
+    const full = songWith(
+      [loop("a", 2)],
+      [clip("c0", "a", 1, 4), ...Array.from({ length: MAX_CLIPS - 1 }, (_, i) => clip(`d${i}`, "a", 10 + i, 1))],
+    );
+    expect(reason(clips.splitClip(full, "t", "c0", 2))).toBe("clip-limit");
+  });
+});
+
+describe("clearMeasureRange", () => {
+  it("removes clips inside the range and splits those crossing its edges", () => {
+    const song = songWith([loop("a", 4, [note("kick", 0), note("snare", 20)])], [clip("c", "a", 1, 12)]);
+    const before = playedBy(song);
+    const next = ok(clips.clearMeasureRange(song, "t", 5, 8)).song;
+    const spans = track(next).clips.map((c) => [c.start_measure, c.measures]);
+    expect(spans).toEqual([
+      [1, 4],
+      [9, 4],
+    ]);
+    const inside = playedBy(next).filter((n) => n.step >= 4 * SPM && n.step < 8 * SPM);
+    expect(inside).toEqual([]);
+    expect(playedBy(next)).toEqual(before.filter((n) => n.step < 4 * SPM || n.step >= 8 * SPM));
+  });
+
+  it("keeps notes outside a range that cuts through the middle of a clip", () => {
+    const song = songWith([loop("a", 3, [note("kick", 0), note("snare", 40)])], [clip("c", "a", 1, 9)]);
+    const before = playedBy(song);
+    const next = ok(clips.clearMeasureRange(song, "t", 2, 4)).song;
+    expect(playedBy(next)).toEqual(before.filter((n) => n.step < SPM || n.step >= 4 * SPM));
+    // The inside part leaves no loop behind, and the kept tail is named once.
+    expect(track(next).loops.map((l) => l.name)).toEqual(["a", "a (cont.)"]);
+    expect(track(next).clips.map((c) => [c.start_measure, c.measures])).toEqual([
+      [1, 1],
+      [5, 5],
+    ]);
+    expect(track(next).clips[0].loop_id).toBe("a");
+    expect(track(next).clips[1].loop_id).toBe(track(next).loops[1].id);
+  });
+
+  it("leaves no unused loop when a misaligned clip is cleared from the middle", () => {
+    const song = songWith([loop("a", 3, [note("kick", 0)], "Keys A")], [clip("c", "a", 1, 9)]);
+    const next = ok(clips.clearMeasureRange(song, "t", 2, 4)).song;
+    expect(track(next).loops.map((l) => l.name)).toEqual(["Keys A", "Keys A (cont.)"]);
+    const used = new Set(track(next).clips.map((c) => c.loop_id));
+    expect(track(next).loops.every((l) => used.has(l.id))).toBe(true);
+  });
+
+  it("never edits existing loops", () => {
+    const song = songWith([loop("a", 4)], [clip("c", "a", 1, 4), clip("d", "a", 9, 4)]);
+    const next = ok(clips.clearMeasureRange(song, "t", 1, 4)).song;
+    expect(track(next).loops).toEqual(track(song).loops);
+    expect(track(next).clips).toEqual([clip("d", "a", 9, 4)]);
+  });
+});
+
+describe("applyGeneratedRange", () => {
+  const range = { start_measure: 5, end_measure: 8 };
+
+  it("replaces the range with a new loop and clip, leaving the original loop intact", () => {
+    const song = songWith([loop("a", 4, [note("kick", 0)], "Bass A")], [clip("c", "a", 1, 12)]);
+    const generated = [note("snare", 3)];
+    const result = ok(clips.applyGeneratedRange(song, "t", range, generated));
+    const t = track(result.song);
+    expect(t.loops.find((l) => l.id === "a")).toEqual(track(song).loops[0]);
+    const added = t.loops.find((l) => l.id !== "a")!;
+    expect(added).toMatchObject({ name: "Bass 1", measures: 4, notes: generated });
+    const placed = t.clips.find((c) => c.id === result.clipId)!;
+    expect(placed).toMatchObject({ loop_id: added.id, start_measure: 5, measures: 4 });
+    expect(t.clips.filter((c) => c.loop_id === "a").map((c) => [c.start_measure, c.measures])).toEqual([
+      [1, 4],
+      [9, 4],
+    ]);
+  });
+
+  it("keeps the whole range when clearing shortens the song", () => {
+    const song = songWith([loop("a", 20)], [clip("c", "a", 1, 40)]);
+    const other = { ...song.tracks[1] };
+    const wide = normalizeSong({ ...song, tracks: [song.tracks[0], other] });
+    const next = ok(clips.applyGeneratedRange(wide, "t", { start_measure: 9, end_measure: 40 }, [])).song;
+    expect(track(next).clips.find((c) => c.start_measure === 9)!.measures).toBe(32);
+  });
+
+  it("refuses past the loop or clip limit and leaves the song alone", () => {
+    const manyLoops = songWith(
+      Array.from({ length: MAX_LOOPS }, (_, i) => loop(`l${i}`, 1)),
+      [clip("c", "l0", 1, 12)],
+    );
+    expect(reason(clips.applyGeneratedRange(manyLoops, "t", range, []))).toBe("loop-limit");
+
+    const manyClips = songWith(
+      [loop("a", 1)],
+      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 1 }, (_, i) => clip(`d${i}`, "a", 2, 1))],
+    );
+    const result = clips.applyGeneratedRange(manyClips, "t", { start_measure: 100, end_measure: 101 }, []);
+    expect(reason(result)).toBe("clip-limit");
+  });
+
+  it("accepts a result that lands exactly on the loop or clip limit", () => {
+    const loopsAtLimit = songWith(
+      Array.from({ length: MAX_LOOPS - 1 }, (_, i) => loop(`l${i}`, 1)),
+      [clip("c", "l0", 1, 12)],
+    );
+    expect(ok(clips.applyGeneratedRange(loopsAtLimit, "t", range, [])).song.tracks[0].loops).toHaveLength(
+      MAX_LOOPS,
+    );
+
+    const clipsAtLimit = songWith(
+      [loop("a", 1)],
+      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 2 }, (_, i) => clip(`d${i}`, "a", 2, 1))],
+    );
+    const result = ok(clips.applyGeneratedRange(clipsAtLimit, "t", { start_measure: 100, end_measure: 101 }, []));
+    expect(track(result.song).clips).toHaveLength(MAX_CLIPS);
+  });
+});

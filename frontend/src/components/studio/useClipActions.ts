@@ -51,6 +51,8 @@ function failureMessage(reason: ClipFailure, track: Track, clip?: Clip): string 
       }
       return `There are no empty measures on ${track.name}.`;
     }
+    case "generating":
+      return `${track.name} is being generated. Wait for it to finish.`;
     default:
       return "That clip is no longer there.";
   }

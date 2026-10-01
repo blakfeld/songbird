@@ -113,6 +113,7 @@ export function EditorDock({
   const info = instruments.data?.find((i) => i.id === track.instrument);
   const rows = info?.rows;
   const selectedClipId = useSongStore(store, (s) => s.selectedClipId);
+  const generating = useSongStore(store, (s) => s.generatingTrackId === track.id);
   const clip = track.clips.find((c) => c.id === selectedClipId);
   const loopDoc = clip ? track.loops.find((l) => l.id === clip.loop_id) : undefined;
   const contextId = useId();
@@ -180,7 +181,7 @@ export function EditorDock({
       )}
       {info && !showRoll && <EmptyState song={song} track={track} actions={clipActions} />}
       {showRoll && (
-        <>
+        <div inert={generating} aria-busy={generating} className="flex min-h-0 flex-1 flex-col">
           <div
             role="toolbar"
             aria-label="Loop"
@@ -285,7 +286,7 @@ export function EditorDock({
               </div>
             }
           />
-        </>
+        </div>
       )}
       <LoopsDialog
         open={loopsOpen}

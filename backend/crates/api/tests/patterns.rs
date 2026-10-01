@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS, MAX_INPUT_TOKENS};
+use api::provider::Providers;
 use api::state::AppState;
 use async_trait::async_trait;
 use axum::body::Body;
@@ -100,7 +101,7 @@ fn app_with(provider: impl PatternProvider + 'static, extra: &[(&str, &str)]) ->
     })
     .unwrap();
     api::app(AppState {
-        provider: Arc::new(provider),
+        providers: Providers::with_patterns(provider),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
     })

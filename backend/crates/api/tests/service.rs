@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use api::config::{Config, AI_PROVIDER};
 use api::error::ApiJson;
+use api::provider::Providers;
 use api::state::AppState;
 use axum::body::Body;
 use axum::http::{header, Method, Request, StatusCode};
@@ -17,7 +18,7 @@ const ALLOWED_ORIGIN: &str = "http://localhost:3000";
 fn state() -> AppState {
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
     AppState {
-        provider: Arc::new(music::ai::MockProvider),
+        providers: Providers::mock(),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
     }

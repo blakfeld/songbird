@@ -1,5 +1,7 @@
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { ChatEntry } from "@/generated/ChatEntry";
+import type { ChatResponse } from "@/generated/ChatResponse";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
@@ -10,8 +12,8 @@ import { clampLoop, type LoopSetting } from "../loopRegion";
 import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as ops from "./songOps";
-import { songLoop, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
-import type { Song, SongKey } from "./types";
+import { songLoop, withLiveChat, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
+import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
@@ -30,6 +32,11 @@ export interface SongState {
   gestureFuture: Song[] | null;
   // The live region as it was when the drag began; previews clamp from it so a transient shrink is never permanent.
   gestureLoop: LoopSetting | null;
+  // While a generate is in flight its target track is locked and no other generate may start.
+  generatingTrackId: string | null;
+  generationToken: number | null;
+  // Bumped on every load so an in-flight response can tell it was requested for a song that is no longer open.
+  loadEpoch: number;
 
   loadSong: (song: Song) => void;
   selectTrack: (trackId: string) => void;
@@ -69,6 +76,19 @@ export interface SongState {
   makeUnique: (trackId: string, clipId: string) => ClipFailure | null;
   renameLoop: (trackId: string, loopId: string, name: string) => ClipFailure | null;
   deleteLoop: (trackId: string, loopId: string) => ClipFailure | null;
+  // Returns false when another generate already holds the lock, so a double submit cannot start twice.
+  beginGenerating: (trackId: string) => boolean;
+  // A caller passes the token it began with, so a request that outlived its song cannot release a newer lock.
+  endGenerating: (token?: number | null) => void;
+  // The refusal is user-facing because the result has already been paid for and the user needs to know why it is lost.
+  applyGeneratedRange: (
+    trackId: string,
+    range: { start_measure: number; end_measure: number },
+    notes: Note[],
+  ) => string | null;
+  // A reply with no track is recorded but is not an undo step, because it changes no arrangement and undo
+  // would otherwise swallow a conversation turn.
+  applyChatResult: (userMessage: string, response: ChatResponse) => string | null;
   // Transient and applied to the current song, not the gesture base: each call builds on what the take already wrote.
   recordNotes: (trackId: string, notes: Note[], takeState: clipOps.TakeState) => void;
   setMixer: (
@@ -93,7 +113,20 @@ export interface SongState {
   redo: () => void;
 }
 
+const GENERATE_FAILURES: Record<ClipFailure, (track: string) => string> = {
+  "clip-limit": (t) => `${t} already has ${MAX_CLIPS} clips, the most a track can hold. Delete some clips and try again.`,
+  "loop-limit": (t) => `${t} already has ${MAX_LOOPS} loops, the most a track can hold. Delete an unused loop and try again.`,
+  "not-found": () => "That track is no longer in the song.",
+  "no-room": () => "There is no room for the generated part.",
+  "not-shared": () => "That track is no longer in the song.",
+  generating: (t) => `${t} is already being generated.`,
+};
+
 export type SongStore = StoreApi<SongState>;
+
+export const CHAT_LIMIT = 20;
+// Matches the server's cap on a history entry, so a long reply can never make later requests invalid.
+const clipChat = (text: string) => [...text].slice(0, 4000).join("");
 
 const push = (past: Song[], song: Song) => [...past, song].slice(-HISTORY_LIMIT);
 
@@ -122,6 +155,7 @@ const initialSelection = (song: Song | null) => ({
 
 export function createSongStore(initial: Song | null = null): SongStore {
   return createStore<SongState>()((set, get) => {
+    let lastToken = 0;
     const edit = (fn: (s: Song) => Song) =>
       set((s) => {
         if (!s.song) return s;
@@ -144,8 +178,10 @@ export function createSongStore(initial: Song | null = null): SongStore {
     const run = (
       fn: (song: Song) => ClipOpResult,
       trackId: string,
-      options: { transient?: boolean; select?: boolean } = {},
+      options: { transient?: boolean; select?: boolean; allowLocked?: boolean } = {},
     ): ClipFailure | null => {
+      // The generate result is the one writer the lock exists for; every other edit would be overwritten by it.
+      if (!options.allowLocked && get().generatingTrackId === trackId) return "generating";
       const current = get().song;
       if (!current) return "not-found";
       // Transient ops are absolute targets, so replaying them on the pre-gesture song lets a
@@ -183,17 +219,23 @@ export function createSongStore(initial: Song | null = null): SongStore {
       gestureBase: null,
       gestureFuture: null,
       gestureLoop: null,
+      generatingTrackId: null,
+      generationToken: null,
+      loadEpoch: 0,
 
       loadSong: (song) =>
-        set({
+        set((s) => ({
           song,
+          generatingTrackId: null,
+          generationToken: null,
+          loadEpoch: s.loadEpoch + 1,
           ...initialSelection(song),
           past: [],
           future: [],
           gestureBase: null,
           gestureFuture: null,
           gestureLoop: null,
-        }),
+        })),
       selectTrack: (trackId) =>
         set((s) => {
           const track = s.song?.tracks.find((t) => t.id === trackId);
@@ -228,6 +270,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
       renameTrack: (trackId, name) =>
         edit((s) => ops.renameTrack(s, trackId, name)),
       editLoopNotes: (trackId, loopId, rows, fn, options) => {
+        if (get().generatingTrackId === trackId) return;
         const apply = (s: Song) => {
           const loop = s.tracks
             .find((t) => t.id === trackId)
@@ -280,9 +323,56 @@ export function createSongStore(initial: Song | null = null): SongStore {
         run((s) => clipOps.renameLoop(s, trackId, loopId, name), trackId),
       deleteLoop: (trackId, loopId) =>
         run((s) => clipOps.deleteLoop(s, trackId, loopId), trackId),
+      beginGenerating: (trackId) => {
+        const s = get();
+        if (s.generatingTrackId !== null || !s.song?.tracks.some((t) => t.id === trackId))
+          return false;
+        set({ generatingTrackId: trackId, generationToken: ++lastToken });
+        return true;
+      },
+      endGenerating: (token) =>
+        set((s) =>
+          token !== undefined && token !== s.generationToken
+            ? s
+            : { generatingTrackId: null, generationToken: null },
+        ),
+      applyGeneratedRange: (trackId, range, notes) => {
+        const track = get().song?.tracks.find((t) => t.id === trackId);
+        const reason = run((s) => clipOps.applyGeneratedRange(s, trackId, range, notes), trackId, {
+          select: true,
+          allowLocked: true,
+        });
+        return reason === null ? null : GENERATE_FAILURES[reason](track?.name ?? "That track");
+      },
+      applyChatResult: (userMessage, response) => {
+        const current = get().song;
+        if (!current) return "There is no song open.";
+        const added = response.track ? ops.addChatTrack(current, response.track) : null;
+        if (response.track && response.track.range.end_measure > MEASURE_RANGE.max)
+          return `A song can be at most ${MEASURE_RANGE.max} measures long.`;
+        if (response.track && !added)
+          return `The song already has ${MAX_TRACKS} tracks, the most it can hold.`;
+        const entries: ChatEntry[] = [
+          { role: "user", content: clipChat(userMessage) },
+          {
+            role: "assistant",
+            content: clipChat(response.reply),
+            ...(added && { track_id: added.trackId }),
+          },
+        ];
+        const chat = [...(current.chat ?? []), ...entries].slice(-CHAT_LIMIT);
+        if (!added) {
+          set({ song: { ...current, chat } });
+          return null;
+        }
+        edit(() => ({ ...added.song, chat }));
+        const track = get().song?.tracks.find((t) => t.id === added.trackId);
+        if (track) set({ selectedTrackId: track.id, selectedClipId: track.clips[0]?.id ?? null });
+        return null;
+      },
       recordNotes: (trackId, notes, takeState) =>
         set((s) => {
-          if (!s.song) return s;
+          if (!s.song || s.generatingTrackId === trackId) return s;
           const result = clipOps.recordNotes(s.song, trackId, notes, takeState);
           if (result.song === null || result.song === s.song) return s;
           return {
@@ -325,7 +415,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) =>
           s.gestureBase
             ? {
-                song: withLoopSetting(s.gestureBase, s.gestureLoop ?? songLoop(s.song!)),
+                song: withLiveChat(withLoopSetting(s.gestureBase, s.gestureLoop ?? songLoop(s.song!)), s.song!),
                 ...validSelection(s.gestureBase, s.selectedTrackId, s.selectedClipId),
                 future: s.gestureFuture ?? s.future,
                 gestureBase: null,
@@ -355,7 +445,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const previous = s.past[s.past.length - 1];
           if (!previous || !s.song) return s;
-          const song = withLiveLoop(previous, s.song);
+          const song = withLiveChat(withLiveLoop(previous, s.song), s.song);
           return {
             song,
             ...validSelection(song, s.selectedTrackId, s.selectedClipId),
@@ -369,7 +459,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const [next, ...rest] = s.future;
           if (!next || !s.song) return s;
-          const song = withLiveLoop(next, s.song);
+          const song = withLiveChat(withLiveLoop(next, s.song), s.song);
           return {
             song,
             ...validSelection(song, s.selectedTrackId, s.selectedClipId),
