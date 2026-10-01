@@ -607,3 +607,29 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
 
   expect(problems).toEqual([]);
 });
+
+test("drag the third track above the second, then undo it", async ({ page }) => {
+  await newSong(page, "Order Song");
+  await addTrack(page, "Drums");
+  await addTrack(page, "Piano");
+  await addTrack(page, "Bass");
+
+  const order = () =>
+    page.getByRole("group", { name: /^Track \d+:/ }).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+  const original = ["Track 1: Drums", "Track 2: Piano", "Track 3: Bass"];
+  await expect.poll(order).toEqual(original);
+
+  const grip = (await page.getByRole("button", { name: "Reorder Bass" }).boundingBox())!;
+  const piano = (await page.getByRole("group", { name: "Track 2: Piano" }).boundingBox())!;
+  const x = grip.x + grip.width / 2;
+  await page.mouse.move(x, grip.y + grip.height / 2);
+  await page.mouse.down();
+  // The lane's top quarter is above its midpoint, so the drop lands before Piano.
+  await page.mouse.move(x, piano.y + piano.height / 4, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(order).toEqual(["Track 1: Drums", "Track 2: Bass", "Track 3: Piano"]);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(order).toEqual(original);
+});

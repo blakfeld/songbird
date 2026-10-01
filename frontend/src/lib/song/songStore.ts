@@ -44,6 +44,7 @@ export interface SongState {
   addTrack: (instrument: Pick<InstrumentInfo, "id" | "name">, name?: string) => void;
   deleteTrack: (trackId: string) => void;
   renameTrack: (trackId: string, name: string) => void;
+  moveTrack: (trackId: string, toIndex: number) => void;
   editLoopNotes: (
     trackId: string,
     loopId: string,
@@ -271,6 +272,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           set({ selectedTrackId: after.tracks[after.tracks.length - 1].id });
       },
       deleteTrack: (trackId) => edit((s) => ops.deleteTrack(s, trackId)),
+      moveTrack: (trackId, toIndex) => edit((s) => ops.moveTrack(s, trackId, toIndex)),
       renameTrack: (trackId, name) =>
         edit((s) => ops.renameTrack(s, trackId, name)),
       editLoopNotes: (trackId, loopId, rows, fn, options) => {

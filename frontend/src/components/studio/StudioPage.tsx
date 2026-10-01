@@ -282,13 +282,14 @@ export function StudioPage({
   const trackActions = useMemo<TrackActions>(
     () => ({
       select: (id) => store.getState().selectTrack(id),
-      rename: (id, name) => store.getState().renameTrack(id, name),
+      rename: (id, name) => guardEdit(() => store.getState().renameTrack(id, name)),
       remove: (id) => {
         const name = store.getState().song?.tracks.find((t) => t.id === id)?.name;
-        store.getState().deleteTrack(id);
+        guardEdit(() => store.getState().deleteTrack(id));
         setSoundTrackId((open) => (open === id ? null : open));
         if (name) setStatus(`Deleted the ${name} track. Undo to restore.`);
       },
+      move: (id, toIndex) => guardEdit(() => store.getState().moveTrack(id, toIndex)),
       mixer: (id, patch, options) => store.getState().setMixer(id, patch, options),
       sound: (id, patch, options) => store.getState().setSound(id, patch, options),
       resetSound: (id) => store.getState().resetSound(id),

@@ -13,6 +13,7 @@ import { PanKnob } from "./PanKnob";
 import { Spinner } from "@/components/ui/Spinner";
 import { TrackSoundPanel } from "./TrackSoundPanel";
 import type { TrackActions } from "./trackActions";
+import type { GripHandlers } from "./useTrackDrag";
 import type { ClipActions } from "./useClipActions";
 import { VolumeSlider } from "./VolumeSlider";
 
@@ -32,6 +33,10 @@ export function TrackHeader({
   song,
   track,
   number,
+  count,
+  onMove,
+  grip,
+  dragging,
   selected,
   instrument,
   actions,
@@ -45,6 +50,10 @@ export function TrackHeader({
   song: Song;
   track: Track;
   number: number;
+  count: number;
+  onMove: (toIndex: number, options?: { restoreFocus?: boolean }) => void;
+  grip: GripHandlers;
+  dragging: boolean;
   selected: boolean;
   instrument: InstrumentLookup;
   actions: TrackActions;
@@ -72,14 +81,27 @@ export function TrackHeader({
   return (
     <div
       ref={header}
-      className={`flex min-w-0 flex-col gap-1 border-r border-zinc-200 px-2 py-1.5 max-md:gap-1.5 dark:border-zinc-800 ${
+      className={`group/header flex min-w-0 flex-col gap-1 border-r border-zinc-200 px-2 py-1.5 max-md:gap-1.5 dark:border-zinc-800 ${
         selected
           ? "bg-indigo-50 shadow-[inset_4px_0_0] shadow-indigo-600 dark:bg-indigo-950/40"
           : "bg-white dark:bg-zinc-950"
       }`}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="w-5 shrink-0 text-right font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`Reorder ${track.name}`}
+          {...grip}
+          className={`relative -ml-1 inline-flex h-7 w-4 shrink-0 touch-none items-center justify-center rounded text-zinc-500 select-none hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 pointer-coarse:h-9 pointer-fine:opacity-0 pointer-fine:group-hover/header:opacity-100 pointer-fine:group-focus-within/header:opacity-100 pointer-fine:group-has-[[aria-current]]/header:opacity-100 motion-safe:transition-opacity before:absolute before:-inset-x-1 before:inset-y-0 ${focusRing} ${
+            dragging ? "cursor-grabbing opacity-100 pointer-fine:opacity-100" : "cursor-grab"
+          }`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 8 14" className="h-3.5 w-2 fill-current">
+            {[2, 7, 12].flatMap((y) => [2, 6].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.25" />))}
+          </svg>
+        </button>
+        <span className="w-4 shrink-0 text-right font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
           {number}
         </span>
         <InstrumentIcon
@@ -108,6 +130,12 @@ export function TrackHeader({
             aria-current={selected ? "true" : undefined}
             onClick={() => actions.select(track.id)}
             onDoubleClick={() => setRenaming(true)}
+            onKeyDown={(e) => {
+              if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+              if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              e.preventDefault();
+              onMove(number - 1 + (e.key === "ArrowUp" ? -1 : 1), { restoreFocus: true });
+            }}
             className={`min-w-0 flex-1 rounded text-left ${focusRing}`}
           >
             <span className="block truncate text-sm font-medium">{track.name}</span>
@@ -198,6 +226,32 @@ export function TrackHeader({
               <button
                 type="button"
                 role="menuitem"
+                aria-disabled={number === 1}
+                className={menuItemClass}
+                onClick={() => {
+                  if (number === 1) return;
+                  close();
+                  onMove(number - 2, { restoreFocus: true });
+                }}
+              >
+                Move track up
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-disabled={number === count}
+                className={menuItemClass}
+                onClick={() => {
+                  if (number === count) return;
+                  close();
+                  onMove(number, { restoreFocus: true });
+                }}
+              >
+                Move track down
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 className={menuItemClass}
                 onClick={() => {
                   close();
@@ -213,7 +267,7 @@ export function TrackHeader({
           )}
         </Menu>
       </div>
-      <div className="flex items-center gap-2 pl-7 max-md:pl-0">
+      <div className="flex items-center gap-2 pl-12 max-md:pl-0">
         <button
           type="button"
           aria-label={`Mute ${track.name}`}

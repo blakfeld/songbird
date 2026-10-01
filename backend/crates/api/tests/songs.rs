@@ -278,3 +278,35 @@ async fn out_of_range_sound_setting_names_the_track_and_setting() {
     assert!(message.contains("\"Bass\""), "{message}");
     assert!(message.contains("feedback"), "{message}");
 }
+
+#[tokio::test]
+async fn export_follows_track_array_order_for_names_and_channels() {
+    let keys = || track("t1", "Keys", "piano", json!([]), json!([]));
+    let bass = || track("t2", "Bass", "bass", json!([]), json!([]));
+
+    // Raw MIDI channels are zero-based, so channel 1 is index 0.
+    for (tracks, expected) in [
+        (vec![keys(), bass()], [("Keys", 0), ("Bass", 1)]),
+        (vec![bass(), keys()], [("Bass", 0), ("Keys", 1)]),
+    ] {
+        let (status, _, bytes) = export(&song(1, tracks)).await;
+        assert_eq!(status, StatusCode::OK);
+        let smf = Smf::parse(&bytes).unwrap();
+        assert_eq!(smf.tracks.len(), 3);
+        for (track, (name, channel)) in smf.tracks[1..].iter().zip(expected) {
+            let track_name = track.iter().find_map(|e| match e.kind {
+                midly::TrackEventKind::Meta(midly::MetaMessage::TrackName(n)) => Some(n),
+                _ => None,
+            });
+            assert_eq!(track_name, Some(name.as_bytes()));
+            let channels: Vec<u8> = track
+                .iter()
+                .filter_map(|e| match e.kind {
+                    midly::TrackEventKind::Midi { channel, .. } => Some(channel.as_int()),
+                    _ => None,
+                })
+                .collect();
+            assert!(!channels.is_empty() && channels.iter().all(|&c| c == channel));
+        }
+    }
+}

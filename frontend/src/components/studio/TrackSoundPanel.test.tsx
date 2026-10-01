@@ -6,11 +6,14 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { drums } from "@/test/fixtures";
+import type { GripHandlers } from "./useTrackDrag";
 import type { ClipActions } from "./useClipActions";
 import { TrackHeader } from "./TrackHeader";
 import type { TrackActions } from "./trackActions";
 
 afterEach(cleanup);
+
+const noGrip: GripHandlers = { onPointerDown: () => {}, onPointerMove: () => {}, onPointerUp: () => {}, onPointerCancel: () => {}, onLostPointerCapture: () => {} };
 
 const bass: InstrumentInfo = {
   id: "bass",
@@ -35,6 +38,7 @@ function setup(sound?: object) {
     select: () => {},
     rename: () => {},
     remove: () => {},
+    move: () => {},
     mixer: () => {},
     generate: () => {},
     sound: (id, patch, o) => store.getState().setSound(id, patch, o),
@@ -53,6 +57,10 @@ function setup(sound?: object) {
             song={s}
             track={t}
             number={i + 1}
+            count={s.tracks.length}
+            onMove={() => {}}
+            grip={noGrip}
+            dragging={false}
             selected={false}
             instrument={{ state: "ready", info: infos[t.instrument] }}
             actions={actions}
@@ -110,6 +118,10 @@ describe("Sound panel", () => {
         song={base}
         track={store.getState().song!.tracks[0]}
         number={1}
+        count={1}
+        onMove={() => {}}
+        grip={noGrip}
+        dragging={false}
         selected={false}
         instrument={{ state: "missing" }}
         actions={actions}

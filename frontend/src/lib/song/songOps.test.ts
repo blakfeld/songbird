@@ -374,3 +374,29 @@ describe("track sound", () => {
     });
   });
 });
+
+describe("moveTrack", () => {
+  const three = () => ops.addTrack(newSongWithTracks(), { id: "bass", name: "Bass" });
+  const names = (s: Song) => s.tracks.map((t) => t.name);
+
+  it("moves a track up and down, keeping the others in order", () => {
+    const s = three();
+    expect(names(ops.moveTrack(s, s.tracks[2].id, 1))).toEqual(["Drums", "Bass", "Piano"]);
+    expect(names(ops.moveTrack(s, s.tracks[0].id, 1))).toEqual(["Piano", "Drums", "Bass"]);
+  });
+
+  it("moves to the first and last positions and clamps out-of-range targets", () => {
+    const s = three();
+    expect(names(ops.moveTrack(s, s.tracks[2].id, 0))).toEqual(["Bass", "Drums", "Piano"]);
+    expect(names(ops.moveTrack(s, s.tracks[0].id, 2))).toEqual(["Piano", "Bass", "Drums"]);
+    expect(names(ops.moveTrack(s, s.tracks[2].id, -5))).toEqual(["Bass", "Drums", "Piano"]);
+    expect(names(ops.moveTrack(s, s.tracks[0].id, 99))).toEqual(["Piano", "Bass", "Drums"]);
+  });
+
+  it("returns the same song for a no-op, a clamped no-op, or an unknown id", () => {
+    const s = three();
+    expect(ops.moveTrack(s, s.tracks[1].id, 1)).toBe(s);
+    expect(ops.moveTrack(s, s.tracks[2].id, 99)).toBe(s);
+    expect(ops.moveTrack(s, "missing", 0)).toBe(s);
+  });
+});
