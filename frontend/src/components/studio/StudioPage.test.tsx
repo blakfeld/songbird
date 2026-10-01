@@ -1158,9 +1158,21 @@ describe("key highlighting", () => {
     expect(dock.getByRole("button", { name: "B3" })).toHaveAccessibleDescription("In C major");
     expect(dock.getByRole("button", { name: "A#3" })).not.toHaveAccessibleDescription();
     expect(dockRegion().querySelector('[data-tint="tonic"]')).toHaveTextContent("C");
-    expect(cell("C4").className).toContain("bg-emerald-100");
-    expect(cell("B3").className).toContain("bg-emerald-50");
+    expect(cell("C4").className).toContain("bg-emerald-200/80");
+    expect(cell("C4").className).toContain("border-b-emerald-600");
+    expect(cell("B3").className).toContain("bg-emerald-100");
+    expect(cell("B3").className).not.toContain("border-b-emerald");
     expect(cell("A#3").className).not.toContain("emerald");
+  });
+
+  it("bands every step of an in-key row across the whole grid and none of an out-of-key row", async () => {
+    await renderStudio(pianoSong());
+    await selectTrack(/^Select Piano track/);
+    const rowCells = (row: number) =>
+      Array.from(dockRegion().querySelectorAll<HTMLElement>(`[data-cell^="${row}:"]`));
+    expect(rowCells(1).length).toBeGreaterThan(1);
+    expect(rowCells(1).every((c) => /bg-emerald/.test(c.className))).toBe(true);
+    expect(rowCells(2).some((c) => /emerald/.test(c.className))).toBe(false);
   });
 
   it("moves the tonic marking to the A rows when the key changes to A minor", async () => {
@@ -1170,6 +1182,9 @@ describe("key highlighting", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Key mode" }), "minor");
     expect(tints()).toEqual(["scale", "scale", "none", "tonic"]);
     expect(dockRegion().querySelector('[data-tint="tonic"]')).toHaveTextContent("A");
+    expect(cell("A3").className).toContain("border-b-emerald-600");
+    expect(cell("C4").className).not.toContain("border-b-emerald");
+    expect(cell("C4").className).toContain("bg-emerald-100");
     expect(within(dockRegion()).getByRole("button", { name: "A3" })).toHaveAccessibleDescription("Tonic of A minor");
   });
 

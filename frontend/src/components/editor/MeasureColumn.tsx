@@ -34,10 +34,15 @@ interface Props {
 const sameItems = (a: Note[], b: Note[]) =>
   a === b || (a.length === b.length && a.every((n, i) => n === b[i]));
 
+// Strong enough to read as a band across the whole roll rather than only in the gutter lane;
+// the lightest step stays above emerald-100 because anything paler vanished next to white rows.
 const TINT_CLASSES = {
-  scale: ["bg-emerald-50 dark:bg-emerald-950/50", "bg-emerald-100/60 dark:bg-emerald-900/35"],
-  tonic: ["bg-emerald-100 dark:bg-emerald-900/55", "bg-emerald-200/60 dark:bg-emerald-900/70"],
+  scale: ["bg-emerald-100 dark:bg-emerald-900/40", "bg-emerald-200/60 dark:bg-emerald-900/50"],
+  tonic: ["bg-emerald-200/80 dark:bg-emerald-800/55", "bg-emerald-200 dark:bg-emerald-800/65"],
 };
+
+// An octave boundary under each tonic row gives the tonic a cue beyond hue, and lets the eye count octaves.
+const TONIC_EDGE = "border-b-emerald-600 dark:border-b-emerald-500";
 
 function cellClass(
   local: number,
@@ -55,6 +60,7 @@ function cellClass(
   const oddBeat = Math.floor(local / beatSteps) % 2 === 1;
   if (tint !== "none") {
     parts.push(TINT_CLASSES[tint][oddBeat ? 1 : 0]);
+    if (tint === "tonic") parts.push(TONIC_EDGE);
   } else if (shaded) {
     parts.push(oddBeat ? "bg-zinc-200/70 dark:bg-zinc-800/60" : "bg-zinc-100 dark:bg-zinc-900");
   } else {
