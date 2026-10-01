@@ -24,4 +24,6 @@ In the Studio's "Generate part with AI" dialog, focus starts in the prompt box, 
 
 - `frontend/src/components/studio/TrackGenerateDialog.tsx`: an `onKeyDown` on the prompt textarea that mirrors `AssistantPanel.tsx:131-133`, plus the hint text.
 - `frontend/src/components/studio/StudioPage.generate.test.tsx`: new keyboard cases.
-- No backend change. The single-instrument editor's `PromptForm` is out of scope.
+- `frontend/src/components/studio/AssistantPanel.tsx`: the song chat gets the same Safari IME fix (`keyCode === 229`), because WebKit clears `isComposing` before the confirming Enter's keydown.
+- `frontend/src/components/editor/TokenCounter.tsx` and its callers (`PromptForm`, `TrackGenerateDialog`): the counter takes a `useId`-derived `id` prop instead of the hard-coded `prompt-token-count`, so its id can't clash.
+- No backend change. `PromptForm` changes only to pass the token counter's id; its Enter behavior is out of scope.
