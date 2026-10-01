@@ -2,7 +2,8 @@ import type { GenerateRequestBody } from "@/generated/GenerateRequestBody";
 import type { GenerationLimits } from "@/generated/GenerationLimits";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
-import { midiFilename } from "./midiFilename";
+import type { Song } from "@/generated/Song";
+import { midiFilename, songMidiFilename } from "./midiFilename";
 
 export class ApiError extends Error {
   constructor(
@@ -101,5 +102,13 @@ export async function exportMidi(pattern: Pattern): Promise<MidiExport> {
   return {
     blob: await res.blob(),
     filename: filenameFrom(res.headers.get("Content-Disposition"), midiFilename(pattern)),
+  };
+}
+
+export async function exportSongMidi(song: Song): Promise<MidiExport> {
+  const res = await postJson("/api/v1/songs/export/midi", song);
+  return {
+    blob: await res.blob(),
+    filename: filenameFrom(res.headers.get("Content-Disposition"), songMidiFilename(song)),
   };
 }

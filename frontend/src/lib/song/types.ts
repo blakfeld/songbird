@@ -1,72 +1,18 @@
-import type { Note } from "@/generated/Note";
+import type { Clip } from "@/generated/Clip";
+import type { KeyMode } from "@/generated/KeyMode";
+import type { Loop } from "@/generated/Loop";
+import type { LoopRegion } from "@/generated/LoopRegion";
+import type { Song } from "@/generated/Song";
+import type { SongKey } from "@/generated/SongKey";
+import type { Tonic } from "@/generated/Tonic";
 import type { TimeSignature } from "@/generated/TimeSignature";
+import type { Track } from "@/generated/Track";
 import { STEPS_PER_MEASURE } from "../patternOps";
 
-// Loop notes are counted from the loop's own start so one loop can be placed at any position.
-export interface Loop {
-  id: string;
-  name: string;
-  measures: number;
-  notes: Note[];
-}
-
-// Whole-measure positions keep clips aligned with the song loop range and sections.
-export interface Clip {
-  id: string;
-  loop_id: string;
-  start_measure: number;
-  measures: number;
-}
-
-// Snake_case and flat so change #5 can mirror these types in Rust without a translation layer.
-export interface Track {
-  id: string;
-  name: string;
-  instrument: string;
-  volume_db: number;
-  pan: number;
-  muted: boolean;
-  soloed: boolean;
-  // Both live on the track so a clip can never reference another instrument's loop.
-  loops: Loop[];
-  // Kept sorted by start_measure so overlap and neighbour lookups stay linear.
-  clips: Clip[];
-}
+export type { Clip, KeyMode, Loop, LoopRegion, Song, SongKey, Tonic, Track };
 
 export const TONICS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
-export type Tonic = (typeof TONICS)[number];
-export type KeyMode = "major" | "minor";
-
-export interface SongKey {
-  tonic: Tonic;
-  mode: KeyMode;
-}
-
 export const DEFAULT_KEY: SongKey = { tonic: "C", mode: "major" };
-
-export interface Song {
-  version: 2;
-  id: string;
-  name: string;
-  tempo_bpm: number;
-  time_signature: TimeSignature;
-  steps_per_measure: number;
-  swing: number;
-  // Optional in storage so songs saved before keys existed stay valid; readers fall back to C major.
-  key?: SongKey;
-  // Derived from the clips by normalizeSong and stored only so consumers read one number.
-  measures: number;
-  // Optional so songs saved before loop regions existed stay valid; absent or null means no region and looping off.
-  loop_region?: LoopRegion | null;
-  tracks: Track[];
-}
-
-// snake_case so the field stays mirrorable by the backend Song type.
-// The flag sits beside the region because looping can be on with no region, which loops the whole song.
-export interface LoopRegion {
-  region: { start_measure: number; end_measure: number } | null;
-  enabled: boolean;
-}
 
 export const MAX_TRACKS = 16;
 export const MEASURE_RANGE = { min: 1, max: 128 } as const;

@@ -326,6 +326,7 @@ export function StudioPage({
               store={store}
               library={library}
               song={song}
+              instruments={instruments.data}
               titleRef={titleRef}
               onOpenSong={(id) => void openById(id)}
               onSongCreated={(created) => {

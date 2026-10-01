@@ -60,9 +60,9 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
 - **Alternative:** write the song as N calls to `pattern_to_midi` and merge. The conductor track would be duplicated, and splicing SMF tracks is fiddlier than sharing the event builder.
 
 ### D3. Per-route body limit
-- **Routing:** `routes.rs` wraps the songs and lyrics routers (`/api/v1/songs/*` now, `/api/v1/lyrics/*` from #9) in their own `DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)` (1 MiB). The existing 64 KiB layer stays on everything else.
+- **Routing:** `routes.rs` wraps the songs and lyrics routers (`/api/v1/songs/*` now, `/api/v1/lyrics/*` from #9) in their own `DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)` (2 MiB). The existing 64 KiB layer stays on everything else.
 - **Layer order:** the order stays as it is (the limit sits inside CORS), so `413` responses keep carrying CORS headers.
-- **Why 1 MiB:** the densest realistic song (16 tracks × 128 measures) serializes to a few hundred KiB, and the lyrics request in #9 is capped at about 100 KiB.
+- **Why 2 MiB:** the densest song the caps allow (16 tracks × 128 measures, a note on every step) serializes to about 1.9 MiB (measured in task 2.4). An earlier 1 MiB limit only fit an eighth-note grid (about 960 KiB), so sixteenth-note parts or longer row ids would have been rejected. The lyrics request in #9 is capped at about 100 KiB.
 - **Constant:** #9 reuses the constant rather than adding its own number.
 - **Alternative:** raise the global limit. That would weaken the protection on the pattern routes, which never need it.
 
@@ -89,4 +89,4 @@ See proposal.md for motivation and `specs/songs/export/spec.md` for behavior.
 - [Rust and TypeScript clip flattening diverge, so the MIDI file differs from what the Studio plays] → `fixtures/clip_resolution.json` is consumed by both (tasks 1.4 and 3.2).
 - [DAWs interpret CC7 differently] → This is documented in `backend/README.md` beside the existing Logic import notes, and the manual Logic check is task 4.3.
 - [Replacing the hand-written TS types churns #4's imports] → It is a mechanical import rename. `pnpm typecheck` catches every site.
-- [Very large songs approach 1 MiB] → The export returns `413 payload_too_large`, and the Studio shows the standard error. At the 16-track and 128-measure caps the practical maximum stays well under the limit (estimate recorded in task 2.4).
+- [Very large songs approach 2 MiB] → The export returns `413 payload_too_large`, and the Studio shows the standard error. At the 16-track and 128-measure caps a single-voice note on every step stays under the limit (about 1.9 MiB, task 2.4); only dense chords on every step of every track could exceed it.

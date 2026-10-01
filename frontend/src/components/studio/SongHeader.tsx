@@ -13,7 +13,9 @@ import type { SongLibrary } from "@/lib/song/songLibrary";
 import { countTimeSignatureLosses, songKey } from "@/lib/song/songOps";
 import { useSongStore, type SongStore } from "@/lib/song/songStore";
 import { SONG_NAME_MAX, TONICS, type KeyMode, type Song, type Tonic } from "@/lib/song/types";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { InlineNameInput } from "./InlineNameInput";
+import { SongFileActions } from "./SongFileActions";
 import { SongLibraryMenu } from "./SongLibraryMenu";
 import type { TimeSignature } from "@/generated/TimeSignature";
 
@@ -37,6 +39,7 @@ export function SongHeader({
   store,
   library,
   song,
+  instruments,
   titleRef,
   onOpenSong,
   onSongCreated,
@@ -49,6 +52,7 @@ export function SongHeader({
   store: SongStore;
   library: SongLibrary;
   song: Song;
+  instruments: InstrumentInfo[] | null;
   titleRef: Ref<HTMLHeadingElement>;
   onOpenSong: (id: string) => void;
   onSongCreated: (song: Song) => void;
@@ -138,6 +142,13 @@ export function SongHeader({
         </Button>
         <SaveStatus library={library} />
       </div>
+      <SongFileActions
+        song={song}
+        library={library}
+        instruments={instruments}
+        onImported={onSongCreated}
+        onAnnounce={onAnnounce}
+      />
       <Button
         className="lg:hidden"
         aria-expanded={assistantOpen}

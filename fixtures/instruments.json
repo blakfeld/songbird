@@ -1,0 +1,1980 @@
+[
+  {
+    "id": "drums",
+    "name": "Drums",
+    "kind": "drums",
+    "midi_channel": 10,
+    "midi_program": null,
+    "range": null,
+    "sustained": false,
+    "rows": [
+      {
+        "id": "kick",
+        "name": "Kick",
+        "midi_note": 36
+      },
+      {
+        "id": "snare",
+        "name": "Snare",
+        "midi_note": 38
+      },
+      {
+        "id": "rim",
+        "name": "Side Stick",
+        "midi_note": 37
+      },
+      {
+        "id": "clap",
+        "name": "Clap",
+        "midi_note": 39
+      },
+      {
+        "id": "hat_closed",
+        "name": "Closed Hi-Hat",
+        "midi_note": 42
+      },
+      {
+        "id": "hat_pedal",
+        "name": "Pedal Hi-Hat",
+        "midi_note": 44
+      },
+      {
+        "id": "hat_open",
+        "name": "Open Hi-Hat",
+        "midi_note": 46
+      },
+      {
+        "id": "tom_low",
+        "name": "Low Tom",
+        "midi_note": 45
+      },
+      {
+        "id": "tom_mid",
+        "name": "Mid Tom",
+        "midi_note": 47
+      },
+      {
+        "id": "tom_high",
+        "name": "High Tom",
+        "midi_note": 50
+      },
+      {
+        "id": "crash",
+        "name": "Crash",
+        "midi_note": 49
+      },
+      {
+        "id": "ride",
+        "name": "Ride",
+        "midi_note": 51
+      }
+    ]
+  },
+  {
+    "id": "piano",
+    "name": "Piano",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 1,
+    "range": {
+      "low": 36,
+      "high": 96
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C7",
+        "name": "C7",
+        "midi_note": 96
+      },
+      {
+        "id": "B6",
+        "name": "B6",
+        "midi_note": 95
+      },
+      {
+        "id": "A#6",
+        "name": "A#6",
+        "midi_note": 94
+      },
+      {
+        "id": "A6",
+        "name": "A6",
+        "midi_note": 93
+      },
+      {
+        "id": "G#6",
+        "name": "G#6",
+        "midi_note": 92
+      },
+      {
+        "id": "G6",
+        "name": "G6",
+        "midi_note": 91
+      },
+      {
+        "id": "F#6",
+        "name": "F#6",
+        "midi_note": 90
+      },
+      {
+        "id": "F6",
+        "name": "F6",
+        "midi_note": 89
+      },
+      {
+        "id": "E6",
+        "name": "E6",
+        "midi_note": 88
+      },
+      {
+        "id": "D#6",
+        "name": "D#6",
+        "midi_note": 87
+      },
+      {
+        "id": "D6",
+        "name": "D6",
+        "midi_note": 86
+      },
+      {
+        "id": "C#6",
+        "name": "C#6",
+        "midi_note": 85
+      },
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      }
+    ]
+  },
+  {
+    "id": "electric-piano",
+    "name": "Electric Piano",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 5,
+    "range": {
+      "low": 36,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      }
+    ]
+  },
+  {
+    "id": "organ",
+    "name": "Organ",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 17,
+    "range": {
+      "low": 36,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      }
+    ]
+  },
+  {
+    "id": "bass",
+    "name": "Bass",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 34,
+    "range": {
+      "low": 28,
+      "high": 55
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      },
+      {
+        "id": "B1",
+        "name": "B1",
+        "midi_note": 35
+      },
+      {
+        "id": "A#1",
+        "name": "A#1",
+        "midi_note": 34
+      },
+      {
+        "id": "A1",
+        "name": "A1",
+        "midi_note": 33
+      },
+      {
+        "id": "G#1",
+        "name": "G#1",
+        "midi_note": 32
+      },
+      {
+        "id": "G1",
+        "name": "G1",
+        "midi_note": 31
+      },
+      {
+        "id": "F#1",
+        "name": "F#1",
+        "midi_note": 30
+      },
+      {
+        "id": "F1",
+        "name": "F1",
+        "midi_note": 29
+      },
+      {
+        "id": "E1",
+        "name": "E1",
+        "midi_note": 28
+      }
+    ]
+  },
+  {
+    "id": "synth-lead",
+    "name": "Synth Lead",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 81,
+    "range": {
+      "low": 48,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      }
+    ]
+  },
+  {
+    "id": "synth-pad",
+    "name": "Synth Pad",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 89,
+    "range": {
+      "low": 36,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      }
+    ]
+  },
+  {
+    "id": "strings",
+    "name": "Strings",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 49,
+    "range": {
+      "low": 36,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      },
+      {
+        "id": "B2",
+        "name": "B2",
+        "midi_note": 47
+      },
+      {
+        "id": "A#2",
+        "name": "A#2",
+        "midi_note": 46
+      },
+      {
+        "id": "A2",
+        "name": "A2",
+        "midi_note": 45
+      },
+      {
+        "id": "G#2",
+        "name": "G#2",
+        "midi_note": 44
+      },
+      {
+        "id": "G2",
+        "name": "G2",
+        "midi_note": 43
+      },
+      {
+        "id": "F#2",
+        "name": "F#2",
+        "midi_note": 42
+      },
+      {
+        "id": "F2",
+        "name": "F2",
+        "midi_note": 41
+      },
+      {
+        "id": "E2",
+        "name": "E2",
+        "midi_note": 40
+      },
+      {
+        "id": "D#2",
+        "name": "D#2",
+        "midi_note": 39
+      },
+      {
+        "id": "D2",
+        "name": "D2",
+        "midi_note": 38
+      },
+      {
+        "id": "C#2",
+        "name": "C#2",
+        "midi_note": 37
+      },
+      {
+        "id": "C2",
+        "name": "C2",
+        "midi_note": 36
+      }
+    ]
+  },
+  {
+    "id": "pluck",
+    "name": "Pluck",
+    "kind": "melodic",
+    "midi_channel": 1,
+    "midi_program": 46,
+    "range": {
+      "low": 48,
+      "high": 84
+    },
+    "sustained": true,
+    "rows": [
+      {
+        "id": "C6",
+        "name": "C6",
+        "midi_note": 84
+      },
+      {
+        "id": "B5",
+        "name": "B5",
+        "midi_note": 83
+      },
+      {
+        "id": "A#5",
+        "name": "A#5",
+        "midi_note": 82
+      },
+      {
+        "id": "A5",
+        "name": "A5",
+        "midi_note": 81
+      },
+      {
+        "id": "G#5",
+        "name": "G#5",
+        "midi_note": 80
+      },
+      {
+        "id": "G5",
+        "name": "G5",
+        "midi_note": 79
+      },
+      {
+        "id": "F#5",
+        "name": "F#5",
+        "midi_note": 78
+      },
+      {
+        "id": "F5",
+        "name": "F5",
+        "midi_note": 77
+      },
+      {
+        "id": "E5",
+        "name": "E5",
+        "midi_note": 76
+      },
+      {
+        "id": "D#5",
+        "name": "D#5",
+        "midi_note": 75
+      },
+      {
+        "id": "D5",
+        "name": "D5",
+        "midi_note": 74
+      },
+      {
+        "id": "C#5",
+        "name": "C#5",
+        "midi_note": 73
+      },
+      {
+        "id": "C5",
+        "name": "C5",
+        "midi_note": 72
+      },
+      {
+        "id": "B4",
+        "name": "B4",
+        "midi_note": 71
+      },
+      {
+        "id": "A#4",
+        "name": "A#4",
+        "midi_note": 70
+      },
+      {
+        "id": "A4",
+        "name": "A4",
+        "midi_note": 69
+      },
+      {
+        "id": "G#4",
+        "name": "G#4",
+        "midi_note": 68
+      },
+      {
+        "id": "G4",
+        "name": "G4",
+        "midi_note": 67
+      },
+      {
+        "id": "F#4",
+        "name": "F#4",
+        "midi_note": 66
+      },
+      {
+        "id": "F4",
+        "name": "F4",
+        "midi_note": 65
+      },
+      {
+        "id": "E4",
+        "name": "E4",
+        "midi_note": 64
+      },
+      {
+        "id": "D#4",
+        "name": "D#4",
+        "midi_note": 63
+      },
+      {
+        "id": "D4",
+        "name": "D4",
+        "midi_note": 62
+      },
+      {
+        "id": "C#4",
+        "name": "C#4",
+        "midi_note": 61
+      },
+      {
+        "id": "C4",
+        "name": "C4",
+        "midi_note": 60
+      },
+      {
+        "id": "B3",
+        "name": "B3",
+        "midi_note": 59
+      },
+      {
+        "id": "A#3",
+        "name": "A#3",
+        "midi_note": 58
+      },
+      {
+        "id": "A3",
+        "name": "A3",
+        "midi_note": 57
+      },
+      {
+        "id": "G#3",
+        "name": "G#3",
+        "midi_note": 56
+      },
+      {
+        "id": "G3",
+        "name": "G3",
+        "midi_note": 55
+      },
+      {
+        "id": "F#3",
+        "name": "F#3",
+        "midi_note": 54
+      },
+      {
+        "id": "F3",
+        "name": "F3",
+        "midi_note": 53
+      },
+      {
+        "id": "E3",
+        "name": "E3",
+        "midi_note": 52
+      },
+      {
+        "id": "D#3",
+        "name": "D#3",
+        "midi_note": 51
+      },
+      {
+        "id": "D3",
+        "name": "D3",
+        "midi_note": 50
+      },
+      {
+        "id": "C#3",
+        "name": "C#3",
+        "midi_note": 49
+      },
+      {
+        "id": "C3",
+        "name": "C3",
+        "midi_note": 48
+      }
+    ]
+  }
+]

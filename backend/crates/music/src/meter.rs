@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -9,7 +10,9 @@ pub const MAX_TEMPO_BPM: u32 = 240;
 pub const MIN_SWING: f64 = 0.0;
 pub const MAX_SWING: f64 = 0.75;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, TS)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, TS, JsonSchema,
+)]
 pub enum TimeSignature {
     #[default]
     #[serde(rename = "4/4")]

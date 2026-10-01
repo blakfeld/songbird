@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { Midi } from "@tonejs/midi";
 import { expect, test, type Page } from "@playwright/test";
 
 test("build a song across tracks, mix it, reload and find it unchanged", async ({ page }) => {
@@ -289,6 +291,75 @@ test("edit a song's length, meter and key, then select, move, copy and undo note
   await expect.poll(stepsOf).toEqual([6, 6, 10]);
   await page.keyboard.press("Control+z");
   await expect.poll(stepsOf).toEqual([4, 4, 8]);
+
+  expect(problems).toEqual([]);
+});
+
+test("download a project, open it as a new song, and export a multitrack MIDI file", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await page.goto("/studio");
+  await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
+  await page.getByRole("button", { name: "Rename song Untitled song" }).click();
+  await page.getByRole("textbox", { name: "Song name" }).fill("Late Train");
+  await page.keyboard.press("Enter");
+
+  const drums = page.getByRole("group", { name: "Track 1: Drums" });
+  await drums.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const drumsEditor = page.getByRole("region", { name: "Editor: Drums 1 on Drums" });
+  await drumsEditor.getByRole("button", { name: "Kick, measure 1, step 1", exact: true }).click();
+
+  // The piano loop is two measures long and placed twice, so the same note must appear in both clips.
+  const piano = page.getByRole("group", { name: "Track 2: Piano" });
+  await piano.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const clip = piano.getByRole("button", { name: /^Piano 1, measure/ });
+  await clip.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  const first = piano.getByRole("button", { name: "Piano 1, measures 1 to 2" });
+  await expect(first).toBeVisible();
+  const pianoEditor = page.getByRole("region", { name: "Editor: Piano 1 on Piano" });
+  await pianoEditor.getByRole("button", { name: "C4, measure 1, step 1", exact: true }).click();
+  await expect(pianoEditor.getByTestId("note")).toHaveCount(1);
+  await first.focus();
+  await page.keyboard.press("Control+d");
+  await expect(piano.getByRole("button", { name: /^Piano 1, measures 3 to 4/ })).toBeVisible();
+
+  const projectDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download project" }).click();
+  const project = await projectDownload;
+  expect(project.suggestedFilename()).toBe("late-train.songbird.json");
+  const projectPath = test.info().outputPath("late-train.songbird.json");
+  await project.saveAs(projectPath);
+
+  // Opening the file this same browser already holds exercises the id-collision path.
+  await page.getByLabel("Project file").setInputFiles(projectPath);
+  await expect(page.getByRole("status").filter({ hasText: "as a new song" })).toBeVisible();
+  await page.getByRole("button", { name: "Songs" }).click();
+  await expect(page.getByRole("dialog", { name: "Songs" }).getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "Close" }).click();
+  await expect(piano.getByRole("button", { name: /^Piano 1, measures 3 to 4/ })).toBeVisible();
+
+  const midiDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download MIDI" }).click();
+  const midiFile = await midiDownload;
+  expect(midiFile.suggestedFilename()).toBe("songbird-late-train-120bpm.mid");
+  const midiPath = test.info().outputPath("late-train.mid");
+  await midiFile.saveAs(midiPath);
+
+  const midi = new Midi(readFileSync(midiPath));
+  // The parser folds the conductor track into the header, so only the song's own tracks are listed.
+  expect(midi.header.tempos[0].bpm).toBeCloseTo(120);
+  expect(midi.tracks).toHaveLength(2);
+  const [drumTrack, pianoTrack] = midi.tracks;
+  expect(drumTrack.channel).toBe(9);
+  expect(pianoTrack.channel).toBe(0);
+  expect(drumTrack.notes.map((n) => n.ticks)).toEqual([0]);
+  expect(pianoTrack.notes.map((n) => [n.ticks, n.midi])).toEqual([
+    [0, 60],
+    [3840, 60],
+  ]);
 
   expect(problems).toEqual([]);
 });

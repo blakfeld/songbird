@@ -33,7 +33,7 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - Chord context. #8 adds that as a separate requirement.
   - Server-side memory of past generations.
 
-Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 1 MiB body limit on `/api/v1/songs/`), `add-timeline-loop-region` (the song's `loop_region` and its on/off state, which decide when a loop range is offered), and `improve-song-and-note-editing` (the song's `key`).
+Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 2 MiB body limit on `/api/v1/songs/`), `add-timeline-loop-region` (the song's `loop_region` and its on/off state, which decide when a loop range is offered), and `improve-song-and-note-editing` (the song's `key`).
 
 ## Capabilities
 

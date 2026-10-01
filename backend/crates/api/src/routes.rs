@@ -15,6 +15,12 @@ use crate::state::AppState;
 /// bodies are a pattern document of at most a few thousand notes.
 pub const MAX_BODY_BYTES: usize = 64 * 1024;
 
+/// Songs are far larger than patterns: a song at the 16-track, 128-measure caps
+/// with a note on every step serializes to just under 2 MiB, so a smaller limit
+/// would reject songs the Studio lets users build. The lyrics endpoints reuse
+/// this limit rather than choosing their own number.
+pub const SONG_MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+
 async fn healthz() -> Json<Value> {
     // Deliberately touches no provider or network so it reflects only this process.
     Json(json!({"status": "ok"}))
@@ -24,6 +30,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(healthz))
         .merge(crate::patterns::router())
+        // Applied to the sub-router so it runs inside the global limit and
+        // overrides it for these routes only.
+        .merge(crate::songs::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
 }
 
 /// Split from `routes` so tests can exercise the same layers, in the same

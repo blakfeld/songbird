@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Pattern } from "@/generated/Pattern";
 import { Button } from "@/components/ui/Button";
 import { exportMidi } from "@/lib/api";
+import { saveBlob } from "@/lib/download";
 
 export function DownloadMidiButton({
   pattern,
@@ -20,15 +21,7 @@ export function DownloadMidiButton({
     setFailed(false);
     try {
       const { blob, filename } = await exportMidi(pattern);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Some browsers start the save asynchronously; revoking immediately can cancel it.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saveBlob(blob, filename);
       onExported?.(filename);
     } catch {
       setFailed(true);

@@ -1,10 +1,30 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { Note } from "@/generated/Note";
+import type { TimeSignature } from "@/generated/TimeSignature";
 import { note } from "@/test/fixtures";
 import * as clips from "./clipOps";
 import { normalizeSong, timelineMeasures } from "./songOps";
-import { MAX_CLIPS, MAX_LOOPS, newSong, type Clip, type Loop, type Song } from "./types";
+import { STEPS_PER_MEASURE } from "../patternOps";
+import { MAX_CLIPS, MAX_LOOPS, newSong, type Clip, type Loop, type Song, type Track } from "./types";
 
 const SPM = 16;
+
+interface ResolutionCase {
+  name: string;
+  time_signature: TimeSignature;
+  song_measures: number;
+  track: Track;
+  expected: Note[];
+}
+
+const resolutionFixture: { cases: ResolutionCase[] } = JSON.parse(
+  readFileSync(resolve(__dirname, "../../../../fixtures/clip_resolution.json"), "utf8"),
+);
+
+// Rust and TypeScript may emit clips in different orders, so only the sorted result is shared.
+const bySortKey = (a: Note, b: Note) => a.step - b.step || a.row_id.localeCompare(b.row_id);
 
 // Loop and clip ids are readable so assertions can name them.
 const loop = (id: string, measures: number, notes = [note("kick", 0)], name = id): Loop => ({
@@ -36,6 +56,17 @@ const ok = (r: clips.ClipOpResult) => {
 const reason = (r: clips.ClipOpResult) => (r.song === null ? r.reason : undefined);
 
 describe("resolveTrackNotes", () => {
+  it.each(resolutionFixture.cases)("matches fixture: $name", (c) => {
+    const song: Song = {
+      ...newSong(c.time_signature),
+      measures: c.song_measures,
+      steps_per_measure: STEPS_PER_MEASURE[c.time_signature],
+    };
+    expect(clips.resolveTrackNotes(song, c.track).slice().sort(bySortKey)).toEqual(
+      c.expected.slice().sort(bySortKey),
+    );
+  });
+
   it("repeats a loop for the length of a longer clip", () => {
     const song = songWith([loop("a", 2)], [clip("c", "a", 3, 6)]);
     const steps = clips.resolveTrackNotes(song, track(song)).map((n) => n.step);

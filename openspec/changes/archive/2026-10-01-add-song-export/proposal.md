@@ -14,7 +14,7 @@ After #4, a song lives only in one browser. It cannot be taken into a DAW, backe
 - **Song project files**: "Download project" saves the song as `<song-name>.songbird.json`, and "Open project" loads one into the browser library. Import checks the format, version, instruments, and value ranges, and rejects bad files with a clear message.
 - **Song types move to the backend** (`music` crate) and are generated into the frontend with ts-rs. This replaces the hand-written TypeScript types from #4 and add-arrangement-clips, including `Loop` and `Clip` (song document `version` 2).
 - **Clip validation and flattening in Rust**: the backend checks loops and clips with the same rules as the browser's `validateClips`, and ports `resolveTrackNotes` as `resolve_track_notes`. A shared fixture, `fixtures/clip_resolution.json`, is run by both the Rust tests and the frontend `resolveTrackNotes` Vitest so the two flatteners cannot drift.
-- **Request size limit**: routes under `/api/v1/songs/` and `/api/v1/lyrics/` accept bodies up to 1 MiB, because songs are larger than patterns. Every other route keeps the 64 KiB limit.
+- **Request size limit**: routes under `/api/v1/songs/` and `/api/v1/lyrics/` accept bodies up to 2 MiB, because songs are larger than patterns. Every other route keeps the 64 KiB limit.
 - **Non-goals**:
   - Audio (WAV/MP3) rendering.
   - MIDI import.
@@ -29,7 +29,7 @@ Depends on: #4 `add-multitrack-song` and `add-arrangement-clips` (the loop and c
 - `songs/export`: Multitrack MIDI export of a song, and song project file download and upload.
 
 ### Modified Capabilities
-- `platform/service-operations`: "Request size limit" allows 1 MiB bodies for song and lyrics routes.
+- `platform/service-operations`: "Request size limit" allows 2 MiB bodies for song and lyrics routes.
 
 ## Impact
 

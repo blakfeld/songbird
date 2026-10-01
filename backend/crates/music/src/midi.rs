@@ -3,7 +3,7 @@ use midly::{Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, T
 
 use crate::expand::{settle, RawNote};
 use crate::meter::{TimeSignature, MAX_SWING, MAX_TEMPO_BPM, MIN_SWING, MIN_TEMPO_BPM};
-use crate::pattern::Pattern;
+use crate::pattern::{Note, Pattern, Row};
 use crate::timing::{step_to_ticks, PPQ};
 
 #[derive(Debug, thiserror::Error)]
@@ -99,17 +99,22 @@ enum Phase {
     On,
 }
 
-pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
-    validate_for_export(pattern)?;
-    let channel = u4::new(pattern.midi_channel - 1);
-    let total_steps = pattern.total_steps();
-    let end_tick = step_to_ticks(total_steps, pattern.swing);
+/// Shared by pattern and song export so both settle overlaps and convert steps
+/// to ticks identically. Deltas start at tick 0 and the track ends at the
+/// final step, so callers may prepend their own tick-0 events.
+pub(crate) fn note_events(
+    rows: &[Row],
+    notes: &[Note],
+    total_steps: u32,
+    swing: f64,
+    channel: u4,
+) -> Vec<TrackEvent<'static>> {
+    let end_tick = step_to_ticks(total_steps, swing);
 
-    let raw: Vec<RawNote> = pattern
-        .notes
+    let raw: Vec<RawNote> = notes
         .iter()
         .filter_map(|note| {
-            let row = pattern.rows.iter().position(|r| r.id == note.row_id)?;
+            let row = rows.iter().position(|r| r.id == note.row_id)?;
             Some(RawNote {
                 row,
                 step: note.step,
@@ -124,9 +129,9 @@ pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
 
     let mut timed: Vec<(u32, Phase, u8, u8)> = Vec::with_capacity(settled.len() * 2);
     for note in settled {
-        let key = pattern.rows[note.row].midi_note;
-        let start = step_to_ticks(note.step, pattern.swing);
-        let end = step_to_ticks(note.step + note.length, pattern.swing).min(end_tick);
+        let key = rows[note.row].midi_note;
+        let start = step_to_ticks(note.step, swing);
+        let end = step_to_ticks(note.step + note.length, swing).min(end_tick);
         if end <= start {
             continue;
         }
@@ -135,22 +140,7 @@ pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
     }
     timed.sort_by_key(|&(tick, phase, key, _)| (tick, phase, key));
 
-    let mut note_track = vec![meta(
-        0,
-        MetaMessage::TrackName(pattern.instrument.as_bytes()),
-    )];
-    if let Some(program) = pattern.midi_program {
-        note_track.push(TrackEvent {
-            delta: u28::new(0),
-            kind: TrackEventKind::Midi {
-                channel,
-                // The pattern stores GM programs 1-based like channels.
-                message: MidiMessage::ProgramChange {
-                    program: u7::new(program - 1),
-                },
-            },
-        });
-    }
+    let mut events = Vec::with_capacity(timed.len() + 1);
     let mut previous = 0;
     for (tick, phase, key, velocity) in timed {
         let message = match phase {
@@ -163,37 +153,91 @@ pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
                 vel: u7::new(0),
             },
         };
-        note_track.push(TrackEvent {
+        events.push(TrackEvent {
             delta: u28::new(tick - previous),
             kind: TrackEventKind::Midi { channel, message },
         });
         previous = tick;
     }
-    note_track.push(meta(end_tick - previous, MetaMessage::EndOfTrack));
+    events.push(meta(end_tick - previous, MetaMessage::EndOfTrack));
+    events
+}
 
-    let micros_per_quarter = (60_000_000.0 / f64::from(pattern.tempo_bpm)).round() as u32;
-    let tempo_track = vec![
-        meta(0, MetaMessage::TrackName(pattern.name.as_bytes())),
+/// Both exporters must announce tempo and meter the same way or a DAW would
+/// read a song and a pattern at the same settings differently.
+pub(crate) fn conductor_track<'a>(
+    name: &'a str,
+    tempo_bpm: u32,
+    time_signature: TimeSignature,
+    end_tick: u32,
+) -> Vec<TrackEvent<'a>> {
+    let micros_per_quarter = (60_000_000.0 / f64::from(tempo_bpm)).round() as u32;
+    vec![
+        meta(0, MetaMessage::TrackName(name.as_bytes())),
         meta(0, MetaMessage::Tempo(u24::new(micros_per_quarter))),
         meta(
             0,
             MetaMessage::TimeSignature(
-                pattern.time_signature.numerator(),
-                pattern.time_signature.denominator().trailing_zeros() as u8,
-                clocks_per_click(pattern.time_signature),
+                time_signature.numerator(),
+                time_signature.denominator().trailing_zeros() as u8,
+                clocks_per_click(time_signature),
                 8,
             ),
         ),
         meta(end_tick, MetaMessage::EndOfTrack),
-    ];
+    ]
+}
 
+pub(crate) fn write_smf(tracks: Vec<Vec<TrackEvent<'_>>>) -> Result<Vec<u8>, MidiError> {
     let smf = Smf {
         header: Header::new(Format::Parallel, Timing::Metrical(u15::new(PPQ as u16))),
-        tracks: vec![tempo_track, note_track],
+        tracks,
     };
     let mut bytes = Vec::new();
     smf.write_std(&mut bytes)?;
     Ok(bytes)
+}
+
+pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
+    validate_for_export(pattern)?;
+    let channel = u4::new(pattern.midi_channel - 1);
+    let total_steps = pattern.total_steps();
+
+    let mut note_track = vec![meta(
+        0,
+        MetaMessage::TrackName(pattern.instrument.as_bytes()),
+    )];
+    if let Some(program) = pattern.midi_program {
+        note_track.push(program_change(channel, program));
+    }
+    note_track.extend(note_events(
+        &pattern.rows,
+        &pattern.notes,
+        total_steps,
+        pattern.swing,
+        channel,
+    ));
+
+    let tempo_track = conductor_track(
+        &pattern.name,
+        pattern.tempo_bpm,
+        pattern.time_signature,
+        step_to_ticks(total_steps, pattern.swing),
+    );
+    write_smf(vec![tempo_track, note_track])
+}
+
+/// The pattern stores GM programs 1-based like channels.
+pub(crate) fn program_change(channel: u4, program: u8) -> TrackEvent<'static> {
+    TrackEvent {
+        delta: u28::new(0),
+        kind: TrackEventKind::Midi {
+            channel,
+            message: MidiMessage::ProgramChange {
+                program: u7::new(program - 1),
+            },
+        },
+    }
 }
 
 /// 6/8 is felt in dotted-quarter beats, so the metronome click spans three eighths.
@@ -204,7 +248,7 @@ fn clocks_per_click(time_signature: TimeSignature) -> u8 {
     }
 }
 
-fn meta(delta: u32, message: MetaMessage<'_>) -> TrackEvent<'_> {
+pub(crate) fn meta(delta: u32, message: MetaMessage<'_>) -> TrackEvent<'_> {
     TrackEvent {
         delta: u28::new(delta),
         kind: TrackEventKind::Meta(message),

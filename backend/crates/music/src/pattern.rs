@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -34,7 +35,7 @@ pub struct Row {
 
 /// `step` is absolute rather than per-measure so notes survive length changes
 /// and map directly to playback times and MIDI ticks.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub struct Note {
     pub row_id: String,
     pub step: u32,
