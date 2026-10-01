@@ -27,7 +27,7 @@ test("open the piano, generate, add a note, play, export and reload", async ({ p
   await page.goto("/");
   await page.getByRole("link", { name: "Open the Piano" }).click();
   await expect(page).toHaveURL(/\/instruments\/piano$/);
-  await expect(page.getByRole("heading", { name: "Piano", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Piano", exact: true, level: 1 })).toBeVisible();
 
   const form = page.getByRole("form", { name: "Generate a pattern" });
   await expect(form.getByRole("combobox", { name: "Measures" })).toBeEnabled();
@@ -68,3 +68,37 @@ test("open the piano, generate, add a note, play, export and reload", async ({ p
 
   expect(problems).toEqual([]);
 });
+
+const SYNTH_INSTRUMENTS = [
+  ["electric-piano", "Electric Piano"],
+  ["organ", "Organ"],
+  ["bass", "Bass"],
+  ["synth-lead", "Synth Lead"],
+  ["synth-pad", "Synth Pad"],
+  ["strings", "Strings"],
+  ["pluck", "Pluck"],
+] as const;
+
+for (const [id, name] of SYNTH_INSTRUMENTS) {
+  test(`${id}: generate, play and stop without console errors`, async ({ page }) => {
+    const problems: string[] = [];
+    page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+    page.on("pageerror", (e) => problems.push(e.message));
+
+    await page.goto(`/instruments/${id}`);
+    await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+
+    const form = page.getByRole("form", { name: "Generate a pattern" });
+    await expect(form.getByRole("combobox", { name: "Measures" })).toBeEnabled();
+    await form.getByRole("textbox", { name: "Describe your groove" }).fill("a simple line");
+    await form.getByRole("button", { name: "Generate" }).click();
+    await expect(notes(page).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Stop/ })).toBeVisible();
+    await page.getByRole("button", { name: /Stop/ }).click();
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+    expect(problems).toEqual([]);
+  });
+}

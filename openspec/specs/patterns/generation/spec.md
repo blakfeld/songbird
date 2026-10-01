@@ -38,7 +38,7 @@ The system SHALL expose `GET /api/v1/instruments` returning `200` with a list of
 - `sustained`: whether notes sound for their length or play as one-shots.
 - `rows`: each with `id`, `name`, and MIDI `midi_note`, in display order.
 
-In this change the list SHALL contain exactly the `drums` and `piano` instruments, in that order.
+The list SHALL contain exactly these instruments, in this order: `drums`, `piano`, `electric-piano`, `organ`, `bass`, `synth-lead`, `synth-pad`, `strings`, `pluck`.
 
 #### Scenario: Drums is listed
 - **WHEN** a client requests `GET /api/v1/instruments`
@@ -50,7 +50,11 @@ In this change the list SHALL contain exactly the `drums` and `piano` instrument
 
 #### Scenario: Exactly the offered instruments
 - **WHEN** a client requests `GET /api/v1/instruments`
-- **THEN** the instrument ids are exactly `["drums", "piano"]`
+- **THEN** the instrument ids are exactly `["drums", "piano", "electric-piano", "organ", "bass", "synth-lead", "synth-pad", "strings", "pluck"]`
+
+#### Scenario: Every new instrument generates
+- **WHEN** the service uses the mock provider and a client posts a generate request for each of the seven new instruments
+- **THEN** each response is `200` with a pattern whose `instrument`, `rows`, `midi_channel`, and `midi_program` match that instrument's listing
 
 ### Requirement: Supported measure counts
 The system SHALL accept exactly these values for `measures`: 4, 8, 12, 16, 32. The returned pattern SHALL span exactly the requested number of measures.

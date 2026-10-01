@@ -1,6 +1,6 @@
 use crate::draft::{MeasureNotes, SectionNote};
 
-use super::{ExampleDraft, Instrument, InstrumentKind, RowDef};
+use super::{ExampleDraft, Instrument, InstrumentKind, Monophony, RowDef};
 
 const fn row(id: &'static str, name: &'static str, midi_note: u8) -> RowDef {
     RowDef {
@@ -219,6 +219,7 @@ pub static DRUMS: Instrument = Instrument {
     row_aliases: &ALIASES,
     examples: &EXAMPLES,
     fallback_variation: Some(snare_roll_fill),
+    monophony: Monophony::None,
 };
 
 #[cfg(test)]

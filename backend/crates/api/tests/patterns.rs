@@ -335,12 +335,25 @@ async fn limits_reflect_configuration() {
 }
 
 #[tokio::test]
-async fn instruments_lists_drums_then_piano() {
+async fn instruments_lists_the_full_catalog_in_order() {
     let (status, body) = get(app_with(MockProvider, &[]), "/api/v1/instruments").await;
     assert_eq!(status, StatusCode::OK);
     let list = body.as_array().unwrap();
     let listed: Vec<&str> = list.iter().map(|i| i["id"].as_str().unwrap()).collect();
-    assert_eq!(listed, ["drums", "piano"]);
+    assert_eq!(
+        listed,
+        [
+            "drums",
+            "piano",
+            "electric-piano",
+            "organ",
+            "bass",
+            "synth-lead",
+            "synth-pad",
+            "strings",
+            "pluck"
+        ]
+    );
     assert_eq!(list[0]["kind"], "drums");
     assert_eq!(list[0]["midi_channel"], 10);
     assert_eq!(list[0]["midi_program"], Value::Null);
@@ -598,4 +611,43 @@ async fn export_rejects_a_non_pattern_body_as_invalid_json() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["error"]["code"], "invalid_json");
+}
+
+#[tokio::test]
+async fn every_new_instrument_generates_a_pattern_matching_its_listing() {
+    let app = app_with(MockProvider, &[]);
+    let (_, instruments) = get(app.clone(), "/api/v1/instruments").await;
+    let instruments = instruments.as_array().unwrap();
+
+    for id in [
+        "electric-piano",
+        "organ",
+        "bass",
+        "synth-lead",
+        "synth-pad",
+        "strings",
+        "pluck",
+    ] {
+        let listing = instruments.iter().find(|i| i["id"] == id).unwrap();
+        let (status, pattern) = generate(
+            app.clone(),
+            json!({"instrument": id, "prompt": "something nice", "measures": 8}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{id}");
+        assert_eq!(pattern["instrument"], id);
+        assert_eq!(pattern["rows"], listing["rows"], "{id}");
+        assert_eq!(pattern["midi_channel"], listing["midi_channel"], "{id}");
+        assert_eq!(pattern["midi_program"], listing["midi_program"], "{id}");
+
+        let notes = pattern["notes"].as_array().unwrap();
+        assert!(!notes.is_empty(), "{id}");
+        if id == "bass" || id == "synth-lead" {
+            let mut steps: Vec<u64> = notes.iter().map(|n| n["step"].as_u64().unwrap()).collect();
+            let total = steps.len();
+            steps.sort_unstable();
+            steps.dedup();
+            assert_eq!(steps.len(), total, "{id} has stacked notes");
+        }
+    }
 }

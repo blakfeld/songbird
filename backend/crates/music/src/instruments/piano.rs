@@ -1,10 +1,8 @@
 use std::sync::LazyLock;
 
-use crate::draft::MeasureNotes;
-
-use super::melodic::melodic_phrase_end;
+use super::melodic::melodic;
 use super::pitch::pitch_rows;
-use super::{ExampleDraft, Instrument, InstrumentKind, PitchRange, RowDef};
+use super::{ExampleDraft, Instrument, RowDef};
 
 const LOW: u8 = 36;
 const HIGH: u8 = 96;
@@ -135,33 +133,22 @@ static EXAMPLES: [ExampleDraft; 4] = [
     },
 ];
 
-fn phrase_end(primary: &MeasureNotes, steps_per_measure: u32) -> MeasureNotes {
-    melodic_phrase_end(ROWS.len(), primary, steps_per_measure)
-}
-
 /// A `LazyLock` because the rows are computed, which a plain `static` cannot do.
-pub static PIANO: LazyLock<Instrument> = LazyLock::new(|| Instrument {
-    id: "piano",
-    name: "Piano",
-    kind: InstrumentKind::Melodic,
-    midi_channel: 1,
-    midi_program: Some(1),
-    range: Some(PitchRange {
-        low: LOW,
-        high: HIGH,
-    }),
-    sustained: true,
-    rows: ROWS.as_slice(),
-    system_prompt: SYSTEM_PROMPT,
-    row_aliases: &[],
-    examples: &EXAMPLES,
-    fallback_variation: Some(phrase_end),
+pub static PIANO: LazyLock<Instrument> = LazyLock::new(|| {
+    melodic::<LOW, HIGH>(
+        "piano",
+        "Piano",
+        1,
+        ROWS.as_slice(),
+        SYSTEM_PROMPT,
+        &EXAMPLES,
+    )
 });
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruments::InstrumentRegistry;
+    use crate::instruments::{InstrumentKind, InstrumentRegistry, PitchRange};
 
     #[test]
     fn definition_matches_spec() {

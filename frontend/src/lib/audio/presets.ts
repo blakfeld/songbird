@@ -20,6 +20,51 @@ export const fallbackPreset: SynthPreset = {
   },
 };
 
+const env = (attack: number, decay: number, sustain: number, release: number) => ({
+  attack,
+  decay,
+  sustain,
+  release,
+});
+
 export const presets: Record<string, SynthPreset> = {
   piano: pianoPreset,
+  "electric-piano": {
+    voice: "FMSynth",
+    options: {
+      harmonicity: 3,
+      modulationIndex: 0.8,
+      envelope: env(0.005, 1.2, 0.2, 0.8),
+      modulationEnvelope: env(0.005, 0.5, 0.1, 0.5),
+    },
+  },
+  organ: {
+    voice: "Synth",
+    options: { oscillator: { type: "fatsine", count: 3, spread: 12 }, envelope: env(0.01, 0, 1, 0.05) },
+  },
+  // Sawtooth harmonics keep E1–G3 audible on small speakers; the lowpass tames their buzz.
+  bass: {
+    voice: "Synth",
+    options: { oscillator: { type: "sawtooth" }, envelope: env(0.005, 0.2, 0.6, 0.1) },
+    effects: (tone) => [new tone.Filter({ type: "lowpass", frequency: 900, rolloff: -24 })],
+  },
+  "synth-lead": {
+    voice: "Synth",
+    options: { oscillator: { type: "square" }, envelope: env(0.01, 0.1, 0.8, 0.15) },
+  },
+  "synth-pad": {
+    voice: "Synth",
+    options: { oscillator: { type: "fatsawtooth", count: 3, spread: 30 }, envelope: env(0.6, 0.5, 0.8, 1.5) },
+    // Chorus LFOs stay silent until started.
+    effects: (tone) => [new tone.Chorus({ frequency: 1.5, delayTime: 3.5, depth: 0.7, wet: 0.5 }).start()],
+  },
+  strings: {
+    voice: "Synth",
+    options: { oscillator: { type: "fatsawtooth", count: 3, spread: 20 }, envelope: env(0.15, 0.3, 0.9, 0.6) },
+    effects: (tone) => [new tone.Filter({ type: "lowpass", frequency: 3500, rolloff: -12 })],
+  },
+  pluck: {
+    voice: "Synth",
+    options: { oscillator: { type: "triangle" }, envelope: env(0.002, 0.6, 0, 0.2) },
+  },
 };

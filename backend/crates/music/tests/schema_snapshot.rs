@@ -1,6 +1,13 @@
 use music::ai::prompt::draft_schema;
+use music::instruments::bass::BASS;
 use music::instruments::drums::DRUMS;
+use music::instruments::electric_piano::ELECTRIC_PIANO;
+use music::instruments::organ::ORGAN;
 use music::instruments::piano::PIANO;
+use music::instruments::pluck::PLUCK;
+use music::instruments::strings::STRINGS;
+use music::instruments::synth_lead::SYNTH_LEAD;
+use music::instruments::synth_pad::SYNTH_PAD;
 use music::Instrument;
 
 fn check_snapshot(instrument: &Instrument, file: &str) {
@@ -34,4 +41,39 @@ fn piano_draft_schema_matches_snapshot() {
     assert_eq!(lanes.len(), 61);
     assert_eq!(lanes[0], "C7");
     assert_eq!(lanes[60], "C2");
+}
+
+#[test]
+fn electric_piano_draft_schema_matches_snapshot() {
+    check_snapshot(&ELECTRIC_PIANO, "electric_piano_draft_schema.json");
+}
+
+#[test]
+fn organ_draft_schema_matches_snapshot() {
+    check_snapshot(&ORGAN, "organ_draft_schema.json");
+}
+
+#[test]
+fn bass_draft_schema_matches_snapshot() {
+    check_snapshot(&BASS, "bass_draft_schema.json");
+}
+
+#[test]
+fn synth_lead_draft_schema_matches_snapshot() {
+    check_snapshot(&SYNTH_LEAD, "synth_lead_draft_schema.json");
+}
+
+#[test]
+fn synth_pad_draft_schema_matches_snapshot() {
+    check_snapshot(&SYNTH_PAD, "synth_pad_draft_schema.json");
+}
+
+#[test]
+fn strings_draft_schema_matches_snapshot() {
+    check_snapshot(&STRINGS, "strings_draft_schema.json");
+}
+
+#[test]
+fn pluck_draft_schema_matches_snapshot() {
+    check_snapshot(&PLUCK, "pluck_draft_schema.json");
 }

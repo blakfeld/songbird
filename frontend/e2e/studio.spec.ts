@@ -17,9 +17,9 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("button", { name: "Rename song E2E Song" })).toBeVisible();
 
-  // Only drums and piano exist today, so the bass part is a second piano track renamed to Bass.
+  // A second piano track, renamed, covers duplicate-instrument naming and the rename flow in one step.
   await page.getByRole("button", { name: "Add track" }).click();
-  await page.getByRole("menuitem", { name: "Piano" }).click();
+  await page.getByRole("menuitem", { name: "Piano", exact: true }).click();
   await expect(page.getByRole("group", { name: "Track 3: Piano 2" })).toBeVisible();
   await page.getByRole("button", { name: "Select Piano 2 track (Piano)" }).last().dblclick();
   await page.getByRole("textbox", { name: "Track name Piano 2" }).fill("Bass");

@@ -1,10 +1,17 @@
 //! Everything instrument-specific lives behind `Instrument` so the pattern
 //! format, API, editor, playback, and export never change when one is added.
 
+pub mod bass;
 pub mod drums;
+pub mod electric_piano;
 pub mod melodic;
+pub mod organ;
 pub mod piano;
 pub mod pitch;
+pub mod pluck;
+pub mod strings;
+pub mod synth_lead;
+pub mod synth_pad;
 
 use std::sync::LazyLock;
 
@@ -70,6 +77,16 @@ impl PitchRange {
     }
 }
 
+/// Models often stack notes on lines that should be single-voiced, and prompts
+/// alone do not reliably prevent it, so generation enforces it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Monophony {
+    #[default]
+    None,
+    KeepLowest,
+    KeepHighest,
+}
+
 #[derive(Debug)]
 pub struct Instrument {
     pub id: &'static str,
@@ -91,6 +108,9 @@ pub struct Instrument {
     pub row_aliases: &'static [(&'static str, &'static str)],
     pub examples: &'static [ExampleDraft],
     pub fallback_variation: Option<FallbackVariation>,
+    /// Deliberately absent from `InstrumentInfo`: it constrains generation,
+    /// not what the user may enter in the editor.
+    pub monophony: Monophony,
 }
 
 impl Instrument {
@@ -161,8 +181,19 @@ pub struct InstrumentInfo {
 }
 
 /// Lazy because the piano's rows are built at first use.
-static BUILTIN: LazyLock<[&'static Instrument; 2]> =
-    LazyLock::new(|| [&drums::DRUMS, &piano::PIANO]);
+static BUILTIN: LazyLock<[&'static Instrument; 9]> = LazyLock::new(|| {
+    [
+        &drums::DRUMS,
+        &piano::PIANO,
+        &electric_piano::ELECTRIC_PIANO,
+        &organ::ORGAN,
+        &bass::BASS,
+        &synth_lead::SYNTH_LEAD,
+        &synth_pad::SYNTH_PAD,
+        &strings::STRINGS,
+        &pluck::PLUCK,
+    ]
+});
 
 #[derive(Clone, Copy)]
 pub struct InstrumentRegistry {
@@ -202,13 +233,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_lists_drums_then_piano() {
+    fn registry_lists_instruments_in_catalog_order() {
         let ids: Vec<_> = InstrumentRegistry::builtin()
             .all()
             .iter()
             .map(|i| i.id)
             .collect();
-        assert_eq!(ids, ["drums", "piano"]);
+        assert_eq!(
+            ids,
+            [
+                "drums",
+                "piano",
+                "electric-piano",
+                "organ",
+                "bass",
+                "synth-lead",
+                "synth-pad",
+                "strings",
+                "pluck"
+            ]
+        );
     }
 
     #[test]
