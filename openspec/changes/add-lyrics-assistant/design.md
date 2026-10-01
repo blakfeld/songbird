@@ -17,7 +17,7 @@ The proposal (see proposal.md, Why) adds a lyric notepad and an AI chat assistan
 **Other conventions to follow.**
 - The retry policy is to retry only unusable output, twice in total (`music/src/generate.rs:7-45`). The timeout is applied in the handler (`api/src/patterns.rs:26-45`). Validation runs before the provider.
 - User text is fenced and HTML-escaped (`ai/prompt.rs:12-58`). Token estimation is shared with the browser through `fixtures/token_estimate.json` (`music/src/tokens.rs`).
-- Errors use the `{"error":{code,message}}` shape via `ApiError` (`api/src/error.rs`). The body limit is 64 KiB globally. #5 `add-song-export` raises it to 1 MiB for routes under `/api/v1/lyrics/`.
+- Errors use the `{"error":{code,message}}` shape via `ApiError` (`api/src/error.rs`). The body limit is 64 KiB globally. #5 `add-song-export` raises it to 2 MiB for routes under `/api/v1/lyrics/`.
 - On the frontend, `isTextEntryTarget` (`frontend/src/lib/pianoRoll.ts:25-32`) already treats `contenteditable` as text entry. Global shortcuts (`components/editor/useEditorShortcuts.ts:25`) therefore stay out of a CodeMirror editor.
 - There is no editor library in `frontend/package.json`. UI is hand-rolled Tailwind in `components/ui/`.
 - The song document, song store, and `/studio` page come from #4. Sections and section notes come from #7, and key and chords from #8. This design names those pieces generically (the "song store") because their exact file names are set by those changes.
@@ -60,7 +60,7 @@ Add `trait LyricsProvider { async fn assist(&self, &LyricsRequest) -> Result<Lyr
 ### D4. Fixed limits instead of configuration
 The limits are: 20 messages, user messages at most `max_input_tokens` each (existing setting), assistant messages at most 4,000 characters, lyrics at most 20,000 characters, at most 64 sections, notes at most 5,000 characters each, and at most 64 chords per section.
 
-- **Why no new setting:** these limits bound the prompt to roughly 20k characters of lyrics, 20 × 4k characters of history, and 64 × 5k characters of notes. Worst case is about 110k characters, or about 28k estimated tokens, well under the 1 MiB body limit. The common case is under 10k tokens, so a separate context budget setting has nothing to protect.
+- **Why no new setting:** these limits bound the prompt to roughly 20k characters of lyrics, 20 × 4k characters of history, and 64 × 5k characters of notes. Worst case is about 110k characters, or about 28k estimated tokens, well under the 2 MiB body limit. The common case is under 10k tokens, so a separate context budget setting has nothing to protect.
 - **Where the bounds live:** they are constants in `music::lyrics::request` and are mirrored by the frontend in `lib/lyrics/limits.ts`. That is the same shared-rule approach as `estimateTokens`.
 - **Consequence:** there is no change to the `platform/service-operations` "Environment-based configuration" requirement. That avoids a MODIFIED collision with #5 and #6.
 - **Reply length:** the Claude transport's `DEFAULT_MAX_TOKENS = 4096` (`ai/claude.rs:12`) already covers a 4k-character reply plus five 2k-character suggestions.

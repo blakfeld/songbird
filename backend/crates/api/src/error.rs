@@ -23,6 +23,14 @@ pub enum ApiError {
     /// own document, so nothing internal leaks.
     #[error("The pattern is not exportable: {0}")]
     InvalidPattern(String),
+    /// The message names the offending track; it only describes the caller's
+    /// own document, so nothing internal leaks.
+    #[error("The song is not exportable: {0}")]
+    InvalidSong(String),
+    /// Reported under the same code as the pattern endpoints so the client
+    /// handles an unknown instrument one way wherever it appears.
+    #[error("The song is not exportable: {0}")]
+    InvalidSongInstrument(String),
     #[error("Something went wrong on our side. Please try again.")]
     Internal,
     #[error("{0}")]
@@ -41,7 +49,10 @@ impl ApiError {
             Self::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
-            Self::InvalidPattern(_) | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InvalidPattern(_)
+            | Self::InvalidSong(_)
+            | Self::InvalidSongInstrument(_)
+            | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
             Self::GenerationTimeout => StatusCode::GATEWAY_TIMEOUT,
@@ -55,6 +66,8 @@ impl ApiError {
             Self::NotFound => "not_found",
             Self::MethodNotAllowed => "method_not_allowed",
             Self::InvalidPattern(_) => "invalid_pattern",
+            Self::InvalidSong(_) => "invalid_song",
+            Self::InvalidSongInstrument(_) => "invalid_instrument",
             Self::Internal => "internal_error",
             Self::Validation(e) => e.code(),
             Self::GenerationFailed => "generation_failed",

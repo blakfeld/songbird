@@ -10,6 +10,8 @@ pub mod meter;
 pub mod midi;
 pub mod pattern;
 pub mod request;
+pub mod song;
+pub mod song_midi;
 pub mod timing;
 pub mod tokens;
 
@@ -19,4 +21,5 @@ pub use instruments::{Instrument, InstrumentInfo, InstrumentRegistry};
 pub use meter::{MeasureCount, TimeSignature};
 pub use pattern::{Note, Pattern, Row};
 pub use request::{GenerateRequest, GenerateRequestBody, GenerationLimits, ValidationError};
+pub use song::{Clip, Loop, Song, SongError, Track, ValidSong};
 pub use tokens::estimate_tokens;

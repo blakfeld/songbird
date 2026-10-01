@@ -1,0 +1,639 @@
+{
+  "cases": [
+    {
+      "name": "repeating clip",
+      "time_signature": "4/4",
+      "song_measures": 3,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 110
+              },
+              {
+                "row_id": "snare",
+                "step": 8,
+                "length_steps": 2,
+                "velocity": 90
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 3
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "kick",
+          "step": 0,
+          "length_steps": 1,
+          "velocity": 110
+        },
+        {
+          "row_id": "kick",
+          "step": 16,
+          "length_steps": 1,
+          "velocity": 110
+        },
+        {
+          "row_id": "kick",
+          "step": 32,
+          "length_steps": 1,
+          "velocity": 110
+        },
+        {
+          "row_id": "snare",
+          "step": 8,
+          "length_steps": 2,
+          "velocity": 90
+        },
+        {
+          "row_id": "snare",
+          "step": 24,
+          "length_steps": 2,
+          "velocity": 90
+        },
+        {
+          "row_id": "snare",
+          "step": 40,
+          "length_steps": 2,
+          "velocity": 90
+        }
+      ]
+    },
+    {
+      "name": "clip shorter than its loop",
+      "time_signature": "4/4",
+      "song_measures": 2,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 2,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 100
+              },
+              {
+                "row_id": "snare",
+                "step": 20,
+                "length_steps": 4,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 2,
+            "measures": 1
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "kick",
+          "step": 16,
+          "length_steps": 1,
+          "velocity": 100
+        }
+      ]
+    },
+    {
+      "name": "note cut at the clip end",
+      "time_signature": "4/4",
+      "song_measures": 1,
+      "track": {
+        "id": "t1",
+        "name": "Piano",
+        "instrument": "piano",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 2,
+            "notes": [
+              {
+                "row_id": "C4",
+                "step": 8,
+                "length_steps": 24,
+                "velocity": 80
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 1
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "C4",
+          "step": 8,
+          "length_steps": 8,
+          "velocity": 80
+        }
+      ]
+    },
+    {
+      "name": "note kept whole when the clip is long enough",
+      "time_signature": "4/4",
+      "song_measures": 4,
+      "track": {
+        "id": "t1",
+        "name": "Piano",
+        "instrument": "piano",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 2,
+            "notes": [
+              {
+                "row_id": "C4",
+                "step": 16,
+                "length_steps": 16,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 3,
+            "measures": 2
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "C4",
+          "step": 48,
+          "length_steps": 16,
+          "velocity": 100
+        }
+      ]
+    },
+    {
+      "name": "silence between clips",
+      "time_signature": "4/4",
+      "song_measures": 4,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 1
+          },
+          {
+            "id": "c2",
+            "loop_id": "l1",
+            "start_measure": 4,
+            "measures": 1
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "kick",
+          "step": 0,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "kick",
+          "step": 48,
+          "length_steps": 1,
+          "velocity": 100
+        }
+      ]
+    },
+    {
+      "name": "two clips of one loop listed out of order",
+      "time_signature": "4/4",
+      "song_measures": 5,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 100
+              },
+              {
+                "row_id": "snare",
+                "step": 4,
+                "length_steps": 1,
+                "velocity": 70
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c2",
+            "loop_id": "l1",
+            "start_measure": 5,
+            "measures": 1
+          },
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 2
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "kick",
+          "step": 0,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "kick",
+          "step": 16,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "kick",
+          "step": 64,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "snare",
+          "step": 4,
+          "length_steps": 1,
+          "velocity": 70
+        },
+        {
+          "row_id": "snare",
+          "step": 20,
+          "length_steps": 1,
+          "velocity": 70
+        },
+        {
+          "row_id": "snare",
+          "step": 68,
+          "length_steps": 1,
+          "velocity": 70
+        }
+      ]
+    },
+    {
+      "name": "two loops on one track",
+      "time_signature": "4/4",
+      "song_measures": 3,
+      "track": {
+        "id": "t1",
+        "name": "Piano",
+        "instrument": "piano",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "C4",
+                "step": 0,
+                "length_steps": 4,
+                "velocity": 100
+              }
+            ]
+          },
+          {
+            "id": "l2",
+            "name": "Loop l2",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "E4",
+                "step": 2,
+                "length_steps": 2,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 1
+          },
+          {
+            "id": "c2",
+            "loop_id": "l2",
+            "start_measure": 3,
+            "measures": 1
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "C4",
+          "step": 0,
+          "length_steps": 4,
+          "velocity": 100
+        },
+        {
+          "row_id": "E4",
+          "step": 34,
+          "length_steps": 2,
+          "velocity": 100
+        }
+      ]
+    },
+    {
+      "name": "empty track",
+      "time_signature": "4/4",
+      "song_measures": 4,
+      "track": {
+        "id": "t1",
+        "name": "Bass",
+        "instrument": "bass",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [],
+        "clips": []
+      },
+      "expected": []
+    },
+    {
+      "name": "loop without clips plays nothing",
+      "time_signature": "4/4",
+      "song_measures": 4,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": []
+      },
+      "expected": []
+    },
+    {
+      "name": "clip over an empty loop",
+      "time_signature": "4/4",
+      "song_measures": 2,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": []
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 2
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "6/8 song",
+      "time_signature": "6/8",
+      "song_measures": 3,
+      "track": {
+        "id": "t1",
+        "name": "Drums",
+        "instrument": "drums",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "kick",
+                "step": 0,
+                "length_steps": 1,
+                "velocity": 100
+              },
+              {
+                "row_id": "snare",
+                "step": 6,
+                "length_steps": 3,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 2,
+            "measures": 2
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "kick",
+          "step": 12,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "kick",
+          "step": 24,
+          "length_steps": 1,
+          "velocity": 100
+        },
+        {
+          "row_id": "snare",
+          "step": 18,
+          "length_steps": 3,
+          "velocity": 100
+        },
+        {
+          "row_id": "snare",
+          "step": 30,
+          "length_steps": 3,
+          "velocity": 100
+        }
+      ]
+    },
+    {
+      "name": "3/4 song",
+      "time_signature": "3/4",
+      "song_measures": 2,
+      "track": {
+        "id": "t1",
+        "name": "Piano",
+        "instrument": "piano",
+        "volume_db": 0,
+        "pan": 0,
+        "muted": false,
+        "soloed": false,
+        "loops": [
+          {
+            "id": "l1",
+            "name": "Loop l1",
+            "measures": 1,
+            "notes": [
+              {
+                "row_id": "C4",
+                "step": 0,
+                "length_steps": 12,
+                "velocity": 100
+              }
+            ]
+          }
+        ],
+        "clips": [
+          {
+            "id": "c1",
+            "loop_id": "l1",
+            "start_measure": 1,
+            "measures": 2
+          }
+        ]
+      },
+      "expected": [
+        {
+          "row_id": "C4",
+          "step": 0,
+          "length_steps": 12,
+          "velocity": 100
+        },
+        {
+          "row_id": "C4",
+          "step": 12,
+          "length_steps": 12,
+          "velocity": 100
+        }
+      ]
+    }
+  ]
+}

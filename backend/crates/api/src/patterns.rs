@@ -82,7 +82,7 @@ async fn export_midi(
 
 /// ASCII-only and quote-free so the name is safe inside a header value
 /// whatever the user typed.
-pub fn export_filename(name: &str, tempo_bpm: u32) -> String {
+pub(crate) fn slugify(name: &str, fallback: &'static str) -> String {
     let mut slug = String::new();
     for c in name.chars() {
         if c.is_ascii_alphanumeric() {
@@ -92,8 +92,11 @@ pub fn export_filename(name: &str, tempo_bpm: u32) -> String {
         }
     }
     let slug = slug.trim_end_matches('-');
-    let slug = if slug.is_empty() { "pattern" } else { slug };
-    format!("songbird-{slug}-{tempo_bpm}bpm.mid")
+    if slug.is_empty() { fallback } else { slug }.to_string()
+}
+
+pub fn export_filename(name: &str, tempo_bpm: u32) -> String {
+    format!("songbird-{}-{tempo_bpm}bpm.mid", slugify(name, "pattern"))
 }
 
 #[cfg(test)]

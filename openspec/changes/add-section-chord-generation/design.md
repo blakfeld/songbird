@@ -15,7 +15,7 @@ See proposal.md for the motivation. This change relies on the following existing
 **API crate:** `AppState` (`api/src/state.rs`) holds `Arc<dyn PatternProvider>`, which `build_provider` constructs and checks at startup (`api/src/provider.rs:12-44`).
 
 **Earlier changes in this roadmap:**
-- #5 adds the Rust `Song` mirror, the `/api/v1/songs/` route group, and its 1 MiB body limit.
+- #5 adds the Rust `Song` mirror, the `/api/v1/songs/` route group, and its 2 MiB body limit.
 - #6 adds track generation and a context summarizer with `SONGBIRD_MAX_CONTEXT_TOKENS`. It adds no provider trait: it reuses `PatternProvider` and the lane-per-pitch draft format from #1, passing the context as `GenerateRequest.context`. `AppState` therefore still holds a single `Arc<dyn PatternProvider>` when this change starts.
 - #7 adds `Song.sections` (Rust `music::song`, generated to TypeScript, validated by `fixtures/song_validation.json`) and the section operations in `frontend/src/lib/songSectionOps.ts`.
 - add-arrangement-clips replaced `Track.notes` with per-track `loops` and `clips` (song `version` 2). #6 D13 adds `clearMeasureRange` and `splitClip` in `lib/song/clipOps.ts` and `songStore.applyGeneratedRange`, which writes a range of a track as a new loop placed as one clip without changing any existing loop. #6's context summarizer reads resolved notes, so chord context sits beside what the clips actually play.
@@ -108,7 +108,7 @@ A requested section missing from the draft, or left empty after these steps, mar
 
 Validation reuses `estimate_tokens` and the `invalid_prompt` and `prompt_too_long` codes, and adds `invalid_section` and `invalid_key`. `invalid_song` comes from #5's song validation.
 
-The route sits under `/api/v1/songs/` and inherits the 1 MiB limit from #5.
+The route sits under `/api/v1/songs/` and inherits the 2 MiB limit from #5.
 
 ### D6. Chord-aware track generation
 #6's context summarizer gains a chord line per context window. It is ordered by distance from the range and budgeted like other context, and it is emitted only when chords exist, so chord-less requests are byte-identical to before. This protects #6's snapshot tests.

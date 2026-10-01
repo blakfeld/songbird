@@ -7,7 +7,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use music::instruments::{InstrumentKind, PitchRange};
-use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
+use music::song::{KeyMode, LoopRegion, MeasureRegion, SongKey, Tonic};
+use music::{
+    Clip, GenerateRequestBody, GenerationLimits, InstrumentInfo, InstrumentRegistry, Loop, Pattern,
+    Song, Track,
+};
 use ts_rs::{Config, TS};
 
 fn committed_dir() -> PathBuf {
@@ -22,6 +26,15 @@ fn export_into(dir: &Path) {
     PitchRange::export_all(&cfg).unwrap();
     GenerateRequestBody::export_all(&cfg).unwrap();
     GenerationLimits::export_all(&cfg).unwrap();
+    Song::export_all(&cfg).unwrap();
+    Track::export_all(&cfg).unwrap();
+    Loop::export_all(&cfg).unwrap();
+    Clip::export_all(&cfg).unwrap();
+    SongKey::export_all(&cfg).unwrap();
+    Tonic::export_all(&cfg).unwrap();
+    KeyMode::export_all(&cfg).unwrap();
+    LoopRegion::export_all(&cfg).unwrap();
+    MeasureRegion::export_all(&cfg).unwrap();
 }
 
 fn read_ts_files(dir: &Path) -> BTreeMap<String, String> {
@@ -61,5 +74,26 @@ fn generated_typescript_is_up_to_date() {
         read_ts_files(&committed_dir()),
         expected,
         "frontend/src/generated is stale; run `just gen-types`"
+    );
+}
+
+fn instruments_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/instruments.json")
+}
+
+/// The browser's song validation tests run against the real registry rather
+/// than a stub, so this snapshot must track `GET /api/v1/instruments`.
+#[test]
+fn instruments_fixture_is_up_to_date() {
+    let actual =
+        serde_json::to_string_pretty(&InstrumentRegistry::builtin().infos()).unwrap() + "\n";
+    if std::env::var_os("UPDATE_TS_BINDINGS").is_some() {
+        fs::write(instruments_fixture(), &actual).unwrap();
+        return;
+    }
+    assert_eq!(
+        fs::read_to_string(instruments_fixture()).unwrap_or_default(),
+        actual,
+        "fixtures/instruments.json is stale; run `just gen-types`"
     );
 }
