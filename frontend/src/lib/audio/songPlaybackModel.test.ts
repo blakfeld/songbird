@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { createSongStore } from "@/lib/song/songStore";
-import { newSong } from "@/lib/song/types";
 import { createSongPlaybackModel } from "./songPlaybackModel";
 
 const piano = { ...drums, id: "piano", name: "Piano", kind: "melodic" as const };
 
 describe("song playback model", () => {
   it("reports song timing and one voice per track keyed by track id", () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tempo_bpm = 90;
     song.tracks[1].pan = -1;
     const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
@@ -19,7 +19,7 @@ describe("song playback model", () => {
   });
 
   it("widens the timing to a looping region past the song's end only", () => {
-    const song = { ...newSong(), loop_region: { region: { start_measure: 5, end_measure: 9 }, enabled: true } };
+    const song = { ...newSongWithTracks(), loop_region: { region: { start_measure: 5, end_measure: 9 }, enabled: true } };
     const store = createSongStore(song);
     const model = createSongPlaybackModel(store, [drums, piano]);
     expect(model.getTiming()?.measures).toBe(9);
@@ -30,7 +30,7 @@ describe("song playback model", () => {
   });
 
   it("resolves solo and mute into audibility", () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[0].soloed = true;
     const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
     expect(model.getVoices().map((v) => v.audible)).toEqual([true, false]);
@@ -41,14 +41,14 @@ describe("song playback model", () => {
     expect(empty.getTiming()).toBeNull();
     expect(empty.getVoices()).toEqual([]);
 
-    const model = createSongPlaybackModel(createSongStore(newSong()));
+    const model = createSongPlaybackModel(createSongStore(newSongWithTracks()));
     expect(model.getVoices()).toEqual([]);
     model.setInstruments([drums]);
     expect(model.getVoices().map((v) => v.instrument)).toEqual(["drums"]);
   });
 
   it("gives each voice the notes its clips resolve to", () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[0] = {
       ...trackWithNotes(song.tracks[0], [note("kick", 0)], 1),
       clips: [{ id: "c", loop_id: `${song.tracks[0].id}-loop`, start_measure: 3, measures: 2 }],

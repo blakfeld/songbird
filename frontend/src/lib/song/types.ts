@@ -55,6 +55,6 @@ export function newSong(
     swing: 0,
     key: { ...DEFAULT_KEY },
     measures: 1,
-    tracks: [newTrack("drums", "Drums"), newTrack("piano", "Piano")],
+    tracks: [],
   };
 }

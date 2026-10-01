@@ -3410,7 +3410,7 @@
       "error": "chat"
     },
     {
-      "name": "no tracks",
+      "name": "no tracks is valid",
       "song": {
         "version": 2,
         "id": "song-1",
@@ -3422,7 +3422,7 @@
         "measures": 4,
         "tracks": []
       },
-      "error": "track_count"
+      "error": null
     },
     {
       "name": "17 tracks",

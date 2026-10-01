@@ -86,7 +86,7 @@ export function SongFileActions({
   return (
     <>
       <div className="flex items-center gap-2">
-        <Button onClick={() => void downloadMidi()} disabled={busy}>
+        <Button onClick={() => void downloadMidi()} disabled={busy || song.tracks.length === 0}>
           <span aria-hidden="true">⤓</span>
           {busy ? "Preparing MIDI…" : "Download MIDI"}
         </Button>

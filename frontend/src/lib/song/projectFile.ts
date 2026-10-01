@@ -151,8 +151,8 @@ const label = (t: Raw, i: number) => `Track ${i + 1} "${String(t.name)}"`;
 
 function checkTracks(raw: Raw, instruments: InstrumentInfo[]): Problem | null {
   const { tracks } = raw;
-  if (!Array.isArray(tracks) || tracks.length < 1 || tracks.length > MAX_TRACKS)
-    return problem("track_count", `a song needs 1 to ${MAX_TRACKS} tracks`);
+  if (!Array.isArray(tracks) || tracks.length > MAX_TRACKS)
+    return problem("track_count", `a song has at most ${MAX_TRACKS} tracks`);
   for (const [i, t] of tracks.entries()) {
     if (!isObject(t)) return problem("malformed", `track ${i + 1} is not valid`);
     if (typeof t.id !== "string" || typeof t.name !== "string" || typeof t.instrument !== "string")

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "./testFixtures";
 import { activeLoopRange } from "./songLoop";
-import { newSong, type Song } from "./types";
+import { type Song } from "./types";
 
 const song = (measures: number, loop_region?: Song["loop_region"]): Song => ({
-  ...newSong(),
+  ...newSongWithTracks(),
   measures,
   loop_region,
 });

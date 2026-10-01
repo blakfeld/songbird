@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { newSongWithTracks } from "./testFixtures";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Note } from "@/generated/Note";
@@ -7,7 +8,7 @@ import { note } from "@/test/fixtures";
 import * as clips from "./clipOps";
 import { normalizeSong, timelineMeasures } from "./songOps";
 import { STEPS_PER_MEASURE } from "../patternOps";
-import { MAX_CLIPS, MAX_LOOPS, newSong, type Clip, type Loop, type Song, type Track } from "./types";
+import { MAX_CLIPS, MAX_LOOPS, type Clip, type Loop, type Song, type Track } from "./types";
 
 const SPM = 16;
 
@@ -41,7 +42,7 @@ const clip = (id: string, loop_id: string, start_measure: number, measures: numb
 });
 
 function songWith(loops: Loop[], clipList: Clip[]): Song {
-  const base = newSong();
+  const base = newSongWithTracks();
   return normalizeSong({
     ...base,
     tracks: [{ ...base.tracks[0], id: "t", name: "Bass", loops, clips: clipList }, base.tracks[1]],
@@ -58,7 +59,7 @@ const reason = (r: clips.ClipOpResult) => (r.song === null ? r.reason : undefine
 describe("resolveTrackNotes", () => {
   it.each(resolutionFixture.cases)("matches fixture: $name", (c) => {
     const song: Song = {
-      ...newSong(c.time_signature),
+      ...newSongWithTracks(c.time_signature),
       measures: c.song_measures,
       steps_per_measure: STEPS_PER_MEASURE[c.time_signature],
     };

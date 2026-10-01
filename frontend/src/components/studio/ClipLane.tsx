@@ -22,7 +22,7 @@ const DRAG_THRESHOLD_PX = 4;
 export const CLIP_KEYS_HELP_ID = "clip-keys-help";
 
 export const CLIP_KEYS_HELP =
-  "Left and Right arrows move the clip by a measure. Shift with Left or Right changes its length. Alt with Left or Right moves to the previous or next clip. Delete removes it. Command or Control D duplicates it. F2 renames its loop. Shift F10 opens more actions.";
+  "Left and Right arrows move the clip by a measure. Shift with Left or Right changes its length. Alt with Left or Right moves to the previous or next clip. Enter opens it in the piano roll. Delete removes it. Command or Control D duplicates it. F2 renames its loop. Shift F10 opens more actions.";
 
 export function clipLabel(loop: Loop, clip: Clip, linked: number): string {
   const parts = [loop.name, clipSpan(clip)];
@@ -246,7 +246,12 @@ export function ClipLane({
       return;
     }
     if (e.metaKey || e.ctrlKey) return;
-    if (key === "ArrowLeft" || key === "ArrowRight") {
+    if (key === "Enter") {
+      // Without this the native click would also fire and select the clip a second time.
+      e.preventDefault();
+      actions.select(track.id, clip.id);
+      actions.openDock();
+    } else if (key === "ArrowLeft" || key === "ArrowRight") {
       e.preventDefault();
       if (e.altKey) {
         focusSibling(el, key === "ArrowLeft" ? "prev" : "next");
@@ -361,7 +366,7 @@ export function ClipLane({
               aria-roledescription="clip"
               aria-label={label}
               aria-describedby={CLIP_KEYS_HELP_ID}
-              aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Delete Meta+D Control+D F2 Shift+F10"
+              aria-keyshortcuts="Enter ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Delete Meta+D Control+D F2 Shift+F10"
               aria-current={selected ? "true" : undefined}
               data-clip-id={clip.id}
               data-selected={selected ? "true" : undefined}
@@ -383,8 +388,7 @@ export function ClipLane({
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                actions.select(track.id, clip.id);
-                actions.focusRoll();
+                actions.open(track.id, clip.id);
               }}
               onContextMenu={(e) => {
                 e.preventDefault();

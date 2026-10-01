@@ -8,6 +8,7 @@ export function MeasureRuler({
   showBeats = true,
   beatLabels = false,
   dimFrom,
+  heightClass = "h-7",
   children,
 }: {
   measures: number;
@@ -20,13 +21,15 @@ export function MeasureRuler({
   beatLabels?: boolean;
   // Bar numbers from this 0-based measure on read as secondary, for a region past the song's end.
   dimFrom?: number;
+  // The arrangement's header cell holds a taller button, and the ruler has to match it to stay aligned.
+  heightClass?: string;
   // Lets a host lay an interactive overlay over the cells without the ruler knowing about it.
   children?: ReactNode;
 }) {
   const beats = Math.floor(stepsPerMeasure / beatSteps);
   const thinned = labelEvery > 1;
   return (
-    <div className="sticky top-0 z-30 flex h-7 border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950">
+    <div className={`sticky top-0 z-30 flex ${heightClass} border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950`}>
       {Array.from({ length: measures }, (_, m) => {
         return (
         <div

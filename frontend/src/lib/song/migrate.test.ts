@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "./testFixtures";
 import { note } from "@/test/fixtures";
 import { resolveTrackNotes } from "./clipOps";
 import { migrateSong } from "./migrate";
 import { songLoop } from "./songLoop";
-import { newSong } from "./types";
 
 const v2 = () => {
-  const song = newSong();
+  const song = newSongWithTracks();
   const track = {
     ...song.tracks[0],
     loops: [{ id: "l", name: "L", measures: 2, notes: [note("kick", 0)] }],
@@ -21,7 +21,7 @@ const withTrack0 = (patch: Record<string, unknown>) => {
 };
 
 const v1 = (notes: unknown) => {
-  const song = newSong();
+  const song = newSongWithTracks();
   const { key: _key, ...withoutKey } = song;
   void _key;
   return {
@@ -89,7 +89,7 @@ describe("migrateSong", () => {
   );
 
   it("coerces version 1 notes that overlap or overrun so the result is openable", () => {
-    const total = 8 * newSong().steps_per_measure;
+    const total = 8 * newSongWithTracks().steps_per_measure;
     const migrated = migrateSong(
       v1([note("kick", 0, 8), note("kick", 4, 8), note("kick", total - 2, 10), note("kick", total + 5), note("kick", 20, 0)]),
     )!;
