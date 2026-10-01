@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Produces the minimal server bundle the container image copies.
   output: "standalone",
+  experimental: {
+    // Next's rewrite proxy hangs up after 30 s by default, but a song chat makes two
+    // provider calls that can each take up to SONGBIRD_GENERATION_TIMEOUT_SECS. The
+    // backend enforces its own timeouts and answers 504, so the proxy must outlast it.
+    proxyTimeout: 10 * 60 * 1000,
+  },
   // Rewrite destinations are baked in at build time, so SONGBIRD_API_URL must be
   // set when building the image, not only when running it.
   // Proxying keeps the browser same-origin so the backend needs no CORS setup in dev.
