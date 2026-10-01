@@ -29,7 +29,7 @@
   - duplicate (D4)
   - delete
   
-  Each one materializes the implicit section first, recomputes `Song.measures`, and enforces 1–32 per section and ≤ 128 per song. Verify with one Vitest test per spec scenario in `songwriting/sections`, covering:
+  Each one materializes the implicit section first, passes its result through `normalizeSong` (task 1.4) so `Song.measures` is the sum of section lengths, and enforces 1–32 per section and ≤ 128 per song. Verify with one Vitest test per spec scenario in `songwriting/sections`, covering:
   - insert shifts later material
   - the three "Measure edits move clips, not loop contents" scenarios
   - "Verse 2" naming
@@ -39,7 +39,12 @@
   - the only section cannot be deleted
   - the cap being enforced
   - an old song being unchanged
-- [ ] 1.4 Make the song-length control resize the last section when sections exist. Verify with a Vitest test that raising the length by 4 turns a 4-measure Outro into 8 measures, and that out-of-range values are rejected.
+- [ ] 1.4 Give `normalizeSong` in `lib/song/songOps.ts` its sectioned branch (D8): with sections, lengthen the last section to cover the last-ending clip, then set `Song.measures` to the sum of section lengths; without sections, keep the clip-derived length. With sections, bound the clip operations in `lib/song/clipOps.ts` by `min(timelineMeasures(song), lastSectionStart + 31)`, and refuse New clip, Place loop, and Duplicate past it with a message to add a section. Verify with Vitest tests for:
+  - "Clip past the last section lengthens it", as one undo step;
+  - "Deleting clips keeps the length";
+  - "Last section at its limit", and a refused new clip past it;
+  - an unsectioned song's length still following its clips;
+  - a stored sectioned song whose last section ends before its last clip, corrected on load by `migrate.ts`.
 
 ## 2. Store integration and persistence
 

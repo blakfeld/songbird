@@ -1,9 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { drums, note } from "@/test/fixtures";
 import { createSongStore } from "./songStore";
+import { normalizeSong } from "./songOps";
 import { newSong } from "./types";
 
 const setup = () => createSongStore(newSong());
+
+// A stored length only exists because clips cover it, so region tests need a real clip to stand on.
+const setupWithClip = (measures: number) => {
+  const base = newSong();
+  const [track, ...rest] = base.tracks;
+  return createSongStore(
+    normalizeSong({
+      ...base,
+      tracks: [
+        {
+          ...track,
+          id: "t0",
+          loops: [{ id: "l", name: "Loop", measures, notes: [] }],
+          clips: [{ id: "c", loop_id: "l", start_measure: 1, measures }],
+        },
+        ...rest,
+      ],
+    }),
+  );
+};
 
 describe("songStore history", () => {
   it("undoes a track deletion with notes and mixer settings", () => {
@@ -85,7 +106,7 @@ describe("songStore clips", () => {
     expect(store.getState().newClip(b.id, 1)).toBeNull();
     expect(store.getState().selectedTrackId).toBe(b.id);
     expect(store.getState().selectedClipId).toBe(store.getState().song!.tracks[1].clips[0].id);
-    expect(store.getState().newClip(b.id, 2)).toBe("no-room");
+    expect(store.getState().newClip(b.id, 1)).toBe("no-room");
     expect(store.getState().past).toHaveLength(1);
     expect(a.clips).toEqual([]);
   });
@@ -203,14 +224,14 @@ describe("songStore loop region", () => {
   });
 
   it("is not an undo step", () => {
-    const store = setup();
+    const store = setupWithClip(8);
     store.getState().setLoop(R(3, 4, false));
     expect(store.getState().past).toHaveLength(0);
     expect(stored(store)).toEqual(S(3, 4, false));
   });
 
   it("is left alone by undo and redo of another edit", () => {
-    const store = setup();
+    const store = setupWithClip(8);
     store.getState().setTempo(100);
     store.getState().setLoop(R(3, 4, false));
     store.getState().undo();
@@ -232,7 +253,7 @@ describe("songStore loop region", () => {
   });
 
   it("is left alone by a cancelled gesture", () => {
-    const store = setup();
+    const store = setupWithClip(8);
     const id = store.getState().song!.tracks[0].id;
     store.getState().beginGesture();
     store.getState().setMixer(id, { volume_db: -10 }, { transient: true });
@@ -242,31 +263,49 @@ describe("songStore loop region", () => {
     expect(stored(store)).toEqual(S(2, 5));
   });
 
-  it("clamps the region when an undo changes the length", () => {
-    const store = setup();
-    store.getState().setSongLength(4);
-    store.getState().setSongLength(16);
+  it("clamps the region when an undo changes the length past the timeline", () => {
+    const store = setupWithClip(4);
+    store.getState().resizeClip("t0", "c", 24);
+    store.getState().setLoop(R(20, 30));
+    store.getState().undo();
+    expect(store.getState().song!.measures).toBe(4);
+    expect(stored(store)).toEqual(S(16, 16));
+  });
+
+  it("accepts a region past the song's end up to the timeline's end", () => {
+    const store = setupWithClip(4);
+    store.getState().setLoop(R(10, 40));
+    expect(stored(store)).toEqual(S(10, 16));
+  });
+
+  it("keeps a region past the song's end when an undo shortens the song", () => {
+    const store = setupWithClip(4);
+    store.getState().resizeClip("t0", "c", 16);
     store.getState().setLoop(R(9, 12));
     store.getState().undo();
     expect(store.getState().song!.measures).toBe(4);
-    expect(stored(store)).toEqual(S(4, 4));
+    expect(stored(store)).toEqual(S(9, 12));
   });
 
   it("keeps a drawn region when lengthened, clamps it when shortened, and leaves no region alone", () => {
-    const store = setup();
+    const store = setupWithClip(8);
     store.getState().setLoop(R(1, 8));
-    store.getState().setSongLength(16);
+    store.getState().resizeClip("t0", "c", 16);
     expect(stored(store)).toEqual(S(1, 8));
     store.getState().setLoop(R(9, 16));
-    store.getState().setSongLength(8);
-    expect(stored(store)).toEqual(S(8, 8));
+    store.getState().resizeClip("t0", "c", 8);
+    expect(stored(store)).toEqual(S(9, 16));
+    store.getState().resizeClip("t0", "c", 20);
+    store.getState().setLoop(R(25, 28));
+    store.getState().resizeClip("t0", "c", 8);
+    expect(stored(store)).toEqual(S(16, 16));
     store.getState().setLoop({ region: null, enabled: true });
-    store.getState().setSongLength(4);
+    store.getState().resizeClip("t0", "c", 4);
     expect(stored(store)).toEqual({ region: null, enabled: true });
   });
 
   it("ignores a setLoop that changes nothing", () => {
-    const store = setup();
+    const store = setupWithClip(8);
     const before = store.getState().song;
     store.getState().setLoop({ region: null, enabled: false });
     expect(store.getState().song).toBe(before);
@@ -274,5 +313,86 @@ describe("songStore loop region", () => {
     const set = store.getState().song;
     store.getState().setLoop(R(1, 8));
     expect(store.getState().song).toBe(set);
+  });
+});
+
+describe("songStore loop region during a timeline-shrinking gesture", () => {
+  const stored = (store: ReturnType<typeof setup>) => store.getState().song!.loop_region;
+  const S = (start: number, end: number) => ({ region: { start_measure: start, end_measure: end }, enabled: true });
+  const R = (start: number, end: number) => ({ region: { start, end }, enabled: true });
+
+  it("gets the full region back when the drag returns to its start", () => {
+    const store = setupWithClip(20);
+    store.getState().setLoop(R(18, 22));
+    store.getState().beginGesture();
+    store.getState().resizeClip("t0", "c", 4, { transient: true });
+    expect(stored(store)).toEqual(S(16, 16));
+    store.getState().resizeClip("t0", "c", 20, { transient: true });
+    store.getState().endGesture();
+    expect(stored(store)).toEqual(S(18, 22));
+    expect(store.getState().past).toHaveLength(0);
+  });
+
+  it("restores the full region when the drag is cancelled", () => {
+    const store = setupWithClip(20);
+    store.getState().setLoop(R(18, 22));
+    store.getState().beginGesture();
+    store.getState().resizeClip("t0", "c", 4, { transient: true });
+    store.getState().cancelGesture();
+    expect(stored(store)).toEqual(S(18, 22));
+    expect(store.getState().song!.measures).toBe(20);
+  });
+
+  it("clamps the committed region when the drag ends shorter", () => {
+    const store = setupWithClip(20);
+    store.getState().setLoop(R(18, 22));
+    store.getState().beginGesture();
+    store.getState().resizeClip("t0", "c", 4, { transient: true });
+    store.getState().endGesture();
+    expect(stored(store)).toEqual(S(16, 16));
+  });
+});
+
+describe("songStore song settings", () => {
+  it("undoes a key change", () => {
+    const store = setup();
+    store.getState().setKey({ tonic: "E", mode: "minor" });
+    expect(store.getState().song!.key).toEqual({ tonic: "E", mode: "minor" });
+    store.getState().undo();
+    expect(store.getState().song!.key).toEqual({ tonic: "C", mode: "major" });
+  });
+
+  it("undoes a time signature change as one step", () => {
+    const store = setupWithClip(2);
+    store.getState().editLoopNotes("t0", "l", drums.rows, () => [note("kick", 0), note("kick", 28)]);
+    store.getState().setTimeSignature("3/4");
+    expect(store.getState().song!.tracks[0].loops[0].notes).toHaveLength(1);
+    store.getState().undo();
+    expect(store.getState().song!.time_signature).toBe("4/4");
+    expect(store.getState().song!.tracks[0].loops[0].notes).toHaveLength(2);
+  });
+});
+
+describe("songStore clip resize gestures", () => {
+  it("restores notes when a drag shrinks and then regrows an unshared clip", () => {
+    const store = setupWithClip(4);
+    store.getState().editLoopNotes("t0", "l", drums.rows, () => [note("kick", 3 * 16)]);
+    const loopOf = () => store.getState().song!.tracks[0].loops[0];
+    store.getState().beginGesture();
+    store.getState().resizeClip("t0", "c", 2, { transient: true });
+    expect(loopOf().notes).toHaveLength(0);
+    store.getState().resizeClip("t0", "c", 4, { transient: true });
+    store.getState().endGesture();
+    expect(loopOf()).toMatchObject({ measures: 4, notes: [note("kick", 3 * 16)] });
+    expect(store.getState().song!.measures).toBe(4);
+  });
+
+  it("undoes a shrink that dropped notes in one step", () => {
+    const store = setupWithClip(4);
+    store.getState().editLoopNotes("t0", "l", drums.rows, () => [note("kick", 3 * 16)]);
+    store.getState().resizeClip("t0", "c", 3);
+    expect(store.getState().song!.tracks[0].loops[0].notes).toEqual([]);
+    store.getState().undo();
+    expect(store.getState().song!.tracks[0].loops[0]).toMatchObject({ measures: 4, notes: [note("kick", 3 * 16)] });
   });
 });

@@ -10,9 +10,9 @@ const v2 = () => {
   const track = {
     ...song.tracks[0],
     loops: [{ id: "l", name: "L", measures: 2, notes: [note("kick", 0)] }],
-    clips: [{ id: "c", loop_id: "l", start_measure: 1, measures: 2 }],
+    clips: [{ id: "c", loop_id: "l", start_measure: 1, measures: 8 }],
   };
-  return { ...song, tracks: [track, song.tracks[1]] };
+  return { ...song, measures: 8, tracks: [track, song.tracks[1]] };
 };
 
 const withTrack0 = (patch: Record<string, unknown>) => {
@@ -22,8 +22,11 @@ const withTrack0 = (patch: Record<string, unknown>) => {
 
 const v1 = (notes: unknown) => {
   const song = newSong();
+  const { key: _key, ...withoutKey } = song;
+  void _key;
   return {
-    ...song,
+    ...withoutKey,
+    measures: 8,
     version: 1,
     tracks: song.tracks.map((t, i) => {
       const rest: Record<string, unknown> = { ...t };
@@ -38,6 +41,30 @@ describe("migrateSong", () => {
   it("accepts a valid version 2 song unchanged", () => {
     const song = v2();
     expect(migrateSong(song)).toBe(song);
+  });
+
+  it("opens a song saved before keys existed in C major with its notes unchanged", () => {
+    const { key: _key, ...old } = v2();
+    void _key;
+    const opened = migrateSong(old)!;
+    expect(opened.key).toEqual({ tonic: "C", mode: "major" });
+    expect(opened.tracks).toBe(old.tracks);
+  });
+
+  it("replaces an invalid stored key with C major and keeps a valid one", () => {
+    expect(migrateSong({ ...v2(), key: { tonic: "H", mode: "major" } })!.key).toEqual({ tonic: "C", mode: "major" });
+    const minor = { tonic: "E", mode: "minor" };
+    expect(migrateSong({ ...v2(), key: minor })!.key).toEqual(minor);
+  });
+
+  it("corrects a stale stored length in either direction", () => {
+    expect(migrateSong({ ...v2(), measures: 20 })!.measures).toBe(8);
+    expect(migrateSong({ ...v2(), measures: 2 })!.measures).toBe(8);
+  });
+
+  it("opens an empty song as 1 measure", () => {
+    const song = { ...v2(), tracks: v2().tracks.map((t) => ({ ...t, clips: [] })) };
+    expect(migrateSong(song)!.measures).toBe(1);
   });
 
   it.each([
@@ -62,8 +89,7 @@ describe("migrateSong", () => {
   );
 
   it("coerces version 1 notes that overlap or overrun so the result is openable", () => {
-    const song = newSong();
-    const total = song.measures * song.steps_per_measure;
+    const total = 8 * newSong().steps_per_measure;
     const migrated = migrateSong(
       v1([note("kick", 0, 8), note("kick", 4, 8), note("kick", total - 2, 10), note("kick", total + 5), note("kick", 20, 0)]),
     )!;
@@ -108,8 +134,9 @@ describe("loop region on load", () => {
     expect(migrateSong({ ...v2(), loop_region: none })!.loop_region).toEqual(none);
   });
 
-  it("clamps a stored region that extends past the song", () => {
-    expect(migrateSong({ ...v2(), loop_region: R(5, 40) })!.loop_region).toEqual(R(5, 8));
+  it("keeps a stored region inside the timeline and clamps one past it", () => {
+    expect(migrateSong({ ...v2(), loop_region: R(5, 12) })!.loop_region).toEqual(R(5, 12));
+    expect(migrateSong({ ...v2(), loop_region: R(5, 40) })!.loop_region).toEqual(R(5, 16));
   });
 
   it("reads null, malformed and the flat shape as the default", () => {

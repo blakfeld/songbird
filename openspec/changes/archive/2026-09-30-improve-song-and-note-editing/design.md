@@ -45,10 +45,10 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 - **Alternative:** keep a manual length plus auto-growth. The user asked for no Length field.
 
 ### D2. A loop follows a clip that uses it alone
-- **The rule:** `resizeClip` checks `useCount(loop) === 1`. In that case it also calls the existing `setLoopLength` logic, which appends empty measures or runs `normalizeNotes`, in the same `Song → Song` step. Undo therefore covers both.
+- **The rule:** `resizeClip` follows the loop only when `useCount(loop) === 1` and the loop was exactly as long as the clip. In that case it appends empty measures or runs `normalizeNotes` in the same `Song → Song` step. A clip that already repeated or cut its loop leaves the loop alone, so lengthening never deletes notes and shortening never silences repeats. Undo therefore covers both.
 - **Shared loops:** the current repeat-or-cut behavior is kept.
 - **New clips:** `NEW_CLIP_MEASURES = 1`.
-- **Removals:** the dock's `LengthField` and the `setLoopLength` store action are removed. The pure `setLoopLength` stays as the helper `resizeClip` uses.
+- **Removals:** the dock's `LengthField` and the `setLoopLength` store action are removed. There is no standalone `setLoopLength`; `resizeClip` is the only path that changes a loop's length.
 - **Dragging:** the resize is `transient` during the drag, as today, so a drag that shrinks and then regrows a loop within one gesture previews from the gesture base. Notes dropped by a mid-drag shrink come back if the drag ends larger.
 - **Alternative:** a loop length that is the maximum of its clips' lengths. That is harder to explain, and makes linked clips resize each other.
 
@@ -56,7 +56,7 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 - **`setTimeSignature(song, ts)`** rewrites each loop note as follows:
   - `m = floor(step / oldSpm)` and `o = step % oldSpm`;
   - notes with `o ≥ newSpm` are removed;
-  - otherwise `step' = m·newSpm + o`, and the length is clamped to `newSpm − o`.
+  - otherwise `step' = m·newSpm + o`, and the length is kept. It is clamped only to the next remaining note in its row and to the loop end (`loop.measures × newSpm`), never to the barline, so sustains survive.
 - **Loop lengths:** `loop.measures` is kept, so clips are unchanged.
 - **Confirmation:** a companion `countTimeSignatureLosses(song, ts)` counts the removed notes, and drives the confirmation dialog (the existing `ModalDialog`).
 - **3/4 ↔ 6/8:** both are 12 steps, so the conversion is lossless and only the beat grouping changes, through `beatSteps`.
@@ -113,6 +113,11 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 - **Contents:** the count, a velocity number input plus slider, and a length number input. It shows "Mixed" as a placeholder.
 - **Committing:** a change commits on change, or on release for the slider, through `setVelocities` and `setLengths` in `patternOps`. `setLengths` clamps each note to its next note in the row and to the end of the grid.
 - **One-shot instruments:** length is read-only.
+
+### D9. The loop region is bounded by the timeline
+- **Why:** the timeline is the space the user draws in, and a region over the silent measures after the song's end is a deliberate choice (for example, to loop a spot to record into).
+- **Bounds:** `normalizeSong`, `setLoop`, `withLiveLoop`, and `normalizeLoopRegion` clamp to `timelineMeasures(song)` instead of `song.measures`. Looping with no region and play-once still use `song.measures`. Pattern pages are unchanged.
+- **Playback:** while looping with a region, `getTiming` reports `max(song.measures, region end)` so the engine does not clamp the region away. Otherwise the timing is unchanged.
 
 ## Risks / Trade-offs
 

@@ -7,7 +7,8 @@ describe("newSong", () => {
     expect(s).toMatchObject({
       version: 2,
       name: "Untitled song",
-      measures: 8,
+      measures: 1,
+      key: { tonic: "C", mode: "major" },
       time_signature: "4/4",
       steps_per_measure: 16,
       tempo_bpm: 120,

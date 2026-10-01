@@ -5,7 +5,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Playback } from "@/lib/audio/types";
 import type { LoopSetting } from "@/lib/loopRegion";
 import { beatSteps } from "@/lib/pianoRoll";
-import { audibleTracks, totalSteps } from "@/lib/song/songOps";
+import { audibleTracks } from "@/lib/song/songOps";
 import type { Song } from "@/lib/song/types";
 import type { ResourceState } from "@/lib/useApiResource";
 import { LoopShade } from "@/components/editor/LoopShade";
@@ -16,6 +16,7 @@ import { AddTrackMenu } from "./AddTrackMenu";
 import { TrackLane } from "./TrackLane";
 import type { InstrumentLookup } from "./TrackHeader";
 import type { TrackActions } from "./trackActions";
+import { PastEnd } from "./PastEnd";
 import { CLIP_KEYS_HELP, CLIP_KEYS_HELP_ID } from "./ClipLane";
 import type { ClipActions } from "./useClipActions";
 
@@ -46,6 +47,7 @@ function useElementWidth(ref: React.RefObject<HTMLElement | null>) {
 
 export function Arrangement({
   song,
+  timeline,
   selectedTrackId,
   selectedClipId,
   instruments,
@@ -60,6 +62,7 @@ export function Arrangement({
   sectionId,
 }: {
   song: Song;
+  timeline: number;
   selectedTrackId: string | null;
   selectedClipId: string | null;
   instruments: ResourceState<InstrumentInfo[]>;
@@ -75,8 +78,8 @@ export function Arrangement({
 }) {
   const rulerCell = useRef<HTMLDivElement>(null);
   const laneWidth = useElementWidth(rulerCell);
-  const steps = totalSteps(song);
-  const measureWidth = laneWidth / song.measures;
+  const steps = timeline * song.steps_per_measure;
+  const measureWidth = laneWidth / timeline;
   const audible = new Set(audibleTracks(song).map((t) => t.id));
   // Container-relative units let the lanes reflow on any resize or length change without JS measuring on every change.
   const fit = { "--cell-w": `calc(100cqw / ${steps})` } as React.CSSProperties;
@@ -97,6 +100,10 @@ export function Arrangement({
       <p id={CLIP_KEYS_HELP_ID} className="sr-only">
         {CLIP_KEYS_HELP}
       </p>
+      <p className="sr-only">
+        Song length: {song.measures} {song.measures === 1 ? "measure" : "measures"}. Add clips after the end to
+        lengthen it.
+      </p>
       <div className="sticky top-0 z-40 grid grid-cols-[var(--gutter-w)_minmax(0,1fr)] bg-white dark:bg-zinc-950">
         <div className="flex h-7 items-center gap-2 border-r border-b border-zinc-300 px-2 dark:border-zinc-700">
           <AddTrackMenu
@@ -109,15 +116,17 @@ export function Arrangement({
         <div ref={rulerCell} className="@container min-w-0">
           <div style={fit}>
             <MeasureRuler
-              measures={song.measures}
+              measures={timeline}
               stepsPerMeasure={song.steps_per_measure}
               beatSteps={beatSteps(song.time_signature)}
-              labelEvery={labelEveryFor(laneWidth, song.measures)}
+              labelEvery={labelEveryFor(laneWidth, timeline)}
               showBeats={measureWidth >= MIN_MEASURE_FOR_BEATS_PX}
+              dimFrom={song.measures}
             >
+              <PastEnd song={song} timeline={timeline} />
               <LoopRegion
                 loop={loop}
-                measures={song.measures}
+                measures={timeline}
                 stepsPerMeasure={song.steps_per_measure}
                 measurePx={measureWidth}
                 onChange={onLoopChange}
@@ -130,6 +139,7 @@ export function Arrangement({
         {song.tracks.map((track, i) => (
           <TrackLane
             song={song}
+            timeline={timeline}
             key={track.id}
             track={track}
             number={i + 1}
@@ -150,7 +160,7 @@ export function Arrangement({
           className="@container pointer-events-none absolute inset-y-0 right-0 left-[var(--gutter-w)]"
         >
           <div className="relative h-full" style={fit}>
-            <LoopShade loop={loop} measures={song.measures} stepsPerMeasure={song.steps_per_measure} />
+            <LoopShade loop={loop} measures={timeline} stepsPerMeasure={song.steps_per_measure} />
             <Playhead subscribePosition={subscribePosition} />
           </div>
         </div>

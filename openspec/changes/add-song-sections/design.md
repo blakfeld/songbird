@@ -3,7 +3,8 @@
 ## Context
 
 See proposal.md for the motivation. This change builds on the song page and song store that #4 add-multitrack-song introduces.
-- **Song model**: `Song { version: 2, id, name, tempo_bpm, time_signature, swing, measures: 1–128, tracks[] }`.
+- **Song model**: `Song { version: 2, id, name, tempo_bpm, time_signature, swing, key, measures: 1–128, tracks[] }`.
+- **Derived length** (improve-song-and-note-editing D1): `measures` is no longer set by the user. `normalizeSong(song)` in `lib/song/songOps.ts` sets it to the end of the last-ending clip (1 with no clips), and every clip operation and `migrate.ts` pass their result through it. Clip operations are bounded by `timelineMeasures(song) = min(128, max(16, measures + 8))` instead of `measures`, so a clip can be created or moved past the song's end, which lengthens the song. There is no song Length field and no `setSongLength`.
 - **Tracks** (add-arrangement-clips D1): each track holds `loops` (`{id, name, measures, notes}`, with note steps relative to the loop start) and `clips` (`{id, loop_id, start_measure, measures}`, in whole measures, sorted by `start_measure`, non-overlapping). What a track plays is derived by `resolveTrackNotes` (D2). Clip operations are pure `Song → Song` functions in `lib/song/clipOps.ts` (D5). A track holds at most 64 loops and 256 clips.
 - **Persistence**: songs persist in the browser in IndexedDB (`songbird.songs.v1.<id>`, #4), with undo and redo in the song store. #4's loader keeps unrecognised fields.
 - **Pattern editor**: the single-instrument editor keeps its stores in `frontend/src/lib/patternStore.ts` and pure operations in `frontend/src/lib/patternOps.ts`. It commits whole immutable documents to a 100-entry history (`patternStore.ts:11`). We assume the song store follows the same pattern.
@@ -29,12 +30,12 @@ See proposal.md for the motivation. This change builds on the song page and song
 ### D1. Store section lengths only, and derive start measures
 `Song.sections: Section[]` stores `{ id, name, kind, measures, notes }`. Start measures are computed as prefix sums.
 
-Storing lengths makes tiling hold by construction: gaps and overlaps cannot be represented. `Song.measures` stays in the document so that #4's code and #5's export keep working unchanged. Every section operation recomputes `Song.measures` as the sum of lengths, and a store invariant check in tests asserts they agree.
+Storing lengths makes tiling hold by construction: gaps and overlaps cannot be represented. `Song.measures` stays in the document so that #4's code and #5's export keep working unchanged. `normalizeSong` keeps it equal to the sum of lengths (D8), and a store invariant check in tests asserts they agree.
 
 *Alternative:* store explicit `{start_measure, end_measure}` ranges. This was rejected because every edit would have to re-validate and repair the ranges.
 
 ### D2. The implicit section is a view, not data
-When `sections` is absent or empty, `sectionsOf(song)` returns `[{ id: "implicit", name: "Song", kind: "other", measures: song.measures, notes: "" }]`. The first mutating section operation writes that section, with a fresh uuid, into the document and then applies the edit, all as one history entry.
+When `sections` is absent or empty, `sectionsOf(song)` returns `[{ id: "implicit", name: "Song", kind: "other", measures: song.measures, notes: "" }]`. Its length is therefore the clip-derived length. Once materialized, it is a real section and the song's length follows its sections from then on (D8). The first mutating section operation writes that section, with a fresh uuid, into the document and then applies the edit, all as one history entry.
 
 This keeps untouched old songs byte-identical, and the document `version` stays 2.
 
@@ -78,12 +79,25 @@ Section notes use a plain `<textarea>`. Its edits are debounced (300 ms) into th
 - **The region is not an undo step**, as add-timeline-loop-region requires, so selecting a section adds no history entry.
 - **Clearing the selection leaves the region alone.** The region is the user's playback setting and is saved with the song. Clearing a UI highlight should not silently change what plays; the user can redraw the region or toggle looping instead.
 - **Region edits do not change the selection.** Drawing, moving, or resizing the region on the ruler, or toggling Loop, leaves `selectedSectionId` as it is, because the selection also drives the notes panel and #6's default range.
-- **Structural edits keep the region valid.** An edit that changes the song's length passes the song through `clampLoop`, so a drawn region stays inside the new length and no region stays none. The edit does not otherwise move the region to follow shifted sections; the user reselects the section to loop it again.
+- **Structural edits keep the region valid.** An edit that changes the song's length passes the song through `clampLoop`, so a drawn region stays inside the new visible timeline (`timelineMeasures`, add-timeline-loop-region) and no region stays none. The edit does not otherwise move the region to follow shifted sections; the user reselects the section to loop it again.
 
 *Alternative:* select without touching `enabled`. That would keep the Loop toggle fully manual, but selecting a section while looping is off would then have no audible effect.
 
 ### D7. Section ruler reuses the measure grid geometry
 The ruler reuses the existing grid geometry: `MeasureRuler.tsx`, and the 28 px cell width constant in `lib/pianoRoll.ts`. It sits in the same horizontal scroll container as the tracks, so alignment needs no scroll syncing. Section actions are in a per-section menu (a button on the ruler label) and an "Add section" button at the end of the ruler. The dialog reuses `components/ui/` `Field` and `Select`. The section ruler is its own row, separate from the measure ruler that hosts `LoopRegion`, because a click on the loop region already toggles looping and a click on a section must select it; sharing one strip would give one click two meanings.
+
+### D8. Sections define length, and `normalizeSong` enforces it
+While a song has sections, its length is the sum of its section lengths, not the end of its last clip. `normalizeSong` (improve-song-and-note-editing D1) gains a sectioned branch, so length is still recomputed in one place:
+- **Without sections:** unchanged. `measures` is the end of the last-ending clip, or 1.
+- **With sections:** when the last-ending clip ends after the last section, the last section is lengthened to end with it. `measures` is then the sum of section lengths.
+
+Every clip operation already passes its result through `normalizeSong`, so creating, placing, duplicating, moving, or resizing a clip past the last section lengthens that section in the same `Song → Song` step and the same undo entry. Removing, moving, or shortening clips never shrinks a section, so a sectioned song never shortens because of clip edits. Section operations also pass their result through `normalizeSong`, which then only recomputes the sum.
+
+**Bounding clip operations:** a section holds at most 32 measures, so `normalizeSong` must never have to grow the last section past that. With sections, the clip operations' bound is `min(timelineMeasures(song), lastSectionStart + 31)` instead of `timelineMeasures(song)` alone. Moves and resizes stop there, like any other end of the timeline. New clip, Place loop, and Duplicate past it are refused, and the user is told to add a section. `Arrangement` still draws `timelineMeasures` measures.
+
+*Alternative:* let clips keep defining the length and have the last section absorb the difference in both directions. This was rejected because deleting a clip would then shrink or remove an empty outro the user made on purpose. Sections are explicit structure, and clip edits should only ever add to them.
+
+*Alternative:* add a new "other" section to cover a clip past the end. This was rejected because every clip dragged a measure too far would leave a stray section to clean up.
 
 ## Risks / Trade-offs
 
@@ -91,8 +105,9 @@ The ruler reuses the existing grid geometry: `MeasureRuler.tsx`, and the 28 px c
 - **[Trade-off]** Splitting a long migrated clip (one whole-song loop per track) off a loop-repeat boundary bakes its tail into a new loop. Such songs gain "(cont.)" loops after section edits. They play correctly, and the user can delete unplaced ones from the loop menu.
 - **[Risk]** Structural edits on 16 tracks × 128 measures copy the whole song per history entry, so memory grows with the history. **Mitigation:** the history is already bounded (100 entries). A dense song is on the order of 100 KB, so the worst case stays around 10 MB. Revisit with structural sharing if profiling shows a problem.
 - **[Trade-off]** Without reordering, rearranging a song means deleting and re-inserting. We accept that for this PR and have noted it as a follow-up.
+- **[Trade-off]** A clip dragged past the end silently lengthens the last section, for example an Outro. **Mitigation:** it is the same undo step as the clip edit, and the section ruler shows the new length at once.
 - **[Risk]** Resizing near the 128-measure cap is confusing. **Mitigation:** the UI disables sizes that would exceed the cap and says why, as the spec requires.
 
 ## Migration Plan
 
-No migration is needed (D2). Rollback: songs saved with `sections` by this build still load in a build without the feature, because #4's loader and #5's importer keep unrecognised fields (#5 design D1).
+No migration is needed (D2). `migrate.ts` already passes every loaded song through `normalizeSong`, so a sectioned song whose stored `measures` or last section no longer covers its clips is corrected on load (D8). Rollback: songs saved with `sections` by this build still load in a build without the feature, because #4's loader and #5's importer keep unrecognised fields (#5 design D1).

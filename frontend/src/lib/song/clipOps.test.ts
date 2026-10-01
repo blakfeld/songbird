@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { note } from "@/test/fixtures";
 import * as clips from "./clipOps";
+import { normalizeSong, timelineMeasures } from "./songOps";
 import { MAX_CLIPS, MAX_LOOPS, newSong, type Clip, type Loop, type Song } from "./types";
 
 const SPM = 16;
@@ -19,13 +20,12 @@ const clip = (id: string, loop_id: string, start_measure: number, measures: numb
   measures,
 });
 
-function songWith(loops: Loop[], clipList: Clip[], measures = 16): Song {
+function songWith(loops: Loop[], clipList: Clip[]): Song {
   const base = newSong();
-  return {
+  return normalizeSong({
     ...base,
-    measures,
     tracks: [{ ...base.tracks[0], id: "t", name: "Bass", loops, clips: clipList }, base.tracks[1]],
-  };
+  });
 }
 
 const track = (song: Song) => song.tracks[0];
@@ -93,24 +93,41 @@ describe("resolveTrackNotes", () => {
 });
 
 describe("freeSpanAt", () => {
-  const song = songWith([loop("a", 2)], [clip("c", "a", 3, 2)], 10);
-  it("measures to the next clip or song end, and 0 when taken", () => {
+  const song = songWith([loop("a", 2)], [clip("c", "a", 3, 2)]);
+  it("measures to the next clip or the end of the timeline, and 0 when taken", () => {
     expect(clips.freeSpanAt(track(song), 1, song)).toBe(2);
     expect(clips.freeSpanAt(track(song), 4, song)).toBe(0);
-    expect(clips.freeSpanAt(track(song), 5, song)).toBe(6);
-    expect(clips.freeSpanAt(track(song), 11, song)).toBe(0);
+    expect(clips.freeSpanAt(track(song), 5, song)).toBe(12);
+    expect(clips.freeSpanAt(track(song), 16, song)).toBe(1);
+    expect(clips.freeSpanAt(track(song), 17, song)).toBe(0);
+  });
+
+  it("leaves room past the end: measures 1-28 when clips end at measure 20", () => {
+    const long = songWith([loop("a", 2)], [clip("c", "a", 19, 2)]);
+    expect(long.measures).toBe(20);
+    expect(timelineMeasures(long)).toBe(28);
+    expect(clips.freeSpanAt(track(long), 28, long)).toBe(1);
+    expect(clips.freeSpanAt(track(long), 29, long)).toBe(0);
+    const grown = ok(clips.newClip(long, "t", 25)).song;
+    expect(grown.measures).toBe(25);
+  });
+
+  it("never extends past 128 measures", () => {
+    const full = songWith([loop("a", 2)], [clip("c", "a", 1, 128)]);
+    expect(timelineMeasures(full)).toBe(128);
+    expect(clips.freeSpanAt(track(full), 129, full)).toBe(0);
   });
 });
 
 describe("free measure search", () => {
-  const song = songWith([loop("a", 2)], [clip("c", "a", 3, 2), clip("d", "a", 6, 3)], 10);
+  const song = songWith([loop("a", 2)], [clip("c", "a", 3, 2), clip("d", "a", 6, 3)]);
   it("finds the first free measure at or after a start", () => {
     expect(clips.nextFreeMeasure(track(song), song)).toBe(1);
     expect(clips.nextFreeMeasure(track(song), song, 3)).toBe(5);
     expect(clips.nextFreeMeasure(track(song), song, 6)).toBe(9);
   });
   it("is null when nothing is free", () => {
-    const full = songWith([loop("a", 2)], [clip("c", "a", 1, 4)], 4);
+    const full = songWith([loop("a", 2)], [clip("c", "a", 1, 128)]);
     expect(clips.nextFreeMeasure(track(full), full)).toBeNull();
     expect(clips.nearestFreeMeasure(track(full), full, 2)).toBeNull();
   });
@@ -122,17 +139,26 @@ describe("free measure search", () => {
 });
 
 describe("newClip", () => {
-  it("creates a 4-measure loop and clip on an empty lane", () => {
-    const song = songWith([], [], 16);
+  it("creates a 1-measure loop and clip on an empty lane", () => {
+    const song = songWith([], []);
     const r = ok(clips.newClip(song, "t", 5));
-    expect(track(r.song).loops).toMatchObject([{ name: "Bass 1", measures: 4, notes: [] }]);
-    expect(track(r.song).clips).toMatchObject([{ id: r.clipId, start_measure: 5, measures: 4 }]);
+    expect(track(r.song).loops).toMatchObject([{ name: "Bass 1", measures: 1, notes: [] }]);
+    expect(track(r.song).clips).toMatchObject([{ id: r.clipId, start_measure: 5, measures: 1 }]);
+    expect(r.song.measures).toBe(5);
   });
 
-  it("is shortened by a neighbour or the song end", () => {
-    const song = songWith([loop("a", 1)], [clip("c", "a", 7, 1)], 16);
-    expect(track(ok(clips.newClip(song, "t", 5)).song).clips[0]).toMatchObject({ start_measure: 5, measures: 2 });
-    expect(track(ok(clips.newClip(songWith([], [], 16), "t", 15)).song).loops[0].measures).toBe(2);
+  it("sits next to a neighbour without overlapping it", () => {
+    const song = songWith([loop("a", 1)], [clip("c", "a", 7, 1)]);
+    expect(track(ok(clips.newClip(song, "t", 6)).song).clips[0]).toMatchObject({ start_measure: 6, measures: 1 });
+    expect(reason(clips.newClip(song, "t", 7))).toBe("no-room");
+  });
+
+  it("lengthens the song when created past its end", () => {
+    const song = songWith([loop("a", 1)], [clip("c", "a", 1, 8)]);
+    expect(song.measures).toBe(8);
+    const r = ok(clips.newClip(song, "t", 12));
+    expect(r.song.measures).toBe(12);
+    expect(track(r.song).clips.at(-1)).toMatchObject({ start_measure: 12, measures: 1 });
   });
 
   it("uses the smallest unused number and fits the name limit", () => {
@@ -170,7 +196,6 @@ describe("placeLoop", () => {
     const full = songWith(
       [loop("a", 1)],
       Array.from({ length: MAX_CLIPS }, (_, i) => clip(`c${i}`, "a", 1, 1)),
-      128,
     );
     expect(reason(clips.placeLoop(full, "t", "a", 100))).toBe("clip-limit");
   });
@@ -191,7 +216,7 @@ describe("duplicateClip", () => {
   it("refuses at the clip limit", () => {
     // The limit exceeds what fits in 128 measures, so the fixture stacks clips; ops must refuse before checking room.
     const list = Array.from({ length: MAX_CLIPS }, (_, i) => clip(`c${i}`, "a", (i % 128) + 1, 1));
-    const song = songWith([loop("a", 1)], list, 128);
+    const song = songWith([loop("a", 1)], list);
     expect(reason(clips.duplicateClip(song, "t", "c0"))).toBe("clip-limit");
   });
 });
@@ -204,6 +229,7 @@ describe("moveClip", () => {
   });
   it("stops at the song edges", () => {
     expect(starts(ok(clips.moveClip(song, "t", "d", 99)).song)).toEqual([1, 15]);
+    expect(ok(clips.moveClip(song, "t", "d", 99)).song.measures).toBe(16);
     expect(starts(ok(clips.moveClip(song, "t", "d", -5)).song)).toEqual([1, 3]);
   });
   it("returns the same song when nothing moves", () => {
@@ -215,18 +241,57 @@ describe("moveClip", () => {
 });
 
 describe("resizeClip", () => {
-  const song = songWith([loop("a", 2)], [clip("c", "a", 1, 2), clip("d", "a", 6, 2)], 10);
+  const song = songWith([loop("a", 2)], [clip("c", "a", 1, 2), clip("d", "a", 6, 2)]);
   it("lengthens up to the neighbour and shortens to at least 1", () => {
     expect(track(ok(clips.resizeClip(song, "t", "c", 20)).song).clips[0].measures).toBe(5);
     expect(track(ok(clips.resizeClip(song, "t", "c", 0)).song).clips[0].measures).toBe(1);
   });
-  it("stops at the song end", () => {
-    expect(track(ok(clips.resizeClip(song, "t", "d", 20)).song).clips[1].measures).toBe(5);
+  it("stops at the end of the timeline", () => {
+    expect(track(ok(clips.resizeClip(song, "t", "d", 20)).song).clips[1].measures).toBe(11);
   });
-  it("lengthening past the loop leaves the loop alone", () => {
-    const r = ok(clips.resizeClip(songWith([loop("a", 2)], [clip("c", "a", 1, 2)], 8), "t", "c", 8));
+  it("lengthening a clip whose loop is shared repeats the loop", () => {
+    const shared = songWith([loop("a", 2)], [clip("c", "a", 1, 2), clip("e", "a", 20, 2)]);
+    const r = ok(clips.resizeClip(shared, "t", "c", 8));
     expect(track(r.song).clips[0].measures).toBe(8);
     expect(track(r.song).loops[0].measures).toBe(2);
+  });
+  it("shortening an unshared clip that shows its whole loop drops and truncates notes", () => {
+    const solo = songWith(
+      [loop("a", 4, [note("kick", 0), note("kick", 3 * SPM), note("c4", SPM + 8, 24)])],
+      [clip("c", "a", 1, 4)],
+    );
+    const r = ok(clips.resizeClip(solo, "t", "c", 2));
+    expect(track(r.song).loops[0]).toMatchObject({ measures: 2, notes: [note("kick", 0), note("c4", SPM + 8, 8)] });
+  });
+  it("leaves a loop longer than its unshared clip alone, so growing the clip keeps its notes", () => {
+    const solo = songWith([loop("a", 4, [note("kick", 3 * SPM)])], [clip("c", "a", 1, 2)]);
+    const r = ok(clips.resizeClip(solo, "t", "c", 3));
+    expect(track(r.song).clips[0].measures).toBe(3);
+    expect(track(r.song).loops).toBe(track(solo).loops);
+  });
+  it("leaves a loop shorter than its unshared clip alone, so shrinking the clip keeps the repeats", () => {
+    const solo = songWith([loop("a", 2, [note("kick", 0)])], [clip("c", "a", 1, 8)]);
+    const r = ok(clips.resizeClip(solo, "t", "c", 7));
+    expect(track(r.song).clips[0].measures).toBe(7);
+    expect(track(r.song).loops).toBe(track(solo).loops);
+  });
+  it("resizing an unshared clip resizes its loop", () => {
+    const solo = songWith([loop("a", 1)], [clip("c", "a", 1, 1)]);
+    const r = ok(clips.resizeClip(solo, "t", "c", 4));
+    expect(track(r.song).loops[0]).toMatchObject({ measures: 4, notes: track(solo).loops[0].notes });
+    expect(r.song.measures).toBe(4);
+  });
+  it("shrinking an unshared clip drops and cuts the loop's notes", () => {
+    const solo = songWith(
+      [loop("a", 4, [note("kick", 0), note("kick", 3 * SPM), note("c4", 2 * SPM + 8, 16)])],
+      [clip("c", "a", 1, 4)],
+    );
+    const r = ok(clips.resizeClip(solo, "t", "c", 3));
+    expect(track(r.song).loops[0]).toMatchObject({ measures: 3, notes: [note("kick", 0), note("c4", 2 * SPM + 8, 8)] });
+  });
+  it("leaves the loop alone when a clip's resize changes nothing", () => {
+    const solo = songWith([loop("a", 2)], [clip("c", "a", 1, 2)]);
+    expect(ok(clips.resizeClip(solo, "t", "c", 2)).song).toBe(solo);
   });
 });
 
@@ -273,7 +338,7 @@ describe("makeUnique", () => {
   });
 });
 
-describe("renameLoop / deleteLoop / setLoopLength", () => {
+describe("renameLoop / deleteLoop", () => {
   const song = songWith(
     [loop("a", 4, [note("kick", 0), note("kick", 3 * SPM), note("c4", 3 * SPM + 8, 8)], "Fill"), loop("b", 1)],
     [clip("c1", "a", 1, 4), clip("c2", "a", 5, 4), clip("c3", "a", 9, 4), clip("c4", "b", 13, 1)],
@@ -287,20 +352,6 @@ describe("renameLoop / deleteLoop / setLoopLength", () => {
     const next = track(ok(clips.deleteLoop(song, "t", "a")).song);
     expect(next.loops.map((l) => l.id)).toEqual(["b"]);
     expect(next.clips.map((c) => c.id)).toEqual(["c4"]);
-  });
-  it("shortening drops and truncates notes without touching clips", () => {
-    const r = ok(clips.setLoopLength(song, "t", "a", 2));
-    expect(track(r.song).loops[0]).toMatchObject({ measures: 2, notes: [note("kick", 0)] });
-    expect(track(r.song).clips).toBe(track(song).clips);
-    expect(ok(clips.setLoopLength(song, "t", "a", 4)).song).toBe(song);
-    const trunc = ok(clips.setLoopLength(songWith([loop("a", 4, [note("c4", SPM + 8, 24)])], []), "t", "a", 2));
-    expect(track(trunc.song).loops[0].notes).toEqual([note("c4", SPM + 8, 8)]);
-  });
-  it("lengthening appends empty measures and clamps to 1-128", () => {
-    const r = ok(clips.setLoopLength(song, "t", "a", 200));
-    expect(track(r.song).loops[0].measures).toBe(128);
-    expect(track(r.song).loops[0].notes).toBe(track(song).loops[0].notes);
-    expect(track(ok(clips.setLoopLength(song, "t", "a", 0)).song).loops[0].measures).toBe(1);
   });
 });
 

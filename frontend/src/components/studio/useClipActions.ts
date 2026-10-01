@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import type { Note } from "@/generated/Note";
 import {
   nearestFreeMeasure,
   type ClipFailure,
@@ -24,7 +23,6 @@ export interface ClipActions {
   makeUnique(trackId: string, clipId: string): void;
   renameLoop(trackId: string, loopId: string, name: string): void;
   deleteLoop(trackId: string, loopId: string): void;
-  setLoopLength(trackId: string, loopId: string, measures: number): void;
   beginGesture(): void;
   endGesture(): void;
   cancelGesture(): void;
@@ -37,11 +35,6 @@ export const clipSpan = (c: Pick<Clip, "start_measure" | "measures">) =>
   c.measures === 1
     ? `measure ${c.start_measure}`
     : `measures ${c.start_measure} to ${c.start_measure + c.measures - 1}`;
-
-// Order-insensitive because normalising a shortened loop re-sorts its notes without changing them.
-const noteKeys = (notes: Note[]) => notes.map((n) => `${n.row_id}:${n.step}:${n.length_steps}`).sort();
-const sameNotes = (a: Note[], b: Note[]) =>
-  a.length === b.length && noteKeys(a).every((k, i) => k === noteKeys(b)[i]);
 
 const findTrack = (song: Song | null, trackId: string) => song?.tracks.find((t) => t.id === trackId);
 
@@ -226,16 +219,6 @@ export function useClipActions(
           if (remaining) state().selectClip(remaining.id);
         }
         announce(`Deleted the loop “${loop.name}”${tail}. Undo to restore.`);
-      },
-      setLoopLength: (trackId, loopId, measures) => {
-        const before = context(trackId).track?.loops.find((l) => l.id === loopId);
-        if (report(state().setLoopLength(trackId, loopId, measures), trackId)) return;
-        const after = context(trackId).track?.loops.find((l) => l.id === loopId);
-        if (before && after && !sameNotes(before.notes, after.notes)) {
-          announce(
-            `Loop shortened to ${after.measures} bars. Notes after bar ${after.measures} were removed. Undo to restore.`,
-          );
-        }
       },
       beginGesture: () => state().beginGesture(),
       endGesture: () => state().endGesture(),

@@ -15,7 +15,7 @@ A song SHALL hold an ordered list of sections.
   - `measures`, an integer from 1 to 32;
   - `notes`, a string of at most 5,000 characters.
 - Sections SHALL tile the song in order, starting at measure 1, with no gaps or overlaps.
-- The song's length in measures SHALL equal the sum of its section lengths, and SHALL NOT exceed 128.
+- The song's length in measures SHALL equal the sum of its section lengths, and SHALL NOT exceed 128 (see "Song length with sections").
 
 #### Scenario: Sections tile the song
 - **WHEN** a song has sections Intro (4), Verse (8), and Chorus (8)
@@ -33,7 +33,7 @@ The first structural edit or notes edit on an unsectioned song SHALL first turn 
 Songs saved before sections existed SHALL load without any change to their tracks, loops, or clips.
 
 #### Scenario: Old song loads
-- **WHEN** the user opens a 16-measure song that was saved before sections existed
+- **WHEN** the user opens a song saved before sections existed, whose clips end at measure 16
 - **THEN** the section ruler shows one section named "Song" covering measures 1–16, and every loop and clip is unchanged
 
 #### Scenario: First edit materializes the section
@@ -116,12 +116,23 @@ The user SHALL be able to delete a section when the song has more than one secti
 - **WHEN** a song has exactly one section
 - **THEN** the delete action for that section is unavailable
 
-### Requirement: Song length control with sections
-While a song has sections, changing the song's length with the song-length control SHALL resize the last section by the difference and follow the resizing rules. A change that would make the last section shorter than 1 measure or longer than 32 measures SHALL NOT be offered.
+### Requirement: Song length with sections
+While a song has sections, its length SHALL be the sum of its section lengths, whatever its clips are. A song without sections SHALL keep the length that follows its clips (see `songs/multitrack` "Song document").
+- **Clips past the last section:** creating, placing, duplicating, moving, or resizing a clip so that it ends after the last section SHALL lengthen the last section to end with that clip. This SHALL be part of the same undo step as the clip edit.
+- **Clips never shorten a sectioned song:** moving, shortening, or deleting clips SHALL NOT change any section's length.
+- **Limit:** a clip edit SHALL NOT make the last section longer than 32 measures or the song longer than 128. A move or resize SHALL stop at the furthest measure the last section can reach. A new, placed, or duplicated clip that would pass it SHALL NOT be added, and the user SHALL be told to add a section.
 
-#### Scenario: Lengthen the song
-- **WHEN** a song ends with a 4-measure Outro and the user raises the song length by 4 measures
-- **THEN** the Outro becomes 8 measures long
+#### Scenario: Clip past the last section lengthens it
+- **WHEN** a song has Verse (8) and Outro (4), covering measures 1–12, and the user creates a clip at measure 14
+- **THEN** the Outro covers measures 9–14 and the song is 14 measures long
+
+#### Scenario: Deleting clips keeps the length
+- **WHEN** a song has Verse (8) and an empty Outro (4), and the user deletes every clip in the Verse
+- **THEN** both sections keep their lengths and the song is still 12 measures long
+
+#### Scenario: Last section at its limit
+- **WHEN** a song's last section is 30 measures long and covers measures 9–38, and the user drags a clip's right edge from measure 38 out to measure 44
+- **THEN** the clip stops at measure 40, and the last section is 32 measures long
 
 ### Requirement: Section ruler
 The song page SHALL show a section ruler aligned with the tracks' measure grid. It SHALL display each section's name across its measures, with section boundaries visually distinct, and SHALL scroll horizontally together with the tracks.

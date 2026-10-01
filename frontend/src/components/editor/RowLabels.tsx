@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type Ref } from "react";
 import type { InstrumentKind } from "@/generated/InstrumentKind";
 import type { Row } from "@/generated/Row";
+import type { KeyHighlight, RowTint } from "@/lib/music/key";
 import { isBlackKey } from "@/lib/pianoRoll";
 
 export function RowLabels({
@@ -8,6 +9,8 @@ export function RowLabels({
   kind = "drums",
   onAudition,
   gutterClassName,
+  keyHighlight,
+  rowTints,
   ref,
 }: {
   rows: Row[];
@@ -15,6 +18,8 @@ export function RowLabels({
   onAudition?: (row: Row) => void;
   // Lets a host align the label column with other regions instead of the native width.
   gutterClassName?: string;
+  keyHighlight?: KeyHighlight;
+  rowTints?: RowTint[];
   ref?: Ref<HTMLDivElement>;
 }) {
   if (kind === "melodic") {
@@ -24,7 +29,8 @@ export function RowLabels({
         ref={ref}
         className={`sticky left-0 z-30 flex justify-end border-r border-zinc-400 bg-white dark:bg-zinc-950 ${gutterClassName}`}
       >
-        <Keyboard rows={rows} onAudition={onAudition} />
+        {keyHighlight && rowTints && <KeyLane highlight={keyHighlight} tints={rowTints} />}
+        <Keyboard rows={rows} onAudition={onAudition} keyHighlight={keyHighlight} rowTints={rowTints} />
       </div>
     );
   }
@@ -47,14 +53,42 @@ export function RowLabels({
 
 const MIDDLE_C = 60;
 
+// The white keys span fractional rows, so a row-aligned lane is what carries the per-row tint.
+function KeyLane({ highlight, tints }: { highlight: KeyHighlight; tints: RowTint[] }) {
+  return (
+    <div aria-hidden="true" className="w-5 shrink-0 border-r border-zinc-200 dark:border-zinc-800">
+      {tints.map((tint, i) => (
+        <div
+          key={i}
+          data-tint={tint}
+          style={{ height: "var(--row-h)" }}
+          className={
+            tint === "tonic"
+              ? "flex items-center justify-center bg-emerald-300 text-[10px] leading-none font-bold text-emerald-950 dark:bg-emerald-700 dark:text-emerald-50"
+              : tint === "scale"
+                ? "bg-emerald-100 dark:bg-emerald-900/50"
+                : undefined
+          }
+        >
+          {tint === "tonic" ? highlight.tonicLabel : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // A single tab stop keeps 61 keys from standing between keyboard users and the grid.
 function Keyboard({
   rows,
   onAudition,
+  keyHighlight,
+  rowTints,
   ref,
 }: {
   rows: Row[];
   onAudition?: (row: Row) => void;
+  keyHighlight?: KeyHighlight;
+  rowTints?: RowTint[];
   ref?: Ref<HTMLDivElement>;
 }) {
   const middleC = rows.findIndex((r) => r.midi_note === MIDDLE_C);
@@ -86,10 +120,17 @@ function Keyboard({
     >
       {rows.map((row, index) => {
         const black = isBlackKey(row.midi_note);
+        const tint = rowTints?.[index];
+        const keyDescription =
+          keyHighlight && tint && tint !== "none"
+            ? `${tint === "tonic" ? "Tonic of" : "In"} ${keyHighlight.keyName}`
+            : undefined;
         const box = black
           ? { top: `calc(var(--row-h) * ${index})`, height: "var(--row-h)" }
           : whiteKeyBox(row.midi_note, firstMidi);
         return (
+          // The name stays the plain row name so the key's role in the scale rides on the description.
+          // eslint-disable-next-line jsx-a11y/role-supports-aria-props
           <button
             key={row.id}
             type="button"
@@ -98,6 +139,7 @@ function Keyboard({
             tabIndex={index === current ? 0 : -1}
             onFocus={() => setActive(index)}
             aria-label={row.name}
+            aria-description={keyDescription}
             onClick={() => onAudition?.(row)}
             style={box}
             className={`absolute left-0 cursor-pointer text-[10px] leading-none font-bold focus-visible:z-20 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 ${

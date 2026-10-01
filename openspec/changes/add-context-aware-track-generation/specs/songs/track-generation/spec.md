@@ -48,7 +48,7 @@ The system SHALL validate the request before invoking the AI provider, and a rej
 - **THEN** the response is `422` with error code `invalid_range`
 
 ### Requirement: Song settings are fixed during track generation
-Track generation SHALL use the song's `tempo_bpm`, `time_signature`, and `swing`. It SHALL NOT change them, and it SHALL NOT return values for them. The returned notes SHALL satisfy the pattern document's consistency rules: `velocity` 1–127, `length_steps` ≥ 1, and no overlaps within a row. No note SHALL start before step 0 or end after the range's length in steps.
+Track generation SHALL use the song's `tempo_bpm`, `time_signature`, `swing`, and `key`. It SHALL NOT change them, and it SHALL NOT return values for them. The returned notes SHALL satisfy the pattern document's consistency rules: `velocity` 1–127, `length_steps` ≥ 1, and no overlaps within a row. No note SHALL start before step 0 or end after the range's length in steps.
 
 #### Scenario: Tempo untouched
 - **WHEN** a 90 BPM song's track is generated with the prompt "fast punk drums at 180 bpm"
@@ -58,7 +58,7 @@ Track generation SHALL use the song's `tempo_bpm`, `time_signature`, and `swing`
 Wherever this capability refers to a track's notes as context, it means the notes the track's clips play, at their absolute song positions (see `songs/clips`, "What a clip plays"). Loop contents that no clip plays SHALL NOT appear in context.
 
 The AI provider SHALL receive, in addition to the prompt, the following context:
-- the song's tempo, time signature, and length;
+- the song's tempo, time signature, key, and length. A song without a key SHALL be sent as C major;
 - the target track's name and instrument;
 - the target track's own notes in the measure immediately before and the measure immediately after the range, where those exist;
 - a summary of every other track that is not muted, covering the range plus one measure on each side.
@@ -68,6 +68,14 @@ Each track summary SHALL include the track's name and instrument. For melodic in
 #### Scenario: Other tracks reach the provider
 - **WHEN** a Bass track is generated for measures 1–4 while a Drums track's clips play a kick on step 0 and a Piano track's clips hold C4, E4, and G4 during beat 1 of measure 1
 - **THEN** the provider request includes the kick at step 0 and the pitches C4, E4, and G4 on measure 1 beat 1, labelled with those tracks' names and instruments
+
+#### Scenario: Key reaches the provider
+- **WHEN** a Keys track is generated in a song whose key is E minor
+- **THEN** the provider request names the key E minor
+
+#### Scenario: Song without a key
+- **WHEN** a track is generated in a song saved without a key
+- **THEN** the provider request names the key C major
 
 #### Scenario: Muted tracks are ignored
 - **WHEN** a track is muted at the time of the request

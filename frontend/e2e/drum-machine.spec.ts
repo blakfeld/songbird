@@ -80,7 +80,7 @@ test("generate, edit, persist and export a drum pattern", async ({ page }) => {
   await cell.click();
   await expect(notes(page)).toHaveCount(generated + 1);
   const bar = page.locator(`[data-testid="note"][data-row="${drums.rows[row].id}"][data-step="${step}"]`);
-  await bar.click();
+  await bar.dblclick();
   await expect(notes(page)).toHaveCount(generated);
 
   await cell.click();
@@ -241,4 +241,41 @@ test("create and extend the first loop region from the keyboard", async ({ page 
   await expect(region).toHaveAttribute("data-end", "2");
   await expect(page.getByRole("button", { name: "Loop playback" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Stop/ })).toHaveCount(0);
+});
+
+test("box select drum notes and delete them with the keyboard", async ({ page }) => {
+  await page.goto("/drum-machine");
+  await page.getByRole("button", { name: "Start with a blank grid" }).click();
+
+  const place = ["Kick, measure 1, step 3", "Snare, measure 1, step 5", "Kick, measure 1, step 9"];
+  for (const name of place) await page.getByRole("button", { name, exact: true }).click();
+  await expect(notes(page)).toHaveCount(3);
+  // A fourth note outside the box proves Delete removes only the selection.
+  await page.getByRole("button", { name: "Kick, measure 2, step 1", exact: true }).click();
+  await expect(notes(page)).toHaveCount(4);
+
+  const first = page.getByRole("button", { name: "Kick, measure 1, step 3", exact: true });
+  await first.scrollIntoViewIfNeeded();
+  const boxes = await notes(page).evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, right: r.right, bottom: r.bottom, step: Number((el as HTMLElement).dataset.step) };
+    }),
+  );
+  const inBox = boxes.filter((b) => b.step < 16);
+  const x0 = Math.min(...inBox.map((b) => b.x)) - 4;
+  const y0 = Math.min(...inBox.map((b) => b.y)) - 3;
+  const x1 = Math.max(...inBox.map((b) => b.right)) + 4;
+  const y1 = Math.max(...inBox.map((b) => b.bottom)) + 3;
+  // Starting at the bottom right keeps the press on a free cell, clear of the sticky ruler.
+  await page.mouse.move(x1, y1);
+  await page.mouse.down();
+  await page.mouse.move(x0, y0, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('[data-testid="note"][data-selected="true"]')).toHaveCount(3);
+  await expect(page.getByText("3 notes selected").first()).toBeVisible();
+
+  await page.keyboard.press("Delete");
+  await expect(notes(page)).toHaveCount(1);
+  await expect(notes(page).first()).toHaveAttribute("data-step", "16");
 });

@@ -19,7 +19,9 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 **Stores.**
 - `patternStore.edit` pushes one undo entry per call, and has no gestures.
 - `songStore` has `beginGesture`/`endGesture`/`cancelGesture`. Only `transient` ops stay inside a gesture. Other edits commit the gesture (`songStore.ts:119-131, 263-282`).
-- `clipOps.newClip` makes a fixed 4-measure clip. `freeSpanAt` finds the free measures ahead of a position. `resolveTrackNotes` is cached per `(loops, clips)` reference.
+- `clipOps.newClip` makes a 1-measure clip. `freeSpanAt` finds the free measures ahead of a position, up to the end of the visible timeline (`timelineMeasures(song) = min(128, max(16, measures + 8))`). `resolveTrackNotes` is cached per `(loops, clips)` reference.
+- Every clip op passes its result through `normalizeSong`, which sets `measures` to the end of the last-ending clip (improve-song-and-note-editing D1). A clip created past the song's end therefore lengthens the song.
+- `lib/patternOps.ts` has `mergeNotes(existing: Note[], incoming: Note[]): Note[]`, which paste uses: a same-row, same-step incoming note replaces the existing one, and an existing note an incoming note overlaps is shortened to end where it starts, or removed if nothing remains.
 
 **Transport and shortcuts.**
 - `Transport.tsx` is a shared flex row. After add-timeline-loop-region it holds Play, the Loop toggle, and Follow, then the position readout.
@@ -76,7 +78,7 @@ See proposal.md for the motivation and the specs for the behavior. The current s
   1. maps the note to a row through the target instrument's `rows[].midi_note`;
   2. calls the engine's live note API;
   3. while a take is active, sends the finished `{row_id, step, length_steps, velocity}` to the take on note-off.
-- **`Take`** merges notes with the pure `mergeRecorded(existing, recorded)`. The same row and step replaces the old note, and an earlier overlapping note is shortened. Adapters decide where the result goes:
+- **`Take`** merges notes with the existing pure `mergeNotes(existing, recorded)` from `lib/patternOps.ts`, so recording and paste resolve collisions identically and there is no recording-specific merge. The same row and step replaces the old note, and an existing note that a recorded note overlaps is shortened. Adapters decide where the result goes:
   - **Pattern adapter:** it holds `baseNotes`, the notes before the take. On each finished note it calls a new `patternStore.previewTake(notes)`. That sets `pattern.notes` without touching history, so playback and the piano roll see the notes right away. When the take ends, `commitTake()` pushes one history entry whose "before" is `baseNotes`. When a take ends with no notes, nothing changes.
   - **Song adapter:** it calls `store.beginGesture()` at the start of the take. Take edits are `transient` ops (D5), and `endGesture()` at the end makes one undo step. This also covers loops and clips the take creates. Undo and redo already call `endGesture` first, so pressing Cmd/Ctrl+Z mid-take ends the take and then undoes it.
 - **Alternative:** buffer everything and write it only when the take ends. That is simpler, but notes from the first pass wouldn't be heard on the second pass, which the spec requires.
@@ -91,6 +93,8 @@ This is a pure op, marked `transient`.
 - **Limits:** a `clip-limit` or `loop-limit` failure increments `takeState.dropped[reason]`. The page reports the count when the take ends.
 - **Ending a clip at a note's end:** a note whose end falls in a later measure extends the clip to cover it, within the run.
 - **Why grow the clip:** extending one clip for each run, rather than creating a clip for each note, keeps a looping take over empty space to a single clip.
+- **Past the song's end:** a run's limit is the next clip or the end of the visible timeline, as `freeSpanAt` already reports. Because `recordNotes` passes its result through `normalizeSong`, a clip created or extended past the song's end lengthens the song inside the take's gesture, so undoing the take also restores the length. The engine plays those measures only while a loop region covers them (add-timeline-loop-region D7).
+- **Why not a fixed song length during a take:** the song's length is derived from its clips. Holding it fixed would mean refusing notes the player can hear the timeline reach.
 
 ### D6. Metronome and count-in live in the engine
 - **The click source:** `metronomeSource` is a tiny Tone `MembraneSynth`/`Synth` pair, with an accented downbeat, connected straight to the destination and skipping the track channels.

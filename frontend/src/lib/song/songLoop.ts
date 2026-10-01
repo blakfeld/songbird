@@ -1,4 +1,5 @@
 import { clampLoop, defaultLoop, parseLoop, type LoopSetting } from "../loopRegion";
+import { timelineMeasures } from "./songOps";
 import type { Song } from "./types";
 
 export function songLoop(song: Pick<Song, "loop_region">): LoopSetting {
@@ -32,7 +33,13 @@ export function withSongLoop(song: Song, loop: LoopSetting): Song {
 // the live region wins so those actions never move it, except where a length change forces a clamp.
 export function withLiveLoop(snapshot: Song, current: Song): Song {
   if (current.loop_region === undefined && snapshot.loop_region === undefined) return snapshot;
-  return withSongLoop(snapshot, clampLoop(songLoop(current), snapshot.measures));
+  return withLoopSetting(snapshot, songLoop(current));
+}
+
+// Preview songs clamp from the setting captured when a drag began, never from the previous preview,
+// so a drag that shrinks the timeline and then returns gets the full region back.
+export function withLoopSetting(snapshot: Song, loop: LoopSetting): Song {
+  return withSongLoop(snapshot, clampLoop(loop, timelineMeasures(snapshot)));
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -48,7 +55,7 @@ export function normalizeLoopRegion(song: Song): Song {
     enabled: isObject(raw) ? raw.enabled : undefined,
     region: isObject(region) ? { start: region.start_measure, end: region.end_measure } : region,
   });
-  const loop = clampLoop(parsed, song.measures);
+  const loop = clampLoop(parsed, timelineMeasures(song));
   if (!loop.enabled && loop.region === null) {
     const { loop_region: _dropped, ...rest } = song;
     void _dropped;

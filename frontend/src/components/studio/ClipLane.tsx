@@ -12,6 +12,7 @@ import {
 } from "@/lib/song/clipOps";
 import type { Clip, Loop, Song, Track } from "@/lib/song/types";
 import { ClipMenuItems, LaneMenuItems, LinkGlyph, clipMenuLabel } from "./ClipMenu";
+import { PastEnd } from "./PastEnd";
 import { ContextMenu } from "./ContextMenu";
 import { loopColour } from "./loopPalette";
 import { clipSpan, type ClipActions } from "./useClipActions";
@@ -83,6 +84,7 @@ type MenuState =
 
 export function ClipLane({
   song,
+  timeline,
   track,
   rows,
   melodic,
@@ -93,6 +95,8 @@ export function ClipLane({
   onSeek,
 }: {
   song: Song;
+  // Held at the pre-drag length by the caller so lanes never rescale under the pointer mid-gesture.
+  timeline: number;
   track: Track;
   rows: Row[] | null;
   melodic: boolean;
@@ -153,8 +157,8 @@ export function ClipLane({
   const measureAt = (clientX: number) => {
     const rect = lane.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return 1;
-    const at = Math.floor(((clientX - rect.left) / rect.width) * song.measures) + 1;
-    return Math.min(song.measures, Math.max(1, at));
+    const at = Math.floor(((clientX - rect.left) / rect.width) * timeline) + 1;
+    return Math.min(timeline, Math.max(1, at));
   };
 
   function endHold() {
@@ -194,7 +198,7 @@ export function ClipLane({
       startX: e.clientX,
       origStart: clip.start_measure,
       origMeasures: clip.measures,
-      measureWidth: rect && rect.width > 0 ? rect.width / song.measures : 0,
+      measureWidth: rect && rect.width > 0 ? rect.width / timeline : 0,
       crossed: false,
       cancelled: false,
     };
@@ -309,7 +313,7 @@ export function ClipLane({
       ref={lane}
       data-testid="clip-lane"
       // Container units make blocks follow the lane's width on any resize with no JS measuring.
-      style={{ "--cell-w": `calc(100cqw / ${song.measures * spm})` } as React.CSSProperties}
+      style={{ "--cell-w": `calc(100cqw / ${timeline * spm})` } as React.CSSProperties}
       className="@container relative min-w-0 cursor-pointer"
       onClick={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -328,6 +332,7 @@ export function ClipLane({
         setMenu({ kind: "lane", measure: free, anchor: { x: e.clientX, y: e.clientY } });
       }}
     >
+      <PastEnd song={song} timeline={timeline} />
       {track.clips.length === 0 && (
         <span
           className={`pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs text-zinc-600 dark:text-zinc-400 ${audible ? "" : "opacity-40"}`}

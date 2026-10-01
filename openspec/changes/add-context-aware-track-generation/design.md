@@ -8,6 +8,7 @@
 - **Available from #5:** `Song` / `Track` / `Loop` / `Clip` / `Song::validate -> ValidSong` in `music::song`, the `songs.rs` router, and a 1 MiB body limit on `/api/v1/songs/*`. `ValidSong` carries each track's resolved notes (#5 D5, a port of add-arrangement-clips D2), so the server never reads loops directly to learn what a track plays.
 - **Available from add-arrangement-clips:** tracks hold `loops` and `clips` (its D1), `resolveTrackNotes` (D2), and pure `Song → Song` clip operations in `lib/song/clipOps.ts` (D5), including the "<track name> <n>" loop naming used by New clip.
 - **Available from add-timeline-loop-region:** playback looping is a `LoopSetting { region: { start, end } | null, enabled }` (1-based, inclusive measures) with pure helpers in `frontend/src/lib/loopRegion.ts`. The Studio edits it on the arrangement ruler through `components/editor/LoopRegion.tsx` and a Loop toggle beside Play. The song store holds it as the song's optional `loop_region { region: { start_measure, end_measure } | null, enabled }`; absent or null means no region and looping off. A song starts with no region, and looping on with no region loops the whole song, so a loop range exists only when the user has drawn a region.
+- **Available from improve-song-and-note-editing:** the browser song has an optional `key: { tonic, mode }`, with `tonic` one of the 12 pitch classes `C`…`B` (sharps only) and `mode` `major` or `minor` (natural minor). An absent key means C major, and the Studio always shows one. That change is frontend only, so the Rust `Song` does not carry it yet.
 - **Timeout:** the timeout wrapper lives in the API handler (`api/src/patterns.rs:26`).
 - **Provider seam:** track generation reuses `PatternProvider` and #1's lane-per-pitch draft format. The chat's planner is a second provider kind, so this change introduces the `Providers` bundle #8 had planned (D12).
 
@@ -44,7 +45,8 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 
 ### D3. Context rendering (`music/src/context.rs`)
 - **Input:** `render_context(&ValidSong, target, range, budget) -> String`. Every note it reads comes from `ValidSong`'s resolved notes, at absolute song steps. Loops that no clip plays, and the parts of loops a short clip does not reach, never appear in context, because the model should hear what the listener hears.
-- **Header:** tempo, meter, song length, and the target's name, instrument, and range.
+- **Header:** tempo, meter, key, song length, and the target's name, instrument, and range. The key is rendered as its name, e.g. `key=E minor`, with an absent key rendered as `C major` so the model hears what the Studio shows. The header is part of the budget's last-dropped block, so the key always reaches the model unless the budget is smaller than the header.
+- **Why the key:** without it, a melodic part over a sparse or drums-only song has no harmonic anchor, and the model picks a key at random. The key is context only. Notes are not snapped to it, matching the Studio, where the key highlights rows but never moves notes.
 - **Target track surroundings:** the target track's resolved notes in measures `start−1` and `end+1`, rendered in the draft lane grammar the model already writes, e.g. `C3: x---....x-......`.
 - **Other tracks:** each unmuted other track, in song order, per measure from `start−1` to `end+1`:
   - Drums: one line per struck row, in the step-string grammar. Silent rows are omitted.
@@ -126,6 +128,12 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - **Limits:** if the split and the new loop would exceed 64 loops or 256 clips on the track, the result is not applied and the user is told the track's limit is reached. The generated notes are lost; the user can free space and regenerate.
 - **Why bake a misaligned tail instead of rotating the loop:** a rotated copy keeps the loop short but must cut notes that wrap past its end, so the tail would sound different. Baking is exact. The tail loses its repeat structure, which Make unique would have broken anyway.
 - **Alternative:** write generated notes into the existing loop. Every other clip of that loop would change too, which the user did not ask for.
+
+### D14. The song's key on the Rust `Song`
+- **Shape:** `Song.key: Option<SongKey>`, with `SongKey { tonic: PitchClass, mode: KeyMode }`, serialized as `{"tonic": "E", "mode": "minor"}` to match the browser's field. It is `#[serde(default, skip_serializing_if = "Option::is_none")]`, per #5's versioning policy, so songs without it serialize byte-identically.
+- **Validation:** `Song::validate` rejects an unknown tonic or mode with the song validation error codes, and the browser's project-file validator and `fixtures/song_validation.json` follow it.
+- **Ownership:** whichever of #5 and this change lands first adds the field, and the other reuses it. #8 (add-section-chord-generation) also plans a song key and should reuse this field rather than add its own.
+- **Alternative:** send the key as a separate request field beside `song`. That would let the two drift, and the key is already part of the song the browser posts.
 
 ## Risks / Trade-offs
 

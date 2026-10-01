@@ -7,6 +7,7 @@ export function MeasureRuler({
   labelEvery = 1,
   showBeats = true,
   beatLabels = false,
+  dimFrom,
   children,
 }: {
   measures: number;
@@ -17,6 +18,8 @@ export function MeasureRuler({
   showBeats?: boolean;
   // Prints bar.beat at each beat tick, for rulers that are zoomed in enough to read them.
   beatLabels?: boolean;
+  // Bar numbers from this 0-based measure on read as secondary, for a region past the song's end.
+  dimFrom?: number;
   // Lets a host lay an interactive overlay over the cells without the ruler knowing about it.
   children?: ReactNode;
 }) {
@@ -32,7 +35,9 @@ export function MeasureRuler({
           style={{ width: `calc(${stepsPerMeasure} * var(--cell-w))` }}
         >
           {m % labelEvery === 0 && (
-            <span className="absolute top-1 left-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+            <span
+              className={`absolute top-1 left-1.5 text-xs font-semibold ${dimFrom !== undefined && m >= dimFrom ? "text-zinc-500" : "text-zinc-700 dark:text-zinc-300"}`}
+            >
               {m + 1}
             </span>
           )}

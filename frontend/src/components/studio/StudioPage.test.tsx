@@ -7,6 +7,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import * as api from "@/lib/api";
 import { cellLabel } from "@/lib/pianoRoll";
 import { createSongLibrary, idbKeyValueStore, songKey, type SongLibrary } from "@/lib/song/songLibrary";
+import { normalizeSong } from "@/lib/song/songOps";
 import { newSong, newTrack, type Clip, type Loop, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { StudioPage } from "./StudioPage";
@@ -63,6 +64,7 @@ let library: SongLibrary;
 // The dock edits a clip's loop, so the default song needs one on each track to have anything to click.
 function songWithDrumLoop(): Song {
   const song = newSong();
+  song.measures = 8;
   song.tracks = song.tracks.map((t) => trackWithNotes(t, [], song.measures));
   return song;
 }
@@ -115,21 +117,58 @@ describe("song settings", () => {
     expect(screen.getByRole("button", { name: "Rename song Demo" })).toBeInTheDocument();
   });
 
-  it("changes the length in bars", async () => {
+  it("has no length control because the song follows its clips", async () => {
     await renderStudio();
-    const length = screen.getByRole("spinbutton", { name: "Length" });
-    await userEvent.clear(length);
-    await userEvent.type(length, "12{Enter}");
-    expect(length).toHaveValue(12);
-    expect(loops.at(-1)).toEqual({ region: null, enabled: false });
-    expect(screen.queryByTestId("loop-region")).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "Length" })).not.toBeInTheDocument();
   });
 
-  it("shows the time signature read-only", async () => {
-    await renderStudio({ ...newSong("6/8") });
-    expect(screen.getByText("6/8")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /time signature/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: /time signature/i })).not.toBeInTheDocument();
+  it("changes the time signature without a warning when no note is lost", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 1, [note("kick", 0)])], [C("c1", "a", 1, 1)]));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time signature" }), "3/4");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Time signature" })).toHaveValue("3/4");
+    expect(status()).toHaveTextContent("Time signature changed to 3/4.");
+    expect(within(dockRegion()).getAllByRole("button", { name: /^Kick, measure 1/ })).toHaveLength(12);
+  });
+
+  it("asks before a lossy time signature change and applies it on confirm", async () => {
+    await renderStudio(
+      clipSong([L("a", "Groove A", 1, [note("kick", 0), note("kick", 12)])], [C("c1", "a", 1, 1)]),
+    );
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time signature" }), "3/4");
+    const dialog = await screen.findByRole("alertdialog", { name: "Change to 3/4?" });
+    expect(within(dialog).getByRole("heading")).toHaveTextContent("Change to 3/4 and remove 1 note?");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(screen.getByRole("combobox", { name: "Time signature" })).toHaveValue("4/4");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change to 3/4" }));
+    expect(screen.getByRole("combobox", { name: "Time signature" })).toHaveValue("3/4");
+    expect(status()).toHaveTextContent("Time signature changed to 3/4. 1 note removed.");
+    expect(within(dockRegion()).getAllByTestId("note")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("combobox", { name: "Time signature" })).toHaveValue("4/4");
+    expect(within(dockRegion()).getAllByTestId("note")).toHaveLength(2);
+  });
+
+  it("keeps the song in 4/4 with every note when a lossy change is cancelled", async () => {
+    await renderStudio(
+      clipSong([L("a", "Groove A", 1, [note("kick", 0), note("kick", 12)])], [C("c1", "a", 1, 1)]),
+    );
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time signature" }), "3/4");
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("combobox", { name: "Time signature" })).toHaveValue("4/4");
+    expect(within(dockRegion()).getAllByTestId("note")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("changes the key as one undo step", async () => {
+    await renderStudio();
+    expect(screen.getByRole("combobox", { name: "Key tonic" })).toHaveValue("C");
+    expect(screen.getByRole("combobox", { name: "Key mode" })).toHaveValue("major");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Key tonic" }), "A");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Key mode" }), "minor");
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("combobox", { name: "Key mode" })).toHaveValue("major");
+    expect(screen.getByRole("combobox", { name: "Key tonic" })).toHaveValue("A");
   });
 });
 
@@ -242,7 +281,8 @@ describe("editing the selected track", () => {
     song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 0, 2), note("b3", 4)], song.measures);
     await renderStudio(song);
     await selectTrack(/^Select Piano track/);
-    await userEvent.click(pianoCell("B3", 4));
+    pianoCell("B3", 4).focus();
+    await userEvent.keyboard("{Delete}");
     pianoCell("C4", 0).focus();
     await userEvent.keyboard("{Shift>}{ArrowRight}{ArrowUp}{/Shift}");
     expect(audition).not.toHaveBeenCalled();
@@ -365,25 +405,70 @@ describe("moving a note between rows", () => {
     song.tracks[1].muted = true;
     await renderStudio(song);
     await selectTrack(/^Select Piano track/);
-    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
-    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 10 });
-    try {
-      const bar = screen.getByTestId("note");
-      fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0 });
-      fireEvent.pointerMove(bar, { clientX: 5, clientY: 100 + 18 });
-      fireEvent.pointerUp(bar, { clientX: 5, clientY: 100 + 18 });
-    } finally {
-      if (original) Object.defineProperty(HTMLElement.prototype, "offsetHeight", original);
-      else Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
-    }
-    expect(screen.getByTestId("note").dataset).toMatchObject({ row: "b3", step: "8", velocity: "80", length: "2" });
+    const bar = screen.getByTestId("note");
+    fireEvent.pointerDown(bar, { clientX: 5, clientY: 100, button: 0 });
+    fireEvent.pointerMove(document, { clientX: 5, clientY: 100 + 18 });
+    fireEvent.pointerMove(document, { clientX: 5 + 28, clientY: 100 + 18 });
+    fireEvent.pointerUp(document, { clientX: 5 + 28, clientY: 100 + 18 });
+    expect(screen.getByTestId("note").dataset).toMatchObject({ row: "b3", step: "9", velocity: "80", length: "2" });
     expect(audition).toHaveBeenCalledTimes(1);
     const [row, options] = audition.mock.calls[0] as unknown as [{ id: string }, { velocity: number; voiceKey: string }];
     expect(row.id).toBe("b3");
     expect(options.velocity).toBe(80);
 
+    // A drag is one undo step on the Studio too, however many moves it took.
     await userEvent.keyboard("{Control>}z{/Control}");
-    expect(screen.getByTestId("note").dataset.row).toBe("c4");
+    expect(screen.getByTestId("note").dataset).toMatchObject({ row: "c4", step: "8" });
+  });
+});
+
+const pianoCellOf = (row: string, step: number) =>
+  screen.getByRole("button", { name: cellLabel(row, step, 16) });
+
+describe("selecting, inspecting and pasting notes in the dock", () => {
+  const dockOf = () => screen.getByRole("region", { name: /^Editor:/ });
+
+  it("shows the note inspector in the dock header and edits the selection as one undo step", async () => {
+    const song = newSong();
+    song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 0, 2, 60), note("b3", 4, 2, 120)], song.measures);
+    await renderStudio(song);
+    await selectTrack(/^Select Piano track/);
+    const dock = dockOf();
+    expect(within(dock).getByText("No notes selected")).toBeInTheDocument();
+    screen.getByRole("button", { name: cellLabel("C4", 0, 16) }).focus();
+    await userEvent.keyboard("{Control>}a{/Control}");
+    const inspector = within(dock).getByRole("group", { name: "Selected notes" });
+    expect(within(inspector).getByText("2 notes selected")).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("Velocity")).toHaveAttribute("placeholder", "Mixed");
+    await userEvent.type(within(inspector).getByLabelText("Velocity"), "90{Enter}");
+    expect(screen.getAllByTestId("note").map((n) => n.dataset.velocity)).toEqual(["90", "90"]);
+    screen.getByRole("button", { name: cellLabel("C4", 0, 16) + ", selected" }).focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(screen.getAllByTestId("note").map((n) => n.dataset.velocity)).toEqual(["60", "120"]);
+  });
+
+  it("clears the selection when another clip's loop is opened", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 1, [note("snare", 0)]), L("b", "Groove B", 1, [note("kick", 0)])], [C("c1", "a", 1, 1), C("c2", "b", 2, 1)]));
+    await userEvent.click(clipButton(/^Groove A, measure 1/));
+    screen.getByRole("button", { name: cellLabel("Snare", 0, 16) }).focus();
+    await userEvent.keyboard("{Control>}a{/Control}");
+    expect(screen.getByTestId("note")).toHaveAttribute("data-selected", "true");
+    await userEvent.click(clipButton(/^Groove B, measure 2/));
+    expect(screen.getByTestId("note")).not.toHaveAttribute("data-selected");
+  });
+
+  it("pastes into another track and says how many notes were left out", async () => {
+    const song = newSong();
+    song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0), note("kick", 4)], song.measures);
+    song.tracks[1] = trackWithNotes(song.tracks[1], [], song.measures);
+    await renderStudio(song);
+    screen.getByRole("button", { name: cellLabel("Kick", 8, 16) }).focus();
+    await userEvent.keyboard("{Control>}ac{/Control}");
+    await selectTrack(/^Select Piano track/);
+    pianoCellOf("C4", 0).focus();
+    await userEvent.keyboard("{Control>}v{/Control}");
+    expect(screen.queryAllByTestId("note")).toHaveLength(0);
+    expect(screen.getByText("Pasted 0 notes. 2 didn't fit and were left out.", { selector: "p[role=status]" })).toBeInTheDocument();
   });
 });
 
@@ -482,11 +567,10 @@ const C = (id: string, loop_id: string, start_measure: number, measures: number)
   measures,
 });
 
-function clipSong(drumsLoops: Loop[], drumsClips: Clip[], measures = 16): Song {
+function clipSong(drumsLoops: Loop[], drumsClips: Clip[]): Song {
   const song = newSong();
-  song.measures = measures;
   song.tracks[0] = { ...song.tracks[0], loops: drumsLoops, clips: drumsClips };
-  return song;
+  return normalizeSong(song);
 }
 
 const clipButton = (name: string | RegExp) => screen.getByRole("button", { name });
@@ -533,21 +617,28 @@ describe("clips in the lane", () => {
     expect(within(lane("Drums")).queryByText("Double-click to add a clip")).not.toBeInTheDocument();
   });
 
-  it("creates a 4-measure clip on double-click in an empty lane and selects it", async () => {
+  it("creates a 1-measure clip on double-click in an empty lane and selects it", async () => {
     await renderStudio(clipSong([], []));
     fireEvent.doubleClick(laneOf("Drums"), { clientX: px(5) });
-    const created = await screen.findByRole("button", { name: "Drums 1, measures 5 to 8" });
+    const created = await screen.findByRole("button", { name: "Drums 1, measure 5" });
     expect(created).toHaveAttribute("aria-current", "true");
     expect(dockRegion()).toHaveAccessibleName("Editor: Drums 1 on Drums");
-    expect(within(dockRegion()).getByRole("button", { name: cellLabel("Kick", 3 * 16, 16) })).toBeInTheDocument();
-    expect(within(dockRegion()).queryByRole("button", { name: cellLabel("Kick", 4 * 16, 16) })).not.toBeInTheDocument();
+    expect(within(dockRegion()).getByRole("button", { name: cellLabel("Kick", 15, 16) })).toBeInTheDocument();
+    expect(within(dockRegion()).queryByRole("button", { name: cellLabel("Kick", 16, 16) })).not.toBeInTheDocument();
     expect(within(dockRegion()).queryAllByTestId("note")).toHaveLength(0);
   });
 
-  it("shortens a new clip to fit before its neighbour", async () => {
+  it("places a new clip next to a neighbour without overlapping it", async () => {
     await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 7, 2)]));
-    fireEvent.doubleClick(laneOf("Drums"), { clientX: px(5) });
-    expect(await screen.findByRole("button", { name: "Drums 1, measures 5 to 6" })).toBeInTheDocument();
+    fireEvent.doubleClick(laneOf("Drums"), { clientX: px(6) });
+    expect(await screen.findByRole("button", { name: "Drums 1, measure 6" })).toBeInTheDocument();
+    expect(clipButton(/^Groove A, measures 7 to 8/)).toBeInTheDocument();
+  });
+
+  it("creates a clip in the empty space past the song's end, which lengthens the song", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 8)]));
+    fireEvent.doubleClick(laneOf("Piano"), { clientX: px(12) });
+    expect(await screen.findByRole("button", { name: "Piano 1, measure 12" })).toBeInTheDocument();
   });
 
   it("selects the track when empty lane space is clicked, keeping the selected clip if it is there", async () => {
@@ -603,11 +694,19 @@ describe("editing clips", () => {
   });
 
   it("repeats the loop when the right edge is dragged out", async () => {
-    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 2)]));
-    const block = clipButton(/^Groove A/);
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c0", "a", 1, 2), C("c1", "a", 3, 2)]));
+    const block = clipButton(/^Groove A, measures 3 to 4/);
     const handle = block.querySelector("[data-handle]")!;
+    drag(handle, px(4), px(4) + 400);
+    expect(clipButton("Groove A, measures 3 to 8, linked, 2 clips, loop plays 3 times")).toBeInTheDocument();
+  });
+
+  it("resizes the loop with a clip that is its only user", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 2)]));
+    const handle = clipButton(/^Groove A/).querySelector("[data-handle]")!;
     drag(handle, px(2), px(2) + 600);
-    expect(clipButton("Groove A, measures 1 to 8, loop plays 4 times")).toBeInTheDocument();
+    expect(clipButton("Groove A, measures 1 to 8")).toBeInTheDocument();
+    expect(within(dockRegion()).getByRole("button", { name: cellLabel("Kick", 7 * 16, 16) })).toBeInTheDocument();
   });
 
   it("drops a linked copy with Alt-drag and leaves the original", async () => {
@@ -668,7 +767,7 @@ describe("editing clips", () => {
   });
 
   it("reports when an Alt-drag copy has nowhere to go", async () => {
-    await renderStudio(clipSong([L("a", "Groove A", 4)], [C("c1", "a", 1, 4)], 4));
+    await renderStudio(clipSong([L("a", "Groove A", 4)], [C("c1", "a", 1, 128)]));
     drag(clipButton(/^Groove A/), 10, 300, { altKey: true });
     expect(status()).toHaveTextContent("There are no empty measures on Drums.");
   });
@@ -785,7 +884,7 @@ describe("editing clips", () => {
     await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 2)]));
     fireEvent.contextMenu(laneOf("Drums"), { clientX: px(6), clientY: 20 });
     await userEvent.click(screen.getByRole("menuitem", { name: "New clip at measure 6" }));
-    expect(await screen.findByRole("button", { name: /^Drums 1, measures 6 to 9/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Drums 1, measure 6" })).toBeInTheDocument();
   });
 
   it("refuses at the loop limit through the status line", async () => {
@@ -828,39 +927,33 @@ describe("the dock edits the selected clip's loop", () => {
     await userEvent.click(within(dockRegion()).getByRole("button", { name: /^Clip actions for/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Make unique" }));
     expect(dockRegion()).toHaveAccessibleName("Editor: Groove A (copy) on Drums");
-    await userEvent.click(within(dockRegion()).getByTestId("note"));
+    await userEvent.dblClick(within(dockRegion()).getByTestId("note"));
     expect(within(dockRegion()).queryAllByTestId("note")).toHaveLength(0);
     expect(within(laneOf("Drums")).getAllByTestId("clip-notes")).toHaveLength(1);
     await userEvent.click(clipButton(/^Groove A, measures 1 to 2/));
     expect(within(dockRegion()).getAllByTestId("note")).toHaveLength(1);
   });
 
-  it("announces a shortened loop when only a crossing note was truncated", async () => {
-    await renderStudio(clipSong([L("a", "Groove A", 4, [note("kick", 31, 4)])], [C("c1", "a", 1, 4)]));
-    const field = within(dockRegion()).getByRole("spinbutton", { name: "Loop length" });
-    await userEvent.clear(field);
-    await userEvent.type(field, "2{Enter}");
-    expect(status()).toHaveTextContent("Loop shortened to 2 bars.");
+  it("has no loop length control in the dock header", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 2)]));
+    const dock = dockRegion();
+    expect(within(dock).getByRole("button", { name: "Loop Groove A. Show all loops on Drums" })).toBeInTheDocument();
+    expect(within(dock).getByText("Drums · used by 1 clip")).toBeInTheDocument();
+    expect(within(dock).queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(within(dock).queryByLabelText(/length/i)).not.toBeInTheDocument();
   });
 
-  it("stays quiet when shortening a loop touches no note", async () => {
-    await renderStudio(clipSong([L("a", "Groove A", 4, [note("kick", 0)])], [C("c1", "a", 1, 4)]));
-    const field = within(dockRegion()).getByRole("spinbutton", { name: "Loop length" });
-    await userEvent.clear(field);
-    await userEvent.type(field, "2{Enter}");
-    expect(status()).toHaveTextContent("");
-  });
-
-  it("shortens a loop without changing its clips", async () => {
-    await renderStudio(
-      clipSong([L("a", "Groove A", 4, [note("kick", 0), note("kick", 2 * 16)])], [C("c1", "a", 1, 4)]),
-    );
-    const field = within(dockRegion()).getByRole("spinbutton", { name: "Loop length" });
-    await userEvent.clear(field);
-    await userEvent.type(field, "2{Enter}");
-    expect(clipButton("Groove A, measures 1 to 4, loop plays 2 times")).toBeInTheDocument();
-    expect(within(dockRegion()).getAllByTestId("note")).toHaveLength(1);
-    expect(status()).toHaveTextContent("Loop shortened to 2 bars. Notes after bar 2 were removed. Undo to restore.");
+  it("marks the song's end on the ruler and lanes, and hides the marker at the 128 measure cap", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 8)]));
+    const marks = screen.getAllByTestId("past-end");
+    expect(marks.length).toBe(1 + 2);
+    expect(marks[0].style.left).toBe("calc(var(--cell-w) * 128)");
+    expect(screen.getByText(/Song length: 8 measures\./)).toBeInTheDocument();
+    cleanup();
+    await clear();
+    library = createSongLibrary();
+    await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 128)]));
+    expect(screen.queryByTestId("past-end")).not.toBeInTheDocument();
   });
 
   it("shows the playhead at the loop position inside the clip and hides it outside", async () => {
@@ -879,9 +972,9 @@ describe("the dock edits the selected clip's loop", () => {
     expect(within(dock).getByRole("heading", { name: "Drums has no clips yet" })).toBeInTheDocument();
     expect(within(dock).queryByRole("group", { name: /piano roll/ })).not.toBeInTheDocument();
     const add = within(dock).getByRole("button", { name: "New clip" });
-    expect(add).toHaveAccessibleDescription("Adds measures 1–4");
+    expect(add).toHaveAccessibleDescription("Adds measure 1");
     await userEvent.click(add);
-    expect(await screen.findByRole("button", { name: "Drums 1, measures 1 to 4" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Drums 1, measure 1" })).toBeInTheDocument();
     expect(dockRegion()).toHaveAccessibleName("Editor: Drums 1 on Drums");
   });
 
@@ -924,15 +1017,6 @@ describe("the dock edits the selected clip's loop", () => {
     expect(await screen.findByRole("button", { name: /^Chorus, measures 1 to 2/ })).toBeInTheDocument();
     await waitFor(() => expect(clipButton(/^Chorus/)).toHaveFocus());
   });
-
-  it("announces clips being trimmed when the song is shortened", async () => {
-    await renderStudio(clipSong([L("a", "Groove A", 2, [note("kick", 0)])], [C("c1", "a", 7, 6)], 16));
-    const length = screen.getByRole("spinbutton", { name: "Length" });
-    await userEvent.clear(length);
-    await userEvent.type(length, "8{Enter}");
-    expect(status()).toHaveTextContent("Shortened to 8 bars. Clips after bar 8 were trimmed or removed. Undo to restore.");
-    expect(clipButton(/^Groove A, measures 7 to 8/)).toBeInTheDocument();
-  });
 });
 
 describe("loop region", () => {
@@ -943,7 +1027,7 @@ describe("loop region", () => {
       ({ left: 0, top: 0, right: measures * 100, bottom: 28, width: measures * 100, height: 28, x: 0, y: 0, toJSON() {} }) as DOMRect;
     return hit;
   };
-  const draw = (from: number, to: number, measures = 8) => {
+  const draw = (from: number, to: number, measures = 16) => {
     const hit = ruler(measures);
     fireEvent.pointerDown(hit, { clientX: (from - 1) * 100 + 50, button: 0 });
     fireEvent.pointerMove(hit, { clientX: (to - 1) * 100 + 50 });
@@ -981,13 +1065,13 @@ describe("loop region", () => {
 
   it("keeps the region out of undo and saves it with the song", async () => {
     const song = await renderStudio();
-    const length = screen.getByRole("spinbutton", { name: "Length" });
-    await userEvent.clear(length);
-    await userEvent.type(length, "12{Enter}");
-    draw(2, 3, 12);
+    const tempo = screen.getByRole("spinbutton", { name: "Tempo" });
+    await userEvent.clear(tempo);
+    await userEvent.type(tempo, "100{Enter}");
+    draw(2, 3);
     screen.getByTestId("loop-region").focus();
     await userEvent.keyboard("{Control>}z{/Control}");
-    expect(length).toHaveValue(8);
+    expect(tempo).toHaveValue(120);
     expect(screen.getByTestId("loop-region")).toHaveAttribute("data-start", "2");
     await waitFor(async () => {
       const saved = (await library.open(song.id))!;
@@ -1002,5 +1086,60 @@ describe("loop region", () => {
     const arrangement = screen.getByRole("region", { name: "Arrangement" });
     expect(within(arrangement).getByTestId("loop-region")).toBeInTheDocument();
     expect(screen.queryAllByTestId("loop-shade").every((el) => arrangement.contains(el))).toBe(true);
+  });
+});
+
+describe("key highlighting", () => {
+  // Sharp and in-key rows are both needed to tell a tint from the black-key shading.
+  const keyed: InstrumentInfo = {
+    ...piano,
+    rows: [
+      { id: "c4", name: "C4", midi_note: 60 },
+      { id: "b3", name: "B3", midi_note: 59 },
+      { id: "a#3", name: "A#3", midi_note: 58 },
+      { id: "a3", name: "A3", midi_note: 57 },
+    ],
+  };
+  const tints = () =>
+    Array.from(dockRegion().querySelectorAll<HTMLElement>("[data-tint]")).map((el) => el.dataset.tint);
+  const cell = (name: string) =>
+    within(dockRegion()).getByRole("button", { name: cellLabel(name, 0, 16) });
+
+  function pianoSong(): Song {
+    const song = newSong();
+    song.tracks[1] = { ...song.tracks[1], loops: [L("p", "Riff", 1)], clips: [C("pc", "p", 1, 1)] };
+    return normalizeSong(song);
+  }
+
+  beforeEach(() => vi.mocked(api.getInstruments).mockResolvedValue([drums, keyed]));
+
+  it("highlights C major with the C rows as the tonic and no sharp rows", async () => {
+    await renderStudio(pianoSong());
+    await selectTrack(/^Select Piano track/);
+    expect(tints()).toEqual(["tonic", "scale", "none", "scale"]);
+    const dock = within(dockRegion());
+    expect(dock.getByRole("button", { name: "C4" })).toHaveAccessibleDescription("Tonic of C major");
+    expect(dock.getByRole("button", { name: "B3" })).toHaveAccessibleDescription("In C major");
+    expect(dock.getByRole("button", { name: "A#3" })).not.toHaveAccessibleDescription();
+    expect(dockRegion().querySelector('[data-tint="tonic"]')).toHaveTextContent("C");
+    expect(cell("C4").className).toContain("bg-emerald-100");
+    expect(cell("B3").className).toContain("bg-emerald-50");
+    expect(cell("A#3").className).not.toContain("emerald");
+  });
+
+  it("moves the tonic marking to the A rows when the key changes to A minor", async () => {
+    await renderStudio(pianoSong());
+    await selectTrack(/^Select Piano track/);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Key tonic" }), "A");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Key mode" }), "minor");
+    expect(tints()).toEqual(["scale", "scale", "none", "tonic"]);
+    expect(dockRegion().querySelector('[data-tint="tonic"]')).toHaveTextContent("A");
+    expect(within(dockRegion()).getByRole("button", { name: "A3" })).toHaveAccessibleDescription("Tonic of A minor");
+  });
+
+  it("shows no key highlight on a drum track", async () => {
+    await renderStudio(clipSong([L("a", "Groove A", 1)], [C("c1", "a", 1, 1)]));
+    expect(dockRegion().querySelector("[data-tint]")).toBeNull();
+    expect(dockRegion().querySelector('[class*="bg-emerald"]')).toBeNull();
   });
 });

@@ -13,7 +13,8 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - For drums tracks, it gives the onset grid.
   - The target track's own notes just before and after the range are included too, so the new part joins up with its surroundings.
   - A configurable context token budget (`SONGBIRD_MAX_CONTEXT_TOKENS`, default 4000) bounds cost. When the context would exceed the budget, the measures farthest from the range are dropped first.
-- **The song's settings are respected.** Tempo, time signature, and swing come from the song and are never changed by the AI. Notes are validated and normalized with the same rules as pattern generation: the same providers, retry, 60-second timeout, and error codes.
+- **The song's key is context.** The song's key (`Song.key`, a tonic and major or natural minor, from improve-song-and-note-editing) is sent to the AI with the tempo and meter, so melodic parts can be written in key. A song without a key is sent as C major, as the Studio shows it. The key guides the AI but is not enforced: notes are not snapped to it.
+- **The song's settings are respected.** Tempo, time signature, swing, and key come from the song and are never changed by the AI. Notes are validated and normalized with the same rules as pattern generation: the same providers, retry, 60-second timeout, and error codes.
 - A new endpoint, `GET /api/v1/songs/limits`, publishes `max_input_tokens`, `max_range_measures` (32), `max_song_measures` (128), and `max_tracks` (16).
 - **Studio UI:** each track gets a Generate action with a prompt, a token counter, and a range choice (whole song, loop range, or a custom measure span). "Loop range" uses the song's loop region (add-timeline-loop-region) and is offered only while looping is on and the region covers less than the whole song.
   - While a generation runs, the target track is locked and other tracks stay editable.
@@ -32,7 +33,7 @@ Generation today produces a standalone pattern for one instrument and knows noth
   - Chord context. #8 adds that as a separate requirement.
   - Server-side memory of past generations.
 
-Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 1 MiB body limit on `/api/v1/songs/`), and `add-timeline-loop-region` (the song's `loop_region` and its on/off state, which decide when a loop range is offered).
+Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `add-arrangement-clips` (loops, clips, and the browser's clip operations), #5 `add-song-export` (for the Rust `Song` type with loops and clips, `Song::validate`, the resolved notes on `ValidSong`, and the 1 MiB body limit on `/api/v1/songs/`), `add-timeline-loop-region` (the song's `loop_region` and its on/off state, which decide when a loop range is offered), and `improve-song-and-note-editing` (the song's `key`).
 
 ## Capabilities
 
@@ -48,7 +49,8 @@ Depends on: #4 `add-multitrack-song` (including its `AssistantPanel` shell), `ad
   - A plan provider kind (`ai/plan.rs`) and the `Providers { patterns, plans }` bundle. This change introduces the bundle in the shape #8 planned, and #8 then adds `chords` to it.
   - Transcript and arrangement-summary rendering for the planner.
   - A generation span that accepts any length of 1–32 measures, rather than only the `MeasureCount` values.
-  - A new `context.rs` for the summary and budget.
+  - An optional `key` (`SongKey { tonic, mode }`) on the Rust `Song` from #5, mirroring the browser's `Song.key`, if #5 has not added it already.
+  - A new `context.rs` for the summary and budget, whose header includes the song's key.
   - A prompt section for context, fence-escaped because track names are user text.
   - A generation function for songs.
   - Context-aware mock drafts.

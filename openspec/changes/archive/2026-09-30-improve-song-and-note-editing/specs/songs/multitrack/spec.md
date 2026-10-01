@@ -64,7 +64,7 @@ There SHALL be no control for the song's length, which follows its clips (see "S
 
 **Changing the time signature:** the timeline and every piano roll SHALL regrid to the new measure length. Clips SHALL keep their start measures and lengths in measures. Each loop note SHALL keep its measure and its step within that measure.
 - A note whose step within its measure does not exist in the new, shorter measure SHALL be removed.
-- A note that would cross the end of its measure SHALL be shortened to end there.
+- A note SHALL keep its length, and MAY cross a barline. Its length SHALL be shortened only to end at the next note in its row or at the end of its loop.
 - **Confirmation:** when any notes would be removed, the page SHALL first say how many, and SHALL change the time signature only if the user confirms.
 - **Undo:** the change SHALL be one undo step.
 - **Tempo:** tempo SHALL NOT change.
@@ -97,6 +97,62 @@ Changes to the time signature and the key SHALL be song setting changes for undo
 - **WHEN** a 3/4 song is changed to 4/4
 - **THEN** no warning is shown, every note keeps its measure and step within the measure, and the last beat of every measure is empty
 
+#### Scenario: A sustained note keeps its length across barlines
+- **WHEN** a loop has a note longer than one measure and the user changes the time signature
+- **THEN** the note keeps its length, shortened only if it would run into the next note in its row or past the loop's end
+
 #### Scenario: Undo a key change
 - **WHEN** the user changes the key from C major to E minor and presses Cmd/Ctrl+Z
 - **THEN** the key is C major again
+
+### Requirement: Mixed song playback
+The Studio page SHALL provide the transport behavior of `patterns/playback`, applied to the whole song. This SHALL include:
+- Play, Stop, and Space to toggle;
+- the Loop toggle, and an optional loop region in song measures that is drawn and edited on the arrangement's measure ruler above the lanes;
+- playing once through the song when looping is off;
+- a playhead shown across the lanes and the open piano roll;
+- accurate timing, velocity, and note length for sustained and one-shot instruments;
+- live edits being audible.
+
+Every audible track SHALL be played at the same time with its own instrument's sounds, using the song's tempo, swing, and time signature.
+
+- **Seeking:** clicking empty lane space to seek SHALL set where Play starts only while looping is off. While looping is on, Play SHALL start at the region's first measure, or at measure 1 when there is no region.
+- **The dock's ruler:** the docked piano roll's ruler counts measures within the selected clip's loop. It SHALL NOT show or edit the song's loop region.
+- **Region bounds:** the region SHALL be bounded by the arrangement's visible timeline (see "Song settings"), not by the song's length, so it MAY cover silent measures after the song's end. Looping with no region, and playing once, SHALL still use the song's length. When the song shrinks, a region inside the new timeline SHALL be kept, and one extending past it SHALL be clamped to it.
+- **New songs:** a new song, or one saved before loop regions existed, SHALL open with no loop region and looping off, so Play plays the song once. Turning on the Loop toggle with no region SHALL loop the whole song.
+
+#### Scenario: Tracks play together
+- **WHEN** a song has a kick on step 0 of the Drums track and a `C3` on step 0 of the Bass track, and the user presses Play
+- **THEN** both notes start at the same time with their own instruments' sounds
+
+#### Scenario: New song has no region
+- **WHEN** the user creates a new song
+- **THEN** the arrangement ruler shows no loop region, the Loop toggle is not pressed, and no lane measures are shaded
+
+#### Scenario: Loop a range across tracks
+- **WHEN** the song has no loop region and the user drags across measures 5–8 on the arrangement ruler and presses Play
+- **THEN** measures 5–8 of every audible track play, repeating
+
+#### Scenario: Song plays once
+- **WHEN** looping is off on a 16-measure song and the user presses Play
+- **THEN** every audible track plays measures 1–16 once, and playback stops by itself
+
+#### Scenario: Seek with looping off
+- **WHEN** looping is off, the user clicks empty lane space in measure 9, and then presses Play
+- **THEN** playback starts at measure 9 and stops by itself after the song's last measure
+
+#### Scenario: Region past the song's end
+- **WHEN** a song's clips end at measure 4 and the user drags across measures 6–9 on the arrangement ruler and presses Play with looping on
+- **THEN** the region is 6–9, and playback repeats those silent measures
+
+#### Scenario: Region kept when the song shrinks
+- **WHEN** the song is 12 measures long with a region of 9–12, and the user deletes the clip so the song is 4 measures long
+- **THEN** the region is still 9–12, because the timeline still shows 16 measures
+
+#### Scenario: Region clamped to the timeline
+- **WHEN** the song is 20 measures long with a region of 25–28, and the song shrinks to 4 measures
+- **THEN** the region becomes measure 16 only, the end of the 16-measure timeline
+
+#### Scenario: Region is not in the dock
+- **WHEN** the song's region is measures 5–8 and a clip's loop is open in the dock
+- **THEN** the dock's ruler shows no loop region and no loop shading

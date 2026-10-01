@@ -5,10 +5,12 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 import type { Playback } from "@/lib/audio/types";
-import { moveGridNote, resizeGridNote, setGridVelocity, toggleGridNote, type NoteGrid } from "@/lib/patternOps";
+import { keyHighlight } from "@/lib/music/key";
+import { songKey } from "@/lib/song/songOps";
+import { resizeGridNote, setGridVelocity, toggleGridNote, type NoteGrid } from "@/lib/patternOps";
 import { NEW_CLIP_MEASURES, freeSpanAt, loopGrid, loopUseCount, nextFreeMeasure } from "@/lib/song/clipOps";
 import { useSongStore, type SongStore } from "@/lib/song/songStore";
-import { LOOP_MEASURE_RANGE, LOOP_NAME_MAX, MAX_CLIPS, MAX_LOOPS, type Song, type Track } from "@/lib/song/types";
+import { LOOP_NAME_MAX, MAX_CLIPS, MAX_LOOPS, type Song, type Track } from "@/lib/song/types";
 import type { ResourceState } from "@/lib/useApiResource";
 import { Button } from "@/components/ui/Button";
 import { focusRing, hintClass } from "@/components/ui/classes";
@@ -17,7 +19,6 @@ import { PianoRoll } from "@/components/editor/PianoRoll";
 import { ClipMenuItems, LinkGlyph, LoopSwatch, clipMenuLabel } from "./ClipMenu";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
-import { LengthField } from "./LengthField";
 import { LoopsDialog } from "./LoopsDialog";
 import { Menu } from "./Menu";
 import type { ClipActions } from "./useClipActions";
@@ -43,7 +44,9 @@ function EmptyState({
     ? `This track has ${MAX_LOOPS} loops, the most it can hold`
     : measure === null
       ? "No empty measures on this track"
-      : `Adds measures ${measure}–${measure + span - 1}`;
+      : span === 1
+        ? `Adds measure ${measure}`
+        : `Adds measures ${measure}–${measure + span - 1}`;
   const none = track.clips.length === 0;
 
   return (
@@ -88,6 +91,7 @@ export function EditorDock({
   clipActions,
   renamingLoopId,
   onRenameDone,
+  onAnnounce,
 }: {
   store: SongStore;
   song: Song;
@@ -104,6 +108,7 @@ export function EditorDock({
   clipActions: ClipActions;
   renamingLoopId: string | null;
   onRenameDone: () => void;
+  onAnnounce: (message: string) => void;
 }) {
   const info = instruments.data?.find((i) => i.id === track.instrument);
   const rows = info?.rows;
@@ -113,7 +118,11 @@ export function EditorDock({
   const contextId = useId();
   const section = useRef<HTMLElement>(null);
   const [loopsOpen, setLoopsOpen] = useState(false);
+  const [inspectorSlot, setInspectorSlot] = useState<HTMLDivElement | null>(null);
   const spm = song.steps_per_measure;
+
+  const { tonic, mode } = songKey(song);
+  const highlight = useMemo(() => keyHighlight({ tonic, mode }), [tonic, mode]);
 
   const grid = useMemo(
     () => (rows && loopDoc ? loopGrid(loopDoc, rows, spm) : null),
@@ -132,8 +141,8 @@ export function EditorDock({
     [subscribePosition, clipStart, clipSteps, loopSteps],
   );
 
-  const edit = (fn: (g: NoteGrid) => Note[]) => {
-    if (rows && loopDoc) store.getState().editLoopNotes(track.id, loopDoc.id, rows, fn);
+  const edit = (fn: (g: NoteGrid) => Note[], options?: { transient?: boolean }) => {
+    if (rows && loopDoc) store.getState().editLoopNotes(track.id, loopDoc.id, rows, fn, options);
   };
 
   const uses = loopDoc ? loopUseCount(track, loopDoc.id) : 0;
@@ -211,12 +220,7 @@ export function EditorDock({
                 {track.name} · used by {uses} {uses === 1 ? "clip" : "clips"}
               </p>
             </div>
-            <LengthField
-              label="Loop length"
-              range={LOOP_MEASURE_RANGE}
-              value={loopDoc.measures}
-              onCommit={(m) => clipActions.setLoopLength(track.id, loopDoc.id, m)}
-            />
+            <div ref={setInspectorSlot} className="min-w-0 max-md:basis-full" />
             <div className="ml-auto">
               <Menu
                 label={clipMenuLabel(track, clip)}
@@ -252,7 +256,13 @@ export function EditorDock({
             onToggleNote={(rowId, step, len) => edit((g) => toggleGridNote(g, rowId, step, len))}
             onSetVelocity={(rowId, step, v) => edit((g) => setGridVelocity(g, rowId, step, v))}
             onResizeNote={(rowId, step, len) => edit((g) => resizeGridNote(g, rowId, step, len))}
-            onMoveNote={(rowId, step, to) => edit((g) => moveGridNote(g, rowId, step, to))}
+            onEditNotes={edit}
+            onBeginGesture={() => store.getState().beginGesture()}
+            onEndGesture={() => store.getState().endGesture()}
+            onCancelGesture={() => store.getState().cancelGesture()}
+            inspectorTarget={inspectorSlot}
+            inspectorCompact
+            onAnnounce={onAnnounce}
             onPlaceNote={(row, velocity) => onAudition(track.id, row, velocity)}
             follow={follow}
             isPlaying={isPlaying}
@@ -261,6 +271,7 @@ export function EditorDock({
             className="h-full min-h-0 scroll-pl-[var(--gutter-w)]"
             gutterClassName="w-[var(--gutter-w)]"
             beatLabels
+            keyHighlight={info.kind === "melodic" ? highlight : undefined}
             describedBy={linked ? contextId : undefined}
             corner={
               <div className="flex h-full min-w-0 items-center gap-2 px-2">

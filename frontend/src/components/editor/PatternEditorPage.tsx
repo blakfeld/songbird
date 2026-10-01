@@ -44,6 +44,7 @@ export function PatternEditorPage({
   const [timeSignature, setTimeSignature] = useState<TimeSignature>("4/4");
   const [status, setStatus] = useState("");
   const [follow, setFollow] = useState(true);
+  const [inspectorSlot, setInspectorSlot] = useState<HTMLDivElement | null>(null);
   const loop = usePatternStore(instrumentId, (s) => s.loop);
   const playback = usePlayback(instrumentId, loop);
 
@@ -146,6 +147,7 @@ export function PatternEditorPage({
               measureOptions={limits.data?.measure_options ?? null}
               onStatus={setStatus}
             />
+            <div ref={setInspectorSlot} />
             <ResizablePianoRoll
               storageKey={`songbird.editor.${instrumentId}.rollHeight`}
               instrumentName={instrument?.name ?? "Instrument"}
@@ -159,7 +161,12 @@ export function PatternEditorPage({
               onToggleNote={(rowId, step, len) => getPatternStore(instrumentId).getState().toggleNote(rowId, step, len)}
               onSetVelocity={(rowId, step, v) => getPatternStore(instrumentId).getState().setVelocity(rowId, step, v)}
               onResizeNote={(rowId, step, len) => getPatternStore(instrumentId).getState().resizeNote(rowId, step, len)}
-              onMoveNote={(rowId, step, to) => getPatternStore(instrumentId).getState().moveNote(rowId, step, to)}
+              onEditNotes={(fn, options) => getPatternStore(instrumentId).getState().editNotes(fn, options)}
+              onBeginGesture={() => getPatternStore(instrumentId).getState().beginGesture()}
+              onEndGesture={() => getPatternStore(instrumentId).getState().commitGesture()}
+              onCancelGesture={() => getPatternStore(instrumentId).getState().cancelGesture()}
+              inspectorTarget={inspectorSlot}
+              onAnnounce={setStatus}
               onPlaceNote={(row, velocity) => void getPlaybackEngine(instrumentId).audition(row, { velocity })}
               loop={loop}
               onLoopChange={(l) => getPatternStore(instrumentId).getState().setLoop(l)}

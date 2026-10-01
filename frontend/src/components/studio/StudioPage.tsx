@@ -16,6 +16,7 @@ import { useSongPlayback } from "@/lib/audio/useSongPlayback";
 import { beatSteps } from "@/lib/pianoRoll";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
+import { timelineMeasures } from "@/lib/song/songOps";
 import { newSong, type Song } from "@/lib/song/types";
 import { useApiResource } from "@/lib/useApiResource";
 import { useStoredHeight } from "@/lib/useStoredHeight";
@@ -45,6 +46,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const library = provided ?? getSongLibrary();
   const [store] = useState(() => createSongStore());
   const song = useSongStore(store, (s) => s.song);
+  const gestureBase = useSongStore(store, (s) => s.gestureBase);
   const selectedTrackId = useSongStore(store, (s) => s.selectedTrackId);
   const selectedClipId = useSongStore(store, (s) => s.selectedClipId);
   const [renamingLoopId, setRenamingLoopId] = useState<string | null>(null);
@@ -227,16 +229,6 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
     });
   };
 
-  const setLength = (next: number) => {
-    const before = store.getState().song;
-    store.getState().setSongLength(next);
-    const after = store.getState().song;
-    // Loops keep all their notes when the song shrinks, so only clip changes are worth announcing.
-    if (before && after && after.tracks.some((t, i) => t.clips !== before.tracks[i]?.clips)) {
-      setStatus(`Shortened to ${after.measures} bars. Clips after bar ${after.measures} were trimmed or removed. Undo to restore.`);
-    }
-  };
-
   const seek = (trackId: string, measureIndex: number) => {
     store.getState().selectTrack(trackId);
     playback.seek?.(measureIndex + 1);
@@ -292,7 +284,6 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
               library={library}
               song={song}
               titleRef={titleRef}
-              onSetLength={setLength}
               onOpenSong={(id) => void openById(id)}
               onSongCreated={(created) => {
                 show(created);
@@ -341,6 +332,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
           <Arrangement
             sectionId={ARRANGEMENT_ID}
             song={song}
+            timeline={timelineMeasures(gestureBase ?? song)}
             selectedTrackId={track.id}
             selectedClipId={selectedClipId}
             instruments={instruments}
@@ -376,6 +368,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
             subscribePosition={playback.subscribePosition}
             onAudition={audition}
             clipActions={clipActions}
+            onAnnounce={setStatus}
             renamingLoopId={renamingLoopId}
             onRenameDone={() => {
               setRenamingLoopId(null);
