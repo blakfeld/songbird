@@ -185,7 +185,8 @@ export function EditorDock({
           <div
             role="toolbar"
             aria-label="Loop"
-            className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 px-2 py-1 dark:border-zinc-800"
+            // Shrinking would let wrapped controls spill under the roll's sticky ruler and become unclickable; the roll yields height instead.
+            className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 px-2 py-1 dark:border-zinc-800"
           >
             <div className="flex min-w-0 items-center gap-2">
               {renaming ? (

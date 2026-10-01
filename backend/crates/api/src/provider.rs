@@ -178,9 +178,11 @@ mod tests {
 
     #[tokio::test]
     async fn ollama_unreachable_names_the_url_and_says_to_start_it() {
-        let server = MockServer::start().await;
-        let url = server.uri();
-        drop(server);
+        // A dropped wiremock server goes back to its pool still listening, so a test running in
+        // parallel can answer this URL; a closed plain listener guarantees connection refused.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
         let message = error_of(&config(&[(AI_PROVIDER, "ollama"), (OLLAMA_URL, &url)])).await;
         assert!(message.contains(&url));
         assert!(message.contains("ollama serve"));
