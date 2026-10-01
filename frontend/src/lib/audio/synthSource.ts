@@ -8,7 +8,7 @@ export interface SynthPreset {
   voice: "Synth" | "FMSynth" | "AMSynth";
   options: Record<string, unknown>;
   // Built from the injected Tone module so importing presets never touches Tone.
-  effects?: (tone: ToneModule) => Array<InstanceType<ToneModule["Reverb"]>>;
+  effects?: (tone: ToneModule) => Array<InstanceType<ToneModule["ToneAudioNode"]>>;
 }
 
 export const MAX_POLYPHONY = 32;

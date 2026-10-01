@@ -7,6 +7,13 @@ browser and export as a Standard MIDI File:
 - **Drum Machine**: grooves on a General MIDI drum kit.
 - **Piano**: melodies and chords on a five-octave keyboard (C2 to C7), played
   with a built-in synthesizer. Click a key in the keyboard to hear its pitch.
+- **Electric Piano**, **Organ**, **Strings**, and **Synth Pad**: chords and
+  pads from C2 to C6.
+- **Bass** (E1 to G3) and **Synth Lead** (C3 to C6): generated as single
+  lines, one note at a time. You can still add chords by hand.
+- **Pluck**: short, decaying notes from C3 to C6.
+
+Every melodic instrument plays with its own built-in synthesizer voice.
 
 ## Prerequisites
 
@@ -22,8 +29,10 @@ cp backend/.env.example backend/.env
 just dev            # backend on :8080, frontend on :3000; Ctrl-C stops both
 ```
 
-Open <http://localhost:3000> and choose **Open the Drum Machine** or **Open the
-Piano** (also reachable directly at `/drum-machine` and `/instruments/piano`).
+Open <http://localhost:3000> and choose an instrument from the landing page.
+Each one also has a direct URL: `/drum-machine` for drums and
+`/instruments/<id>` for the others (for example `/instruments/piano` or
+`/instruments/synth-pad`).
 `.env.example` selects the
 `ollama` provider, which needs a local model (see below). To try the app with
 no setup at all, use the built-in mock provider instead:

@@ -1,5 +1,5 @@
 use crate::draft::{MeasureNotes, NormalizedDraft, FALLBACK_TEMPO_BPM};
-use crate::instruments::Instrument;
+use crate::instruments::{Instrument, Monophony};
 use crate::meter::{MeasureCount, TimeSignature};
 use crate::pattern::{Note, Pattern};
 use crate::request::GenerateRequest;
@@ -77,6 +77,8 @@ pub fn expand_notes(
         })
         .collect();
 
+    let raw = enforce_monophony(raw, instrument);
+
     settle(raw, measures.get() * steps_per_measure)
         .into_iter()
         .map(|n| Note {
@@ -86,6 +88,27 @@ pub fn expand_notes(
             velocity: n.velocity,
         })
         .collect()
+}
+
+/// Runs on the expanded line rather than per section so a note held across a
+/// barline is also clipped by the next measure's first onset.
+fn enforce_monophony(mut notes: Vec<RawNote>, instrument: &Instrument) -> Vec<RawNote> {
+    let pitch = |n: &RawNote| instrument.rows[n.row].midi_note;
+    match instrument.monophony {
+        Monophony::None => return notes,
+        Monophony::KeepLowest => notes.sort_by_key(|n| (n.step, pitch(n))),
+        Monophony::KeepHighest => {
+            notes.sort_by_key(|n| (n.step, std::cmp::Reverse(pitch(n))));
+        }
+    }
+    notes.dedup_by_key(|n| n.step);
+
+    for i in 1..notes.len() {
+        let next_onset = notes[i].step;
+        let previous = &mut notes[i - 1];
+        previous.length = previous.length.min(next_onset - previous.step);
+    }
+    notes
 }
 
 /// Prefer a section the model placed in its arrangement: that is the variation
@@ -146,8 +169,10 @@ pub(crate) fn settle(mut notes: Vec<RawNote>, total_steps: u32) -> Vec<RawNote> 
 mod tests {
     use super::*;
     use crate::draft::PatternDraft;
+    use crate::instruments::bass::BASS;
     use crate::instruments::drums::DRUMS;
     use crate::instruments::piano::PIANO;
+    use crate::instruments::synth_lead::SYNTH_LEAD;
     use crate::instruments::InstrumentRegistry;
     use crate::request::GenerateRequestBody;
     use serde_json::json;
@@ -352,6 +377,100 @@ mod tests {
     fn same_step_duplicates_keep_the_loudest() {
         let settled = settle(vec![raw(0, 0, 1, 35), raw(0, 0, 1, 120)], 16);
         assert_eq!(settled, vec![raw(0, 0, 1, 120)]);
+    }
+
+    fn line_draft(
+        instrument: &'static Instrument,
+        sections: serde_json::Value,
+        arrangement: &[&str],
+    ) -> NormalizedDraft {
+        PatternDraft::from_json(json!({
+            "name": "Line",
+            "sections": sections,
+            "arrangement": arrangement
+        }))
+        .unwrap()
+        .normalize(instrument, 16)
+        .unwrap()
+    }
+
+    fn line_request(instrument: &str, measures: i64) -> GenerateRequest {
+        GenerateRequestBody {
+            instrument: instrument.into(),
+            prompt: "line".into(),
+            measures,
+            ..Default::default()
+        }
+        .validate(&InstrumentRegistry::builtin(), 256)
+        .unwrap()
+    }
+
+    fn line(p: &Pattern) -> Vec<(String, u32, u32)> {
+        p.notes
+            .iter()
+            .map(|n| (n.row_id.clone(), n.step, n.length_steps))
+            .collect()
+    }
+
+    #[test]
+    fn bass_keeps_the_lowest_note_at_a_step() {
+        let draft = line_draft(
+            &BASS,
+            json!([{"id": "A", "lanes": [
+                {"lane": "C2", "steps": "x..............."},
+                {"lane": "G2", "steps": "x..............."},
+            ]}]),
+            &["A"],
+        );
+        let p = build_pattern(&draft, &line_request("bass", 4));
+        assert!(line(&p).contains(&("C2".into(), 0, 1)));
+        assert!(p.notes.iter().all(|n| n.row_id != "G2"));
+    }
+
+    #[test]
+    fn synth_lead_keeps_the_highest_note_at_a_step() {
+        let draft = line_draft(
+            &SYNTH_LEAD,
+            json!([{"id": "A", "lanes": [
+                {"lane": "E4", "steps": "........x......."},
+                {"lane": "C5", "steps": "........x......."},
+            ]}]),
+            &["A"],
+        );
+        let p = build_pattern(&draft, &line_request("synth-lead", 4));
+        assert!(line(&p).contains(&("C5".into(), 8, 1)));
+        assert!(p.notes.iter().all(|n| n.row_id != "E4"));
+    }
+
+    #[test]
+    fn a_held_bass_note_is_clipped_by_the_next_onset() {
+        let draft = line_draft(
+            &BASS,
+            json!([{"id": "A", "lanes": [
+                {"lane": "C2", "steps": "x-------........"},
+                {"lane": "F2", "steps": "....x..........."},
+            ]}]),
+            &["A"],
+        );
+        let p = build_pattern(&draft, &line_request("bass", 4));
+        assert!(line(&p).contains(&("C2".into(), 0, 4)));
+    }
+
+    #[test]
+    fn a_note_is_clipped_by_the_next_onset_across_a_measure_boundary() {
+        // Sections cap holds at the barline today, so the overlap is built directly.
+        let clipped = enforce_monophony(vec![raw(19, 12, 8, 90), raw(14, 16, 4, 90)], &BASS);
+        assert_eq!(clipped, vec![raw(19, 12, 4, 90), raw(14, 16, 4, 90)]);
+    }
+
+    #[test]
+    fn piano_chords_are_unaffected_by_monophony() {
+        let draft = piano_draft(json!([
+            {"lane": "C4", "steps": "x---------------"},
+            {"lane": "E4", "steps": "x---------------"},
+        ]));
+        let p = build_pattern(&draft, &piano_request(4));
+        assert_eq!(measure_notes(&p, 0).len(), 2);
     }
 
     fn piano_request(measures: i64) -> GenerateRequest {

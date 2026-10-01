@@ -1,5 +1,53 @@
 use crate::draft::{MeasureNotes, SectionNote};
 
+use super::{ExampleDraft, Instrument, InstrumentKind, Monophony, PitchRange, RowDef};
+
+/// Const generics carry the range because the fallback hook is a bare `fn`
+/// pointer with no instrument to ask for its row count.
+fn phrase_end<const LOW: u8, const HIGH: u8>(
+    primary: &MeasureNotes,
+    steps_per_measure: u32,
+) -> MeasureNotes {
+    melodic_phrase_end(usize::from(HIGH - LOW) + 1, primary, steps_per_measure)
+}
+
+/// Every melodic instrument is a sustained, channel-1 pitch grid that differs
+/// only in data, so this is the one place those shared fields are decided.
+pub fn melodic<const LOW: u8, const HIGH: u8>(
+    id: &'static str,
+    name: &'static str,
+    midi_program: u8,
+    rows: &'static [RowDef],
+    system_prompt: &'static str,
+    examples: &'static [ExampleDraft],
+) -> Instrument {
+    Instrument {
+        id,
+        name,
+        kind: InstrumentKind::Melodic,
+        midi_channel: 1,
+        midi_program: Some(midi_program),
+        range: Some(PitchRange {
+            low: LOW,
+            high: HIGH,
+        }),
+        sustained: true,
+        rows,
+        system_prompt,
+        row_aliases: &[],
+        examples,
+        fallback_variation: Some(phrase_end::<LOW, HIGH>),
+        monophony: Monophony::None,
+    }
+}
+
+impl Instrument {
+    pub fn with_monophony(mut self, monophony: Monophony) -> Self {
+        self.monophony = monophony;
+        self
+    }
+}
+
 /// The hook type carries no instrument, so callers pass the row count. Rows run
 /// high to low, so an octave up is twelve rows toward index 0.
 ///
@@ -69,6 +117,80 @@ pub fn melodic_phrase_end(
         }
     }
     variation
+}
+
+/// Shared by every melodic module so each only states what is distinctive.
+#[cfg(test)]
+pub(crate) fn assert_definition(
+    instrument: &Instrument,
+    (id, name, program): (&str, &str, u8),
+    (low, high): (u8, u8),
+) {
+    assert_eq!(instrument.id, id);
+    assert_eq!(instrument.name, name);
+    assert_eq!(instrument.kind, InstrumentKind::Melodic);
+    assert_eq!(instrument.midi_channel, 1);
+    assert_eq!(instrument.midi_program, Some(program));
+    assert_eq!(instrument.range, Some(PitchRange { low, high }));
+    assert!(instrument.sustained);
+    assert_eq!(instrument.rows.len(), usize::from(high - low) + 1);
+    assert_eq!(instrument.rows[0].midi_note, high);
+    assert_eq!(instrument.rows.last().unwrap().midi_note, low);
+}
+
+#[cfg(test)]
+pub(crate) fn assert_examples_are_usable(instrument: &Instrument) {
+    assert_eq!(instrument.examples.len(), 4);
+    let (low, high) = instrument.range.map(|r| (r.low, r.high)).unwrap();
+    let hook = instrument.fallback_variation.unwrap();
+    for example in instrument.examples {
+        let draft = example.draft();
+        for section in &draft.sections {
+            for lane in &section.lanes {
+                let pitch = super::pitch::parse_pitch(&lane.lane).unwrap();
+                assert!(
+                    (i32::from(low)..=i32::from(high)).contains(&pitch),
+                    "{} {}",
+                    example.genre,
+                    lane.lane
+                );
+            }
+        }
+        for spm in [12, 16] {
+            let normalized = draft.normalize(instrument, spm).unwrap();
+            for section in &normalized.sections {
+                assert!(!section.is_empty());
+                let variation = hook(section, spm);
+                assert_ne!(&variation, section, "{}", example.genre);
+                assert!(variation
+                    .keys()
+                    .all(|(row, _)| *row < instrument.rows.len()));
+            }
+        }
+    }
+}
+
+/// Bass and lead examples feed the mock provider, so they must already be
+/// single lines rather than relying on the expander to repair them.
+#[cfg(test)]
+pub(crate) fn assert_examples_are_monophonic(instrument: &Instrument) {
+    for example in instrument.examples {
+        let normalized = example.draft().normalize(instrument, 16).unwrap();
+        for section in &normalized.sections {
+            let mut onsets: Vec<(u32, u32)> = section
+                .iter()
+                .map(|((_, step), n)| (*step, n.length))
+                .collect();
+            onsets.sort();
+            for pair in onsets.windows(2) {
+                assert!(
+                    pair[0].0 + pair[0].1 <= pair[1].0,
+                    "{} overlaps",
+                    example.genre
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]
