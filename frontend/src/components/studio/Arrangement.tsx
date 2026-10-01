@@ -56,6 +56,8 @@ export function Arrangement({
   onLoopChange,
   subscribePosition,
   actions,
+  soundTrackId,
+  onSoundTrack,
   clipActions,
   generatingTrackId,
   onAddTrack,
@@ -72,6 +74,8 @@ export function Arrangement({
   onLoopChange: (loop: LoopSetting) => void;
   subscribePosition: Playback["subscribePosition"];
   actions: TrackActions;
+  soundTrackId: string | null;
+  onSoundTrack: (trackId: string | null) => void;
   clipActions: ClipActions;
   generatingTrackId: string | null;
   onAddTrack: (instrument: InstrumentInfo) => void;
@@ -152,6 +156,8 @@ export function Arrangement({
             selectedClipId={selectedClipId}
             first={i === 0}
             actions={actions}
+            soundOpen={track.id === soundTrackId}
+            onSoundOpen={(open) => onSoundTrack(open ? track.id : null)}
             clipActions={clipActions}
             generatingTrackId={generatingTrackId}
             onSeek={onSeek}

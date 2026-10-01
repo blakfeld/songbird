@@ -2,6 +2,7 @@ import type { Note } from "@/generated/Note";
 import { normalizeNotes } from "../patternOps";
 import { normalizeLoopRegion } from "./songLoop";
 import { derivedMeasures } from "./songOps";
+import { soundProblem } from "./trackSound";
 import {
   LOOP_MEASURE_RANGE,
   DEFAULT_KEY,
@@ -176,7 +177,13 @@ function migrate(raw: unknown): Song | null {
 // Null means the stored document is unusable; the library reports that as "could not be opened".
 export function migrateSong(raw: unknown): Song | null {
   try {
-    return migrate(raw);
+    const song = migrate(raw);
+    // Only the drums instrument is a drum kit and the library has no registry to ask, so a stored
+    // wrong-kind setting is told apart by id; project import checks against the real instrument kind.
+    const ok = song?.tracks.every(
+      (t) => t.sound === undefined || soundProblem(t.sound, t.instrument === "drums") === null,
+    );
+    return ok ? song : null;
   } catch {
     return null;
   }

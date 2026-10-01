@@ -1,5 +1,6 @@
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
+import type { VoiceSound } from "./voiceSound";
 
 export type LoopRange = { start: number; end: number };
 
@@ -22,6 +23,23 @@ export interface Playback {
 // Opaque to callers so each source can keep whatever it needs to release the note later.
 export type NoteHandle = object;
 
+export interface ToneEnvelope {
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+}
+
+// Absent fields mean "the instrument's own default", so a reset is just omitting the field.
+export interface ToneControls {
+  filterCutoffHz?: number;
+  filterResonance?: number;
+  // Synths only; drum samples have no envelope.
+  envelope?: Partial<ToneEnvelope>;
+  // Drums only; a synth's pitch comes from the notes themselves.
+  pitchSemitones?: number;
+}
+
 // Times are AudioContext seconds because the audio clock, unlike wall time, does not drift under load.
 export interface SoundSource {
   load(rows: Row[]): Promise<void>;
@@ -35,6 +53,8 @@ export interface SoundSource {
   noteOn(row: Row, startSeconds: number, velocity: number): NoteHandle;
   noteOff(handle: NoteHandle, endSeconds: number): void;
   stopAll(): void;
+  // Replaces rather than patches the controls, so omitted fields fall back to defaults and a reset needs no special case.
+  setTone?(controls: ToneControls): void;
   // Nodes stay connected to the channel until released, so a removed voice would keep running unheard.
   dispose?(): void;
 }
@@ -58,6 +78,8 @@ export interface Voice {
   pan: number;
   // Resolved by the model because solo depends on every other track, which a single voice cannot see.
   audible: boolean;
+  // Absent keeps the source's own preset graph, so a voice nobody edited costs nothing extra.
+  sound?: VoiceSound;
 }
 
 export interface PlaybackModel {

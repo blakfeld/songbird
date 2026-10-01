@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::instruments::{Instrument, InstrumentRegistry};
+use crate::instruments::{Instrument, InstrumentKind, InstrumentRegistry};
 use crate::meter::{TimeSignature, MAX_SWING, MAX_TEMPO_BPM, MIN_SWING, MIN_TEMPO_BPM};
 use crate::pattern::Note;
 
@@ -177,6 +177,144 @@ pub struct Track {
     /// Kept sorted by `start_measure` so overlap and neighbour lookups stay
     /// linear; the browser's clip operations depend on it.
     pub clips: Vec<Clip>,
+    /// Only overrides are stored, so an absent setting keeps following the
+    /// instrument's preset and songs saved before track sound existed are
+    /// unchanged. Unknown fields are ignored like the rest of the document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sound: Option<TrackSound>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct TrackSound {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tone: Option<Tone>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub effects: Option<Effects>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Tone {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub filter_cutoff_hz: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub filter_resonance: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub attack_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub decay_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sustain: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub release_s: Option<f64>,
+    /// A float on the wire so a fractional value is reported as `sound` rather
+    /// than failing deserialization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pitch_semitones: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Effects {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub eq: Option<EqEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub distortion: Option<DistortionEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub chorus: Option<ChorusEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub delay: Option<DelayEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reverb: Option<ReverbEffect>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct EqEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub low_db: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mid_db: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub high_db: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct DistortionEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub drive: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mix: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ChorusEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rate_hz: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub depth: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mix: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct DelayEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    /// A string rather than an enum so a bad note value is reported as `sound`
+    /// like every other bad setting, not as a deserialization failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "\"1/16\" | \"1/8\" | \"1/8d\" | \"1/4\" | \"1/2\"")]
+    pub time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub feedback: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mix: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ReverbEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub decay_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mix: Option<f64>,
 }
 
 /// Note steps count from the loop's own start so one loop can be placed at any
@@ -231,6 +369,7 @@ pub enum SongErrorKind {
     ClipLength,
     ClipOverlap,
     ClipOutsideSong,
+    Sound,
 }
 
 impl SongErrorKind {
@@ -263,6 +402,7 @@ impl SongErrorKind {
             Self::ClipLength => "clip_length",
             Self::ClipOverlap => "clip_overlap",
             Self::ClipOutsideSong => "clip_outside_song",
+            Self::Sound => "sound",
         }
     }
 }
@@ -555,6 +695,9 @@ impl Song {
                 ));
             }
         }
+        if let Some(sound) = &track.sound {
+            validate_sound(&label, sound, instrument)?;
+        }
         Ok(instrument)
     }
 
@@ -623,6 +766,111 @@ impl Song {
     }
 }
 
+/// Mirrored by the browser's range table; the shared validation fixture keeps
+/// the two in step.
+pub const DELAY_TIMES: [&str; 5] = ["1/16", "1/8", "1/8d", "1/4", "1/2"];
+
+struct SoundCheck<'a> {
+    label: &'a str,
+}
+
+impl SoundCheck<'_> {
+    fn range(&self, name: &str, value: Option<f64>, min: f64, max: f64) -> Result<(), SongError> {
+        match value {
+            Some(v) if !(min..=max).contains(&v) => Err(invalid(
+                SongErrorKind::Sound,
+                format!("{}: {name} must be {min}-{max}, got {v}", self.label),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    fn only_for(
+        &self,
+        name: &str,
+        value: Option<f64>,
+        allowed: bool,
+        kind_name: &str,
+    ) -> Result<(), SongError> {
+        if value.is_some() && !allowed {
+            return Err(invalid(
+                SongErrorKind::Sound,
+                format!("{}: {name} applies to {kind_name} tracks only", self.label),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn validate_sound(
+    label: &str,
+    sound: &TrackSound,
+    instrument: &Instrument,
+) -> Result<(), SongError> {
+    let check = SoundCheck { label };
+    let melodic = instrument.kind == InstrumentKind::Melodic;
+    let drums = instrument.kind == InstrumentKind::Drums;
+
+    if let Some(tone) = &sound.tone {
+        check.only_for("attack_s", tone.attack_s, melodic, "melodic")?;
+        check.only_for("decay_s", tone.decay_s, melodic, "melodic")?;
+        check.only_for("sustain", tone.sustain, melodic, "melodic")?;
+        check.only_for("release_s", tone.release_s, melodic, "melodic")?;
+        check.only_for("pitch_semitones", tone.pitch_semitones, drums, "drums")?;
+        check.range("filter_cutoff_hz", tone.filter_cutoff_hz, 40.0, 20000.0)?;
+        check.range("filter_resonance", tone.filter_resonance, 0.0, 1.0)?;
+        check.range("attack_s", tone.attack_s, 0.001, 2.0)?;
+        check.range("decay_s", tone.decay_s, 0.01, 4.0)?;
+        check.range("sustain", tone.sustain, 0.0, 1.0)?;
+        check.range("release_s", tone.release_s, 0.01, 8.0)?;
+        check.range("pitch_semitones", tone.pitch_semitones, -12.0, 12.0)?;
+        if tone.pitch_semitones.is_some_and(|v| v.fract() != 0.0) {
+            return Err(invalid(
+                SongErrorKind::Sound,
+                format!("{label}: pitch_semitones must be a whole number"),
+            ));
+        }
+    }
+
+    let Some(effects) = &sound.effects else {
+        return Ok(());
+    };
+    if let Some(eq) = &effects.eq {
+        check.range("low_db", eq.low_db, -12.0, 12.0)?;
+        check.range("mid_db", eq.mid_db, -12.0, 12.0)?;
+        check.range("high_db", eq.high_db, -12.0, 12.0)?;
+    }
+    if let Some(distortion) = &effects.distortion {
+        check.range("drive", distortion.drive, 0.0, 1.0)?;
+        check.range("mix", distortion.mix, 0.0, 1.0)?;
+    }
+    if let Some(chorus) = &effects.chorus {
+        check.range("rate_hz", chorus.rate_hz, 0.1, 8.0)?;
+        check.range("depth", chorus.depth, 0.0, 1.0)?;
+        check.range("mix", chorus.mix, 0.0, 1.0)?;
+    }
+    if let Some(delay) = &effects.delay {
+        if let Some(time) = &delay.time {
+            if !DELAY_TIMES.contains(&time.as_str()) {
+                return Err(invalid(
+                    SongErrorKind::Sound,
+                    format!(
+                        "{label}: delay time must be one of {}, got \"{time}\"",
+                        DELAY_TIMES.join(", ")
+                    ),
+                ));
+            }
+        }
+        check.range("feedback", delay.feedback, 0.0, 0.9)?;
+        check.range("mix", delay.mix, 0.0, 1.0)?;
+    }
+    if let Some(reverb) = &effects.reverb {
+        check.range("decay_s", reverb.decay_s, 0.5, 10.0)?;
+        check.range("mix", reverb.mix, 0.0, 1.0)?;
+    }
+    Ok(())
+}
+
 /// A port of the browser's `resolveTrackNotes`, which is what the Studio
 /// plays; the shared `fixtures/clip_resolution.json` keeps the two in step.
 /// Intended for validated tracks: arithmetic saturates rather than panics so a
@@ -686,6 +934,7 @@ pub(crate) mod tests {
             soloed: false,
             loops: vec![],
             clips: vec![],
+            sound: None,
         }
     }
 

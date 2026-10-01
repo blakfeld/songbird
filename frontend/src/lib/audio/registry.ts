@@ -1,4 +1,4 @@
-import type { SoundSource } from "./types";
+import type { SoundSource, ToneControls } from "./types";
 import { createDrumsSource } from "./drumsSource";
 import { fallbackPreset, presets } from "./presets";
 import { createSynthSource } from "./synthSource";
@@ -10,6 +10,7 @@ type ToneModule = typeof import("tone");
 export type SoundSourceFactory = (
   tone: ToneModule,
   output?: import("tone").InputNode,
+  initialTone?: ToneControls,
 ) => SoundSource;
 
 const factories = new Map<string, SoundSourceFactory>([

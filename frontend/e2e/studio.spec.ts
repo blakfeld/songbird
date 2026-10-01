@@ -474,3 +474,53 @@ test("download a project, open it as a new song, and export a multitrack MIDI fi
 
   expect(problems).toEqual([]);
 });
+
+test("shape a track's sound with the keyboard, undo it, and find it after a reload and in the project file", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await newSong(page, "Sound Song");
+  const openPanel = async () => {
+    await page.getByRole("button", { name: /^Sound for Piano/ }).click();
+    const panel = page.getByRole("dialog", { name: "Piano sound" });
+    // Keys sent before the panel takes focus would land on the page behind it.
+    await expect(panel).toBeFocused();
+    return panel;
+  };
+
+  const panel = await openPanel();
+  const delay = panel.getByRole("switch", { name: "Delay" });
+  await delay.click();
+  await expect(delay).toHaveAttribute("aria-checked", "true");
+
+  const mix = panel.getByRole("slider", { name: "Delay Mix" });
+  await mix.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(mix).toHaveAttribute("aria-valuetext", "31%");
+  await page.keyboard.press("Control+z");
+  await expect(mix).toHaveAttribute("aria-valuetext", "30%");
+  await expect(delay).toHaveAttribute("aria-checked", "true");
+
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(mix).toHaveAttribute("aria-valuetext", "32%");
+  await page.getByRole("button", { name: "Close sound panel" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download project" }).click();
+  const path = test.info().outputPath("sound-song.songbird.json");
+  await (await download).saveAs(path);
+  const project = JSON.parse(readFileSync(path, "utf8"));
+  const piano = project.song.tracks.find((t: { name: string }) => t.name === "Piano");
+  expect(piano.sound).toEqual({ effects: { delay: { enabled: true, mix: 0.32 } } });
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Rename song Sound Song" })).toBeVisible();
+  const reopened = await openPanel();
+  await expect(reopened.getByRole("switch", { name: "Delay" })).toHaveAttribute("aria-checked", "true");
+  await expect(reopened.getByRole("slider", { name: "Delay Mix" })).toHaveAttribute("aria-valuetext", "32%");
+
+  expect(problems).toEqual([]);
+});

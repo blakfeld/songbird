@@ -5,7 +5,16 @@ const h = vi.hoisted(() => ({
   connected: [] as unknown[],
   toDestinationCalls: 0,
   starts: [] as number[],
+  rates: [] as (number | undefined)[],
+  filters: [] as MockFilter[],
 }));
+
+interface MockFilter {
+  options: Record<string, unknown>;
+  out: unknown;
+  freqRamps: [number, number][];
+  qRamps: [number, number][];
+}
 
 vi.mock("tone", () => ({}));
 
@@ -21,7 +30,28 @@ class Gain {
   }
   dispose() {}
 }
+class Filter implements MockFilter {
+  out: unknown = null;
+  freqRamps: [number, number][] = [];
+  qRamps: [number, number][] = [];
+  frequency = { exponentialRampTo: (v: number, t: number) => this.freqRamps.push([v, t]) };
+  Q = { rampTo: (v: number, t: number) => this.qRamps.push([v, t]) };
+  constructor(public options: Record<string, unknown>) {
+    h.filters.push(this);
+  }
+  connect(node: unknown) {
+    this.out = node;
+    return this;
+  }
+  toDestination() {
+    return this;
+  }
+  dispose() {}
+}
 class ToneBufferSource {
+  constructor(options: { playbackRate?: number }) {
+    h.rates.push(options.playbackRate);
+  }
   connect() {
     return this;
   }
@@ -40,7 +70,7 @@ class ToneAudioBuffers {
   }
 }
 
-const tone = { Gain, ToneBufferSource, ToneAudioBuffers, loaded: async () => {} } as never;
+const tone = { Gain, Filter, ToneBufferSource, ToneAudioBuffers, loaded: async () => {} } as never;
 const row = { id: "kick", name: "Kick", midi_note: 36 };
 
 describe("drums source routing", () => {
@@ -76,5 +106,68 @@ describe("drums source live notes", () => {
     const handle = source.noteOn(row, 5, 100);
     source.noteOff(handle, 6);
     expect(h.starts).toEqual([5]);
+  });
+});
+
+describe("drums source tone controls", () => {
+  const output = { name: "channel" } as never;
+  const play = async (source: ReturnType<typeof createDrumsSource>) => {
+    await source.load([row]);
+    source.trigger(row, 1, 2, 100);
+  };
+
+  it("plays at the recorded pitch and builds no filter by default", async () => {
+    h.rates = [];
+    h.filters = [];
+    await play(createDrumsSource(tone, output));
+    expect(h.rates).toEqual([1]);
+    expect(h.filters).toHaveLength(0);
+  });
+
+  it.each([
+    [12, 2],
+    [-12, 0.5],
+    [0, 1],
+    [7, 2 ** (7 / 12)],
+  ])("maps %d semitones to playback rate %d", async (semitones, rate) => {
+    h.rates = [];
+    await play(createDrumsSource(tone, output, { pitchSemitones: semitones }));
+    expect(h.rates[0]).toBeCloseTo(rate);
+  });
+
+  it("applies a pitch change to the next hit only", async () => {
+    h.rates = [];
+    const source = createDrumsSource(tone, output, {});
+    await play(source);
+    source.setTone?.({ pitchSemitones: -12 });
+    source.trigger(row, 3, 4, 100);
+    expect(h.rates).toEqual([1, 0.5]);
+  });
+
+  it("builds no filter for empty controls", async () => {
+    h.filters = [];
+    await play(createDrumsSource(tone, output, {}));
+    expect(h.filters).toHaveLength(0);
+  });
+
+  it("sends hits through a filter that feeds the output once a cutoff is set", async () => {
+    h.connected = [];
+    h.filters = [];
+    await play(createDrumsSource(tone, output, { filterResonance: 0 }));
+    expect(h.filters[0].options).toMatchObject({ type: "lowpass", rolloff: -24, frequency: 20000 });
+    expect(h.filters[0].out).toBe(output);
+    expect(h.connected).toEqual([h.filters[0]]);
+  });
+
+  it("ramps filter changes and reopens the filter when the override is dropped", () => {
+    h.filters = [];
+    const source = createDrumsSource(tone, output, {});
+    source.setTone?.({ filterCutoffHz: 500, filterResonance: 1 });
+    source.setTone?.({ filterCutoffHz: 400, filterResonance: 1 });
+    source.setTone?.({});
+    expect(h.filters).toHaveLength(1);
+    expect(h.filters[0].options).toMatchObject({ frequency: 20000, Q: 1 });
+    expect(h.filters[0].freqRamps).toEqual([[500, 0.02], [400, 0.02], [20000, 0.02]]);
+    expect(h.filters[0].qRamps).toEqual([[6, 0.02], [6, 0.02], [1, 0.02]]);
   });
 });

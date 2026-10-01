@@ -19,6 +19,8 @@ export function TrackLane({
   selectedClipId,
   first,
   actions,
+  soundOpen,
+  onSoundOpen,
   clipActions,
   generatingTrackId,
   onSeek,
@@ -34,6 +36,8 @@ export function TrackLane({
   selectedClipId: string | null;
   first: boolean;
   actions: TrackActions;
+  soundOpen: boolean;
+  onSoundOpen: (open: boolean) => void;
   clipActions: ClipActions;
   generatingTrackId: string | null;
   onSeek: (trackId: string, measureIndex: number) => void;
@@ -57,6 +61,8 @@ export function TrackLane({
         canDelete={canDelete}
         instrument={instrument}
         actions={actions}
+        soundOpen={soundOpen}
+        onSoundOpen={onSoundOpen}
         song={song}
         selectedClipId={selectedClipId}
         clipActions={clipActions}

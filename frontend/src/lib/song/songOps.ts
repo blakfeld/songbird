@@ -3,6 +3,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
 import { clampLoop } from "../loopRegion";
 import type { Note } from "@/generated/Note";
+import type { TrackSound } from "@/generated/TrackSound";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { songLoop, withSongLoop } from "./songLoop";
@@ -157,6 +158,78 @@ export function setMixer(song: Song, trackId: string, patch: MixerPatch): Song {
       next.muted === t.muted &&
       next.soloed === t.soloed;
     return same ? t : next;
+  });
+}
+
+// Null deletes a field so "reset to the instrument default" is expressible in the same shape as an edit.
+export type SoundPatch = DeepPatch<TrackSound>;
+type DeepPatch<T> = {
+  [K in keyof T]?: NonNullable<T[K]> extends object
+    ? DeepPatch<NonNullable<T[K]>> | null
+    : NonNullable<T[K]> | null;
+};
+
+type Plain = Record<string, unknown>;
+const isPlain = (v: unknown): v is Plain => typeof v === "object" && v !== null && !Array.isArray(v);
+
+// Returns `current` itself when the patch changes nothing, and undefined when deletes leave nothing behind,
+// so a fully reset sound disappears from the document instead of lingering as empty objects.
+function mergePatch(current: Plain | undefined, patch: Plain): Plain | undefined {
+  const next: Plain = { ...current };
+  let changed = false;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    const had = key in next;
+    if (value === null) {
+      if (had) {
+        delete next[key];
+        changed = true;
+      }
+    } else if (isPlain(value)) {
+      const before = isPlain(next[key]) ? next[key] : undefined;
+      const merged = mergePatch(before, value);
+      if (merged === before && (before !== undefined || !had)) continue;
+      if (merged === undefined) delete next[key];
+      else next[key] = merged;
+      changed = true;
+    } else if (next[key] !== value) {
+      next[key] = value;
+      changed = true;
+    }
+  }
+  if (!changed) return current;
+  return Object.keys(next).length === 0 ? undefined : next;
+}
+
+const MELODIC_ONLY_TONE = ["attack_s", "decay_s", "sustain", "release_s"] as const;
+
+// A wrong-kind field would make the whole song fail validation on reload, so it is refused here whatever the UI did.
+function forKind(patch: SoundPatch, drums: boolean): SoundPatch {
+  if (!patch.tone) return patch;
+  const tone: Record<string, unknown> = { ...patch.tone };
+  for (const key of drums ? MELODIC_ONLY_TONE : (["pitch_semitones"] as const)) delete tone[key];
+  return { ...patch, tone: tone as SoundPatch["tone"] };
+}
+
+export function setSound(song: Song, trackId: string, rawPatch: SoundPatch): Song {
+  return mapTrack(song, trackId, (t) => {
+    const patch = forKind(rawPatch, t.instrument === "drums");
+    const merged = mergePatch((t.sound ?? undefined) as Plain | undefined, patch as Plain) as TrackSound | undefined;
+    // A stored null means the same as absent, so an empty result must not replace it or a drag that
+    // ends where it began would still count as a change.
+    if (merged === t.sound || (merged === undefined && t.sound == null)) return t;
+    const { sound: _old, ...rest } = t;
+    void _old;
+    return merged === undefined ? rest : { ...rest, sound: merged };
+  });
+}
+
+export function resetSound(song: Song, trackId: string): Song {
+  return mapTrack(song, trackId, (t) => {
+    if (t.sound === undefined) return t;
+    const { sound: _old, ...rest } = t;
+    void _old;
+    return rest;
   });
 }
 

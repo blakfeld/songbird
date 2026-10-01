@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { note } from "@/test/fixtures";
 import { resolveTrackNotes } from "./clipOps";
@@ -36,6 +38,22 @@ const v1 = (notes: unknown) => {
     }),
   };
 };
+
+const sharedCases: { name: string; song: unknown; error: string | null }[] = JSON.parse(
+  readFileSync(resolve(__dirname, "../../../../fixtures/song_validation.json"), "utf8"),
+).cases.filter((c: { error: string | null }) => c.error === null || c.error === "sound");
+
+describe("migrateSong track sound", () => {
+  it.each(sharedCases)("$name", (c) => {
+    expect(migrateSong(c.song) === null).toBe(c.error === "sound");
+  });
+
+  it("keeps an unknown field inside sound", () => {
+    const sound = { tone: { filter_cutoff_hz: 400, future_knob: 3 }, future_group: { a: 1 } };
+    const opened = migrateSong(withTrack0({ sound }))!;
+    expect(opened.tracks[0].sound).toEqual(sound);
+  });
+});
 
 describe("migrateSong", () => {
   it("accepts a valid version 2 song unchanged", () => {

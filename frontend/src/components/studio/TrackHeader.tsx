@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
-import { focusRing } from "@/components/ui/classes";
+import { focusRing, hintClass } from "@/components/ui/classes";
+import { isSoundCustomized } from "@/lib/song/soundDefaults";
 import { TRACK_NAME_MAX, type Song, type Track } from "@/lib/song/types";
 import { LaneMenuItems, defaultLaneMeasure } from "./ClipMenu";
 import { InlineNameInput } from "./InlineNameInput";
@@ -10,6 +11,7 @@ import { InstrumentIcon } from "./InstrumentIcon";
 import { Menu, menuItemClass } from "./Menu";
 import { PanKnob } from "./PanKnob";
 import { Spinner } from "@/components/ui/Spinner";
+import { TrackSoundPanel } from "./TrackSoundPanel";
 import type { TrackActions } from "./trackActions";
 import type { ClipActions } from "./useClipActions";
 import { VolumeSlider } from "./VolumeSlider";
@@ -17,6 +19,9 @@ import { VolumeSlider } from "./VolumeSlider";
 const toggleBase = `size-7 shrink-0 rounded text-xs font-bold pointer-coarse:size-9 ${focusRing}`;
 const toggleOff =
   "border border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300";
+
+const dotClass =
+  "absolute -top-0.5 -right-0.5 size-2 rounded-full bg-indigo-600 ring-2 ring-white dark:bg-indigo-400 dark:ring-zinc-950";
 
 export type InstrumentLookup =
   | { state: "loading" }
@@ -31,6 +36,8 @@ export function TrackHeader({
   canDelete,
   instrument,
   actions,
+  soundOpen,
+  onSoundOpen,
   selectedClipId,
   clipActions,
   generating,
@@ -43,6 +50,8 @@ export function TrackHeader({
   canDelete: boolean;
   instrument: InstrumentLookup;
   actions: TrackActions;
+  soundOpen: boolean;
+  onSoundOpen: (open: boolean) => void;
   selectedClipId: string | null;
   clipActions: ClipActions;
   generating: boolean;
@@ -50,6 +59,13 @@ export function TrackHeader({
   generateBlocked: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const soundButton = useRef<HTMLButtonElement>(null);
+  const header = useRef<HTMLDivElement>(null);
+  // Escape returns focus to whichever control opened the panel, and the narrow layout has no Sound button.
+  const openedFromMenu = useRef(false);
+  const panelId = useId();
+  const customized = isSoundCustomized(track);
+  const customizedHintId = `${track.id}-sound-hint`;
   const info = instrument.state === "ready" ? instrument.info : null;
   const instrumentName =
     instrument.state === "missing" ? "Instrument unavailable" : (info?.name ?? track.instrument);
@@ -57,6 +73,7 @@ export function TrackHeader({
 
   return (
     <div
+      ref={header}
       className={`flex min-w-0 flex-col gap-1 border-r border-zinc-200 px-2 py-1.5 max-md:gap-1.5 dark:border-zinc-800 ${
         selected
           ? "bg-indigo-50 shadow-[inset_4px_0_0] shadow-indigo-600 dark:bg-indigo-950/40"
@@ -112,12 +129,37 @@ export function TrackHeader({
         )}
         <Menu
           label={`Track options for ${track.name}`}
+          triggerLabel={`Track options for ${track.name}${customized ? " (sound customized)" : ""}`}
           align="right"
           panelClassName="w-64"
-          triggerClassName={`inline-flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-zinc-100 pointer-coarse:size-9 dark:hover:bg-zinc-800 ${focusRing}`}
-          trigger={<span aria-hidden="true">⋯</span>}
+          triggerClassName={`relative inline-flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-zinc-100 pointer-coarse:size-9 dark:hover:bg-zinc-800 ${focusRing}`}
+          trigger={
+            <>
+              <span aria-hidden="true">⋯</span>
+              {customized && <span aria-hidden="true" className={`${dotClass} md:hidden`} />}
+            </>
+          }
         >
           {(close) => (
+            <>
+            <button
+              type="button"
+              role="menuitem"
+              aria-describedby={customized ? customizedHintId : undefined}
+              className={menuItemClass}
+              onClick={() => {
+                close();
+                openedFromMenu.current = true;
+                onSoundOpen(true);
+              }}
+            >
+              Sound…
+            </button>
+            {customized && (
+              <p id={customizedHintId} className={`px-3 pb-2 ${hintClass}`}>
+                Customized
+              </p>
+            )}
             <LaneMenuItems
               track={track}
               measure={defaultLaneMeasure(song, track, selectedClipId)}
@@ -177,6 +219,7 @@ export function TrackHeader({
               </>
               }
             />
+            </>
           )}
         </Menu>
       </div>
@@ -213,7 +256,51 @@ export function TrackHeader({
           onGestureStart={actions.beginGesture}
           onGestureEnd={actions.endGesture}
         />
+        <button
+          ref={soundButton}
+          type="button"
+          title="Sound"
+          aria-label={`Sound for ${track.name}${customized ? " (customized)" : ""}`}
+          aria-haspopup="dialog"
+          aria-expanded={soundOpen}
+          aria-controls={soundOpen ? panelId : undefined}
+          onClick={() => {
+            openedFromMenu.current = false;
+            onSoundOpen(!soundOpen);
+          }}
+          className={`${toggleBase} relative inline-flex items-center justify-center ${toggleOff} hover:bg-zinc-100 aria-expanded:border-zinc-900 aria-expanded:bg-zinc-200 aria-expanded:inset-ring-1 aria-expanded:inset-ring-zinc-900 dark:hover:bg-zinc-800 dark:aria-expanded:border-zinc-100 dark:aria-expanded:bg-zinc-800 dark:aria-expanded:inset-ring-zinc-100 max-md:hidden`}
+        >
+          <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4 fill-current stroke-current" strokeWidth="1.5">
+            <path d="M5 3v14M10 3v14M15 3v14" fill="none" />
+            <rect x="3.5" y="11" width="3" height="2.5" rx=".5" />
+            <rect x="8.5" y="5" width="3" height="2.5" rx=".5" />
+            <rect x="13.5" y="9" width="3" height="2.5" rx=".5" />
+          </svg>
+          {customized && <span aria-hidden="true" className={dotClass} />}
+        </button>
       </div>
+      {soundOpen && (
+        <div id={panelId}>
+          <TrackSoundPanel
+            track={track}
+            instrument={info}
+            showInstrument={showInstrument}
+            anchor={soundButton}
+            onSound={(patch, o) => actions.sound(track.id, patch, o)}
+            onReset={() => actions.resetSound(track.id)}
+            beginGesture={actions.beginGesture}
+            endGesture={actions.endGesture}
+            onClose={(returnFocus) => {
+              onSoundOpen(false);
+              if (!returnFocus) return;
+              const target = openedFromMenu.current
+                ? header.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')
+                : soundButton.current;
+              target?.focus();
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

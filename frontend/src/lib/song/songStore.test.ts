@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drums, note } from "@/test/fixtures";
+import { drums, note, patternWith } from "@/test/fixtures";
 import { createTakeState } from "./clipOps";
 import { createSongStore } from "./songStore";
 import { normalizeSong } from "./songOps";
@@ -606,5 +606,77 @@ describe("chat results", () => {
     const store = createSongStore({ ...newSong(), future_field: { a: 1 } } as never);
     store.getState().applyChatResult("add bass", { reply: "ok", track: part });
     expect((store.getState().song as unknown as Record<string, unknown>).future_field).toEqual({ a: 1 });
+  });
+});
+
+describe("track sound", () => {
+  const cutoff = (v: number) => ({ tone: { filter_cutoff_hz: v } });
+  const soundOf = (store: ReturnType<typeof setup>) => store.getState().song!.tracks[1].sound;
+  const idOf = (store: ReturnType<typeof setup>) => store.getState().song!.tracks[1].id;
+
+  it("records one undo step for a whole drag", () => {
+    const store = setup();
+    const id = idOf(store);
+    store.getState().beginGesture();
+    for (const v of [900, 600, 300]) store.getState().setSound(id, cutoff(v), { transient: true });
+    store.getState().endGesture();
+    expect(soundOf(store)).toEqual(cutoff(300));
+    expect(store.getState().past).toHaveLength(1);
+    store.getState().undo();
+    expect(soundOf(store)).toBeUndefined();
+  });
+
+  it("records no step when a drag returns to its starting value", () => {
+    const store = setup();
+    const id = idOf(store);
+    store.getState().setSound(id, cutoff(500));
+    const stepsBefore = store.getState().past.length;
+    store.getState().beginGesture();
+    for (const v of [900, 700, 500]) store.getState().setSound(id, cutoff(v), { transient: true });
+    store.getState().endGesture();
+    expect(store.getState().past).toHaveLength(stepsBefore);
+    expect(soundOf(store)).toEqual(cutoff(500));
+  });
+
+  it("records one step for a toggle and one for a reset", () => {
+    const store = setup();
+    const id = idOf(store);
+    store.getState().setSound(id, { effects: { reverb: { enabled: true } } });
+    expect(store.getState().past).toHaveLength(1);
+    store.getState().setSound(id, cutoff(300));
+    store.getState().resetSound(id);
+    expect(soundOf(store)).toBeUndefined();
+    expect(store.getState().past).toHaveLength(3);
+    store.getState().undo();
+    expect(soundOf(store)).toEqual({ ...cutoff(300), effects: { reverb: { enabled: true } } });
+  });
+
+  it("does not record a reset of a track with no sound", () => {
+    const store = setup();
+    store.getState().resetSound(idOf(store));
+    expect(store.getState().past).toHaveLength(0);
+  });
+
+  it("creates tracks without sound from Add Track, Send to song and chat", () => {
+    const store = setup();
+    store.getState().addTrack({ id: "bass", name: "Bass" });
+    store.getState().addTrackFromPattern(patternWith([note("kick", 0)]));
+    store.getState().applyChatResult("add bass", {
+      reply: "ok",
+      track: { name: "Bass", instrument: "bass", range: { start_measure: 1, end_measure: 4 }, notes: [note("C2", 0, 4)] },
+    });
+    const added = store.getState().song!.tracks.slice(2);
+    expect(added.length).toBeGreaterThanOrEqual(2);
+    for (const t of added) expect("sound" in t).toBe(false);
+  });
+
+  it("keeps a track's sound when notes are generated into it", () => {
+    const store = setup();
+    const id = idOf(store);
+    store.getState().setSound(id, cutoff(400));
+    expect(
+      store.getState().applyGeneratedRange(id, { start_measure: 1, end_measure: 4 }, [note("c4", 0)]),
+    ).toBeNull();
+    expect(soundOf(store)).toEqual(cutoff(400));
   });
 });

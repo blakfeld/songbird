@@ -83,7 +83,7 @@ async function renderStudio(song: Song) {
 const lane = (name: string) => screen.getByRole("group", { name: new RegExp(`^Track \\d+: ${name}`) });
 
 async function openGenerate(track: string) {
-  await userEvent.click(screen.getByRole("button", { name: `Track options for ${track}` }));
+  await userEvent.click(screen.getByRole("button", { name: new RegExp(`^Track options for ${track}`) }));
   await userEvent.click(screen.getByRole("menuitem", { name: /Generate part with AI/ }));
   return screen.findByRole("dialog", { name: `Generate ${track}` });
 }
@@ -244,5 +244,20 @@ describe("generate a track", () => {
     await waitFor(() => expect(within(lane("Piano")).queryByText("Generating…")).not.toBeInTheDocument());
     expect(lane("Piano").querySelectorAll("[data-clip-id]")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+  });
+
+  it("keeps the track's sound when a part is generated into it", async () => {
+    vi.mocked(api.generateTrack).mockResolvedValue(response());
+    const song = songOf(8);
+    const sound = { tone: { filter_cutoff_hz: 400 } };
+    song.tracks = song.tracks.map((t) => (t.instrument === "piano" ? { ...t, sound } : t));
+    await renderStudio(song);
+    const dialog = await openGenerate("Piano");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Describe the part" }), "a bass line");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+
+    const saved = await library.peek(song.id);
+    expect(saved?.tracks.find((t) => t.instrument === "piano")?.sound).toEqual(sound);
   });
 });

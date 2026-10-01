@@ -96,6 +96,10 @@ export interface SongState {
     patch: ops.MixerPatch,
     options?: { transient?: boolean },
   ) => void;
+  // A drag is replayed on the pre-gesture song, so returning to the starting value yields the original
+  // song object and endGesture records no step.
+  setSound: (trackId: string, patch: ops.SoundPatch, options?: { transient?: boolean }) => void;
+  resetSound: (trackId: string) => void;
   beginGesture: () => void;
   endGesture: () => void;
   // A cancelled drag must neither spend an undo step nor wipe redo, so it restores rather than commits.
@@ -398,6 +402,25 @@ export function createSongStore(initial: Song | null = null): SongStore {
           };
         });
       },
+      setSound: (trackId, patch, options) => {
+        const apply = (song: Song) => ops.setSound(song, trackId, patch);
+        if (!options?.transient) return edit(apply);
+        set((s) => {
+          if (!s.song) return s;
+          const base = s.gestureBase;
+          const applied = apply(base ?? s.song);
+          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          if (next === s.song) return s;
+          return {
+            song: next,
+            gestureBase: base ?? s.song,
+            gestureFuture: base ? s.gestureFuture : s.future,
+            gestureLoop: base ? s.gestureLoop : songLoop(s.song),
+            future: [],
+          };
+        });
+      },
+      resetSound: (trackId) => edit((s) => ops.resetSound(s, trackId)),
       beginGesture: () =>
         set((s) =>
           s.song && !s.gestureBase
