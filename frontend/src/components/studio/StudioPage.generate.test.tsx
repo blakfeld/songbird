@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
@@ -7,7 +8,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
 import * as api from "@/lib/api";
 import { createSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
-import { newSong, type Song } from "@/lib/song/types";
+import { type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { StudioPage } from "./StudioPage";
 
@@ -67,7 +68,7 @@ const SLOW = 30_000;
 let library: SongLibrary;
 
 function songOf(measures: number, loopRegion?: Song["loop_region"]): Song {
-  const song = newSong();
+  const song = newSongWithTracks();
   song.measures = measures;
   song.tracks = song.tracks.map((t) => trackWithNotes(t, [note(t.instrument === "drums" ? "kick" : "c4", 0)], measures));
   if (loopRegion) song.loop_region = loopRegion;

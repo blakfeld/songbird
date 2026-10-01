@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Midi } from "@tonejs/midi";
 import { expect, test, type Page } from "@playwright/test";
+import { addTrack } from "./studioHelpers";
 
 test("build a song across tracks, mix it, reload and find it unchanged", async ({ page }) => {
   // Hydration mismatches surface only as console errors, so any error fails the run.
@@ -19,6 +20,8 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("button", { name: "Rename song E2E Song" })).toBeVisible();
 
+  await addTrack(page, "Drums");
+  await addTrack(page, "Piano");
   // A second piano track, renamed, covers duplicate-instrument naming and the rename flow in one step.
   await page.getByRole("button", { name: "Add track" }).click();
   await page.getByRole("menuitem", { name: "Piano", exact: true }).click();
@@ -122,6 +125,7 @@ test("draw and toggle a song loop region, keep it across a reload, and play once
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("button", { name: "Rename song Loop Song" })).toBeVisible();
 
+  await addTrack(page, "Drums");
   // A four-measure drum clip makes the song four measures long, which keeps the play-once run short.
   const drumLane = page.getByRole("group", { name: "Track 1: Drums" }).getByTestId("clip-lane");
   await drumLane.dblclick({ position: { x: 10, y: 20 } });
@@ -191,6 +195,8 @@ test("edit a song's length, meter and key, then select, move, copy and undo note
   page.on("pageerror", (e) => problems.push(e.message));
 
   await newSong(page, "Edit Song");
+  await addTrack(page, "Drums");
+  await addTrack(page, "Piano");
 
   // The song has no clips yet, so a clip in measure 6 proves the timeline extends past the song's end.
   const pianoTrack = page.getByRole("group", { name: /^Track 2: Piano/ });
@@ -302,8 +308,9 @@ test("generate the bass for measures 1 to 4 from the drums, then undo", async ({
 
   await newSong(page, "Generate Song");
 
-  await page.getByRole("button", { name: "Add track" }).click();
-  await page.getByRole("menuitem", { name: "Bass", exact: true }).click();
+  await addTrack(page, "Drums");
+  await addTrack(page, "Piano");
+  await addTrack(page, "Bass");
   const bass = page.getByRole("group", { name: /^Track 3: Bass/ });
   await expect(bass).toBeVisible();
 
@@ -359,14 +366,7 @@ test("build piano, drums and bass through the chat, then undo the bass", async (
     await expect(input).toBeEnabled();
   };
 
-  // A new song starts with Drums and Piano, so the chat's tracks are told apart from them by name and the
-  // defaults are removed once the first chat track exists, leaving exactly the three parts the chat built.
   await send("give me a piano that plays slow jazzy chords", "Added a Piano track.");
-  for (const name of ["Drums", "Piano"]) {
-    await page.getByRole("button", { name: `Track options for ${name}` }).first().click();
-    await page.getByRole("menuitem", { name: "Delete track" }).click();
-  }
-  await expect(page.getByRole("group", { name: /^Track \d+:/ })).toHaveCount(1);
   await send("give me the drums to match", "Added a Drums track.");
   await send("now the bass", "Added a Bass track.");
 
@@ -398,7 +398,7 @@ test("a named length in the chat grows a new song to that many measures", async 
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByRole("log", { name: "Conversation" }).getByText("Added a Piano track.")).toBeVisible();
 
-  const added = page.getByRole("group", { name: /^Track 3: Piano/ });
+  const added = page.getByRole("group", { name: /^Track 1: Piano/ });
   await expect(added.getByRole("button", { name: /measures 1 to 16/ })).toBeVisible();
   await expect(added.locator("[data-clip-id]")).toHaveCount(1);
   await expect(added.getByTestId("clip-notes")).toHaveCount(1);
@@ -417,6 +417,8 @@ test("download a project, open it as a new song, and export a multitrack MIDI fi
   await page.getByRole("textbox", { name: "Song name" }).fill("Late Train");
   await page.keyboard.press("Enter");
 
+  await addTrack(page, "Drums");
+  await addTrack(page, "Piano");
   const drums = page.getByRole("group", { name: "Track 1: Drums" });
   await drums.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
   const drumsEditor = page.getByRole("region", { name: "Editor: Drums 1 on Drums" });
@@ -475,12 +477,92 @@ test("download a project, open it as a new song, and export a multitrack MIDI fi
   expect(problems).toEqual([]);
 });
 
+test("close the piano roll, reopen it by double-clicking a clip, and find it closed after a reload", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await newSong(page, "Dock Song");
+  await addTrack(page, "Piano");
+  const track = page.getByRole("group", { name: "Track 1: Piano" });
+  await track.getByTestId("clip-lane").dblclick({ position: { x: 10, y: 20 } });
+  const clip = track.getByRole("button", { name: /^Piano 1, measure/ });
+  const dock = page.getByRole("region", { name: "Editor: Piano 1 on Piano" });
+  await expect(dock).toBeVisible();
+  const handle = page.getByRole("separator", { name: "Resize piano roll" });
+  await expect(handle).toBeVisible();
+
+  await page.getByRole("button", { name: "Close piano roll" }).click();
+  await expect(dock).toHaveCount(0);
+  await expect(handle).toHaveCount(0);
+  await expect(clip).toHaveAttribute("aria-current", "true");
+
+  await clip.click();
+  await expect(dock).toHaveCount(0);
+  await clip.dblclick();
+  await expect(dock).toBeVisible();
+
+  await page.getByRole("button", { name: "Close piano roll" }).click();
+  await expect(dock).toHaveCount(0);
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Rename song Dock Song" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
+  await expect(page.getByRole("region", { name: /^Editor/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Piano 1, measure/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("region", { name: "Editor: Piano 1 on Piano" })).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
+test("a sent chat message shows at once and the input stays typeable while the reply is pending", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  // The mock replies instantly, so the request is held to make the pending state observable.
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/v1/songs/chat", async (route) => {
+    await gate;
+    await route.continue();
+  });
+
+  await newSong(page, "Pending Song");
+  const input = page.getByRole("textbox", { name: "Message the assistant" });
+  const send = page.getByRole("button", { name: "Send message" });
+  const log = page.getByRole("log", { name: "Conversation" });
+
+  await input.fill("give me a bass line");
+  await send.click();
+  await expect(log.getByText("give me a bass line")).toBeVisible();
+  await expect(page.getByText("Thinking…")).toBeVisible();
+  await expect(input).toHaveValue("");
+  await expect(input).toBeEnabled();
+  await expect(input).toBeFocused();
+  await input.pressSequentially("next idea");
+  await expect(input).toHaveValue("next idea");
+  await expect(send).toBeDisabled();
+  await input.press("Enter");
+  await expect(input).toHaveValue("next idea");
+
+  release();
+  await expect(log.getByText("Added a Bass track.")).toBeVisible();
+  await expect(page.getByText("Thinking…")).toHaveCount(0);
+  await expect(input).toHaveValue("next idea");
+
+  expect(problems).toEqual([]);
+});
+
 test("shape a track's sound with the keyboard, undo it, and find it after a reload and in the project file", async ({ page }) => {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
   await newSong(page, "Sound Song");
+  await addTrack(page, "Piano");
   const openPanel = async () => {
     await page.getByRole("button", { name: /^Sound for Piano/ }).click();
     const panel = page.getByRole("dialog", { name: "Piano sound" });
@@ -521,6 +603,7 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
   const reopened = await openPanel();
   await expect(reopened.getByRole("switch", { name: "Delay" })).toHaveAttribute("aria-checked", "true");
   await expect(reopened.getByRole("slider", { name: "Delay Mix" })).toHaveAttribute("aria-valuetext", "32%");
+
 
   expect(problems).toEqual([]);
 });

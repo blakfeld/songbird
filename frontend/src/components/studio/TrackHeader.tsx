@@ -33,7 +33,6 @@ export function TrackHeader({
   track,
   number,
   selected,
-  canDelete,
   instrument,
   actions,
   soundOpen,
@@ -47,7 +46,6 @@ export function TrackHeader({
   track: Track;
   number: number;
   selected: boolean;
-  canDelete: boolean;
   instrument: InstrumentLookup;
   actions: TrackActions;
   soundOpen: boolean;
@@ -200,22 +198,14 @@ export function TrackHeader({
               <button
                 type="button"
                 role="menuitem"
-                aria-disabled={!canDelete}
-                aria-describedby={canDelete ? undefined : `${track.id}-delete-hint`}
                 className={menuItemClass}
                 onClick={() => {
-                  if (!canDelete) return;
                   close();
                   actions.remove(track.id);
                 }}
               >
                 Delete track
               </button>
-              {!canDelete && (
-                <p id={`${track.id}-delete-hint`} className="px-3 pb-2 text-xs text-zinc-600 dark:text-zinc-400">
-                  A song needs at least one track
-                </p>
-              )}
               </>
               }
             />

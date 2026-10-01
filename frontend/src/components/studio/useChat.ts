@@ -1,24 +1,47 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useStore } from "zustand";
 import { sendChat } from "@/lib/api";
 import { activeLoopRange } from "@/lib/song/songLoop";
 import { CHAT_LIMIT, type SongStore } from "@/lib/song/songStore";
 
+// "stale" means the song changed under the request, so the text belongs to a conversation that is gone.
+export type SendOutcome = "sent" | "failed" | "ignored" | "stale";
+
 export function useChat(store: SongStore, announce: (message: string) => void) {
   const [sending, setSending] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A ref as well as state so a double submit in one tick cannot start two requests.
   const inFlight = useRef(false);
+  // Tells a request that was abandoned by a song change apart from the current one when it finally settles.
+  const requestId = useRef(0);
+  const loadEpoch = useStore(store, (s) => s.loadEpoch);
 
-  // Resolves true once the reply is recorded, so the panel clears its input only for a message that was answered.
+  const [seenEpoch, setSeenEpoch] = useState(loadEpoch);
+  // Adjusted during render so the old song's bubble never paints against the new song.
+  if (seenEpoch !== loadEpoch) {
+    setSeenEpoch(loadEpoch);
+    setPending(null);
+    setSending(false);
+    setError(null);
+  }
+  useEffect(() => {
+    requestId.current++;
+    inFlight.current = false;
+  }, [loadEpoch]);
+
+  // The outcome lets the panel put the text back after a failure, since it clears its input on submit.
   const send = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string): Promise<SendOutcome> => {
       const song = store.getState().song;
       const content = text.trim();
-      if (!song || !content || inFlight.current) return false;
+      if (!song || !content || inFlight.current) return "ignored";
       inFlight.current = true;
+      const id = ++requestId.current;
       setSending(true);
+      setPending(content);
       setError(null);
       const range = activeLoopRange(song);
       const epoch = store.getState().loadEpoch;
@@ -31,27 +54,30 @@ export function useChat(store: SongStore, announce: (message: string) => void) {
           ...(range && { range }),
         });
         // A reply for a song that was closed or reloaded meanwhile would otherwise land in the wrong conversation.
-        if (store.getState().loadEpoch !== epoch) return false;
+        if (store.getState().loadEpoch !== epoch) return "stale";
         const refusal = store.getState().applyChatResult(content, response);
         if (refusal) {
           setError(refusal);
-          return false;
+          return "failed";
         }
         announce(response.track ? `Added a ${response.track.name} track. Undo to remove it.` : "The assistant replied.");
-        return true;
+        return "sent";
       } catch (err) {
-        if (store.getState().loadEpoch !== epoch) return false;
+        if (store.getState().loadEpoch !== epoch) return "stale";
         setError(`${err instanceof Error ? err.message : "Something went wrong."} The song is unchanged.`);
-        return false;
+        return "failed";
       } finally {
-        inFlight.current = false;
-        setSending(false);
+        if (requestId.current === id) {
+          inFlight.current = false;
+          setPending(null);
+          setSending(false);
+        }
       }
     },
     [store, announce],
   );
 
-  return { sending, error, send, dismissError: () => setError(null) };
+  return { sending, pending, error, send, dismissError: () => setError(null) };
 }
 
 export type ChatController = ReturnType<typeof useChat>;

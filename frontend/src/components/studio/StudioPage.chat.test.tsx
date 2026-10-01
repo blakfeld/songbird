@@ -7,7 +7,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { ChatResponse } from "@/generated/ChatResponse";
 import * as api from "@/lib/api";
 import { createSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
-import { newSong, type Song } from "@/lib/song/types";
+import { newSong, newTrack, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { StudioPage } from "./StudioPage";
 
@@ -69,7 +69,8 @@ let library: SongLibrary;
 function songOf(measures: number, loopRegion?: Song["loop_region"]): Song {
   const song = newSong();
   song.measures = measures;
-  song.tracks = song.tracks.map((t) => trackWithNotes(t, [note(t.instrument === "drums" ? "kick" : "c4", 0)], measures));
+  // Explicit tracks keep the group counts below independent of what a new song starts with.
+  song.tracks = [newTrack("drums", "Drums"), newTrack("piano", "Piano")].map((t) => trackWithNotes(t, [note(t.instrument === "drums" ? "kick" : "c4", 0)], measures));
   if (loopRegion) song.loop_region = loopRegion;
   return song;
 }
@@ -122,15 +123,52 @@ describe("assistant chat", () => {
     expect(screen.getAllByText(/^Added track:/)).toHaveLength(2);
   });
 
-  it("disables the input while a request is in flight", async () => {
+  it("shows the sent message at once and empties the input while the reply is pending", async () => {
     let resolve!: (r: ChatResponse) => void;
     vi.mocked(api.sendChat).mockReturnValue(new Promise((r) => (resolve = r)));
     await renderStudio(songOf(4));
     await say("a bass");
-    expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    const log = screen.getByRole("log", { name: "Conversation" });
+    expect(within(log).getByText("a bass")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message the assistant" })).toHaveValue("");
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
     await act(async () => resolve(part("Bass", "bass")));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message the assistant" })).toBeEnabled());
+    expect(await screen.findByText("Added a Bass track.")).toBeInTheDocument();
+    expect(within(log).getAllByText("a bass")).toHaveLength(1);
+    expect(screen.queryByText("Thinking…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the input usable but sends nothing while waiting", async () => {
+    let resolve!: (r: ChatResponse) => void;
+    vi.mocked(api.sendChat).mockReturnValue(new Promise((r) => (resolve = r)));
+    await renderStudio(songOf(4));
+    await say("a bass");
+    const input = screen.getByRole("textbox", { name: "Message the assistant" });
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    await userEvent.type(input, "and drums{Enter}");
+    expect(input).toHaveValue("and drums");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(api.sendChat).toHaveBeenCalledTimes(1);
+    await act(async () => resolve(part("Bass", "bass")));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    expect(input).toHaveValue("and drums");
+  });
+
+  it("keeps the pending message out of the song until the reply arrives", async () => {
+    let resolve!: (r: ChatResponse) => void;
+    vi.mocked(api.sendChat).mockReturnValue(new Promise((r) => (resolve = r)));
+    await renderStudio(songOf(4));
+    await say("a bass");
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    await act(async () => void (await library.flush()));
+    const [saved] = await library.list();
+    expect((await library.peek(saved.id))?.chat ?? []).toHaveLength(0);
+    await act(async () => resolve(part("Bass", "bass")));
+    await screen.findByText("Added a Bass track.");
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("Track removed");
+    expect(screen.getAllByText("a bass")).toHaveLength(1);
   });
 
   it("shows a reply that says the track limit is reached without adding a track", async () => {
@@ -152,6 +190,18 @@ describe("assistant chat", () => {
     expect(screen.getByRole("textbox", { name: "Message the assistant" })).toHaveValue("a bass");
     expect(screen.queryByRole("log")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("does not overwrite text typed while waiting when the request fails", async () => {
+    let reject!: (e: Error) => void;
+    vi.mocked(api.sendChat).mockReturnValue(new Promise((_, r) => (reject = r)));
+    await renderStudio(songOf(4));
+    await say("a bass");
+    await userEvent.type(screen.getByRole("textbox", { name: "Message the assistant" }), "something else");
+    await act(async () => reject(new Error("boom")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    expect(screen.getByRole("textbox", { name: "Message the assistant" })).toHaveValue("something else");
+    expect(screen.queryByRole("log")).not.toBeInTheDocument();
   });
 
   it("sends the loop range of a long song and shows the server's request for one when absent", async () => {
@@ -207,5 +257,32 @@ describe("assistant chat", () => {
     const log = await screen.findByRole("log", { name: "Conversation" });
     expect(within(log).getAllByRole("listitem")).toHaveLength(6);
     expect(within(log).getByText("three")).toBeInTheDocument();
+  });
+
+  it("drops the pending message and re-enables sending when another song opens mid-request", async () => {
+    let resolve!: (r: ChatResponse) => void;
+    vi.mocked(api.sendChat).mockReturnValue(new Promise((r) => (resolve = r)));
+    await library.create({ ...songOf(4), name: "Alpha" });
+    await library.create({ ...songOf(4), name: "Beta" });
+    render(<StudioPage library={library} />);
+    await screen.findByRole("region", { name: "Arrangement" });
+    await say("a bass");
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Songs" }));
+    const dialog = await screen.findByRole("dialog", { name: "Songs" });
+    const other = within(dialog)
+      .getAllByRole("button", { name: /^(Alpha|Beta)/ })
+      .find((b) => !b.hasAttribute("aria-current"))!;
+    await userEvent.click(other);
+
+    await waitFor(() => expect(screen.queryByText("Thinking…")).not.toBeInTheDocument());
+    expect(screen.queryByText("a bass")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message the assistant" }), "next");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+
+    await act(async () => resolve(part("Bass", "bass")));
+    expect(screen.queryByText("Added a Bass track.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 });

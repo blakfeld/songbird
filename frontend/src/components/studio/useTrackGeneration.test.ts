@@ -1,8 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { createSongStore } from "@/lib/song/songStore";
-import { newSong } from "@/lib/song/types";
 import { note } from "@/test/fixtures";
 import { useTrackGeneration } from "./useTrackGeneration";
 
@@ -15,8 +15,8 @@ afterEach(() => vi.resetAllMocks());
 
 describe("a generation that outlives its song", () => {
   it("is dropped, and does not release the lock of a generation started on the next song", async () => {
-    const first = newSong();
-    const second = newSong();
+    const first = newSongWithTracks();
+    const second = newSongWithTracks();
     const store = createSongStore(first);
     let resolve!: (r: Awaited<ReturnType<typeof api.generateTrack>>) => void;
     vi.mocked(api.generateTrack).mockReturnValue(new Promise((r) => (resolve = r)));

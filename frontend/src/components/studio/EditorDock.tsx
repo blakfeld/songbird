@@ -17,6 +17,7 @@ import { focusRing, hintClass } from "@/components/ui/classes";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import { PianoRoll } from "@/components/editor/PianoRoll";
 import { ClipMenuItems, LinkGlyph, LoopSwatch, clipMenuLabel } from "./ClipMenu";
+import { DockCloseButton } from "./DockCloseButton";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { LoopsDialog } from "./LoopsDialog";
@@ -92,6 +93,7 @@ export function EditorDock({
   renamingLoopId,
   onRenameDone,
   onAnnounce,
+  onClose,
 }: {
   store: SongStore;
   song: Song;
@@ -109,6 +111,7 @@ export function EditorDock({
   renamingLoopId: string | null;
   onRenameDone: () => void;
   onAnnounce: (message: string) => void;
+  onClose: () => void;
 }) {
   const info = instruments.data?.find((i) => i.id === track.instrument);
   const rows = info?.rows;
@@ -162,6 +165,11 @@ export function EditorDock({
       aria-label={loopDoc ? `Editor: ${loopDoc.name} on ${track.name}` : `Editor: ${track.name}`}
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-zinc-200 bg-white max-md:h-[70dvh] dark:border-zinc-800 dark:bg-zinc-950"
     >
+      {!showRoll && (
+        <div className="flex shrink-0 justify-end px-2 py-1">
+          <DockCloseButton onClose={onClose} />
+        </div>
+      )}
       {instruments.status === "loading" && (
         <div aria-hidden="true" className="flex flex-col gap-2 p-4">
           {Array.from({ length: 12 }, (_, i) => (
@@ -223,7 +231,7 @@ export function EditorDock({
               </p>
             </div>
             <div ref={setInspectorSlot} className="min-w-0 max-md:basis-full" />
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1">
               <Menu
                 label={clipMenuLabel(track, clip)}
                 align="right"
@@ -243,6 +251,7 @@ export function EditorDock({
                   />
                 )}
               </Menu>
+              <DockCloseButton onClose={onClose} />
             </div>
           </div>
           <PianoRoll

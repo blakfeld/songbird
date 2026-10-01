@@ -24,6 +24,7 @@ interface Options {
   createTarget: () => TakeTarget | null;
   onAnnounce: (msg: string) => void;
   midi?: MidiAccess;
+  blockedReason?: string | null;
   // From useTakeFinalizer; lets the take end before the page's other teardown runs.
   finalizer?: RefObject<(() => void) | null>;
 }
@@ -226,6 +227,7 @@ export function useRecordingSession(options: Options) {
     onRecordToggle: start,
     onAnnounce: options.onAnnounce,
     midi: options.midi,
+    blockedReason: options.blockedReason,
   });
 
   return {

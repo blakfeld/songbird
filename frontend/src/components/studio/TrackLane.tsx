@@ -14,7 +14,6 @@ export function TrackLane({
   number,
   selected,
   audible,
-  canDelete,
   instrument,
   selectedClipId,
   first,
@@ -31,7 +30,6 @@ export function TrackLane({
   number: number;
   selected: boolean;
   audible: boolean;
-  canDelete: boolean;
   instrument: InstrumentLookup;
   selectedClipId: string | null;
   first: boolean;
@@ -58,7 +56,6 @@ export function TrackLane({
         track={track}
         number={number}
         selected={selected}
-        canDelete={canDelete}
         instrument={instrument}
         actions={actions}
         soundOpen={soundOpen}

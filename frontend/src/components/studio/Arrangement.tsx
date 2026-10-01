@@ -111,7 +111,7 @@ export function Arrangement({
         lengthen it.
       </p>
       <div className="sticky top-0 z-40 grid grid-cols-[var(--gutter-w)_minmax(0,1fr)] bg-white dark:bg-zinc-950">
-        <div className="flex h-7 items-center gap-2 border-r border-b border-zinc-300 px-2 dark:border-zinc-700">
+        <div className="flex h-12 items-center gap-2 border-r border-b border-zinc-300 px-3 py-2 max-sm:px-2 dark:border-zinc-700">
           <AddTrackMenu
             instruments={instruments}
             onRetry={onRetryInstruments}
@@ -128,6 +128,7 @@ export function Arrangement({
               labelEvery={labelEveryFor(laneWidth, timeline)}
               showBeats={measureWidth >= MIN_MEASURE_FOR_BEATS_PX}
               dimFrom={song.measures}
+              heightClass="h-12"
             >
               <PastEnd song={song} timeline={timeline} />
               <LoopRegion
@@ -141,6 +142,14 @@ export function Arrangement({
           </div>
         </div>
       </div>
+      {song.tracks.length === 0 && (
+        <div className="relative flex flex-col items-center gap-1 px-6 py-10 text-center">
+          <h2 className="text-sm font-semibold">This song has no tracks yet</h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Add a track, or describe a part in the chat.
+          </p>
+        </div>
+      )}
       <div className="relative">
         {song.tracks.map((track, i) => (
           <TrackLane
@@ -151,7 +160,6 @@ export function Arrangement({
             number={i + 1}
             selected={track.id === selectedTrackId}
             audible={audible.has(track.id)}
-            canDelete={song.tracks.length > 1}
             instrument={lookup(track.instrument)}
             selectedClipId={selectedClipId}
             first={i === 0}

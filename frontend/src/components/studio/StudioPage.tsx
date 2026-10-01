@@ -23,10 +23,12 @@ import { timelineMeasures } from "@/lib/song/songOps";
 import { newSong, type Song } from "@/lib/song/types";
 import { useApiResource } from "@/lib/useApiResource";
 import { useStoredHeight } from "@/lib/useStoredHeight";
+import { useStoredValue } from "@/lib/useStoredValue";
 import { HeightHandle } from "@/components/editor/HeightHandle";
 import { Arrangement } from "./Arrangement";
 import { AssistantPanel } from "./AssistantPanel";
 import { EditorDock } from "./EditorDock";
+import { NoTracksDock } from "./NoTracksDock";
 import { TrackGenerateDialog } from "./TrackGenerateDialog";
 import { useChat } from "./useChat";
 import { useTrackGeneration } from "./useTrackGeneration";
@@ -41,9 +43,13 @@ const skipLink =
   "sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:text-zinc-900 focus:shadow dark:focus:bg-zinc-900 dark:focus:text-zinc-50";
 
 const DOCK_HEIGHT_KEY = "songbird.studio.dockHeight";
+const DOCK_OPEN_KEY = "songbird.studio.dockOpen";
 const MIN_DOCK_PX = 200;
 const MIN_ARRANGEMENT_PX = 192;
 const HANDLE_PX = 8;
+
+const RECORD_NEEDS_TRACK = "Add a track to record onto.";
+const parseOpen = (raw: string) => (raw === "true" ? true : raw === "false" ? false : null);
 
 const ARRANGEMENT_ID = "studio-arrangement";
 const DOCK_ID = "studio-editor";
@@ -78,6 +84,17 @@ export function StudioPage({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const storage = useStore(library.status);
   const [storedDock, setStoredDock] = useStoredHeight(DOCK_HEIGHT_KEY);
+  const [dockOpen, setDockOpen] = useStoredValue(DOCK_OPEN_KEY, true, parseOpen);
+  const openDock = useCallback(() => setDockOpen(true), [setDockOpen]);
+  const closeDock = useCallback(() => {
+    setDockOpen(false);
+    // The Close button unmounts with the dock, which would otherwise drop focus to the page body.
+    requestAnimationFrame(() => {
+      const id = store.getState().selectedClipId;
+      const clip = id ? document.querySelector<HTMLElement>(`[data-clip-id="${id}"]`) : null;
+      (clip ?? document.getElementById(ARRANGEMENT_ID))?.focus();
+    });
+  }, [setDockOpen, store]);
   const mainRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [space, setSpace] = useState(0);
@@ -85,6 +102,8 @@ export function StudioPage({
 
   // The observer re-measures on any resize so the clamp follows the window, not just the first paint.
   const loaded = song !== null;
+  // The empty and editor docks are different elements, so the observer has to re-attach when the kind changes.
+  const dockKind = !dockOpen ? "closed" : song && song.tracks.length > 0 ? "editor" : "empty";
   useEffect(() => {
     const main = mainRef.current;
     if (!main || typeof ResizeObserver === "undefined") return;
@@ -98,7 +117,7 @@ export function StudioPage({
     const dock = document.getElementById(DOCK_ID);
     if (dock) observer.observe(dock);
     return () => observer.disconnect();
-  }, [loaded]);
+  }, [loaded, dockKind]);
   const maxDock = Math.max(MIN_DOCK_PX, space - MIN_ARRANGEMENT_PX - HANDLE_PX);
   const dockHeight =
     storedDock === null ? null : Math.min(maxDock, Math.max(MIN_DOCK_PX, storedDock));
@@ -204,6 +223,7 @@ export function StudioPage({
     const trackId = current?.tracks.find((t) => t.id === id)?.id ?? current?.tracks[0]?.id;
     return trackId ? createSongTake(store, trackId) : null;
   }, [store]);
+  const recordBlockedReason = song && song.tracks.length === 0 ? RECORD_NEEDS_TRACK : null;
   const session = useRecordingSession({
     engine: playback.engine,
     playback,
@@ -215,6 +235,7 @@ export function StudioPage({
     onAnnounce: setStatus,
     midi,
     finalizer,
+    blockedReason: recordBlockedReason,
   });
 
   const { guardEdit } = session;
@@ -229,7 +250,7 @@ export function StudioPage({
     renameInvoker.current = invoker;
     setRenamingLoopId(loopId);
   }, []);
-  const clipActions = useClipActions(store, setStatus, requestRename, session.guardEdit);
+  const clipActions = useClipActions(store, setStatus, requestRename, session.guardEdit, openDock);
   useShortcuts({
     togglePlayback,
     toggleRecord: session.toggleRecord,
@@ -297,7 +318,7 @@ export function StudioPage({
   const audition = (trackId: string, row: Row, velocity?: number) =>
     void playback.audition(row, { voiceKey: trackId, velocity });
 
-  const track = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0];
+  const track = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0] ?? null;
   const showBanner = !storage.ok && !bannerDismissed;
 
   return (
@@ -309,13 +330,15 @@ export function StudioPage({
           "--dock-rows": dockHeight === null ? "minmax(16rem,9fr)" : `${dockHeight}px`,
         } as React.CSSProperties
       }
-      className="grid min-w-0 bg-zinc-50 text-zinc-900 [--gutter-w:9rem] md:h-dvh md:grid-rows-[auto_var(--arr-rows)_auto_var(--dock-rows)] md:overflow-hidden md:[--gutter-w:16rem] lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_24rem] dark:bg-black dark:text-zinc-50">
+      className={`grid min-w-0 bg-zinc-50 text-zinc-900 [--gutter-w:9rem] md:h-dvh ${dockOpen ? "md:grid-rows-[auto_var(--arr-rows)_auto_var(--dock-rows)]" : "md:grid-rows-[auto_minmax(0,1fr)]"} md:overflow-hidden md:[--gutter-w:16rem] lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_24rem] dark:bg-black dark:text-zinc-50`}>
       <a href={`#${ARRANGEMENT_ID}`} className={skipLink}>
         Skip to tracks
       </a>
-      <a href={`#${DOCK_ID}`} className={skipLink}>
-        Skip to piano roll
-      </a>
+      {dockOpen && (
+        <a href={`#${DOCK_ID}`} className={skipLink}>
+          Skip to piano roll
+        </a>
+      )}
       <div ref={headerRef} className="min-w-0">
         {showBanner && (
           <div className="p-3">
@@ -383,6 +406,7 @@ export function StudioPage({
                 subscribeCountIn={session.subscribeCountIn}
                 onAnnounce={setStatus}
                 midi={midi}
+                recordBlockedReason={recordBlockedReason}
               />
             </div>
           </>
@@ -394,13 +418,13 @@ export function StudioPage({
         )}
       </div>
 
-      {song && track ? (
+      {song ? (
         <>
           <Arrangement
             sectionId={ARRANGEMENT_ID}
             song={song}
             timeline={timelineMeasures(gestureBase ?? song)}
-            selectedTrackId={track.id}
+            selectedTrackId={track?.id ?? null}
             selectedClipId={selectedClipId}
             instruments={instruments}
             onRetryInstruments={instruments.retry}
@@ -415,38 +439,47 @@ export function StudioPage({
             onAddTrack={addTrack}
             onSeek={seek}
           />
-          <HeightHandle
-            label="Resize piano roll"
-            value={dockHeight ?? Math.min(maxDock, Math.max(MIN_DOCK_PX, dockNatural))}
-            min={MIN_DOCK_PX}
-            max={maxDock}
-            grows="up"
-            onChange={setStoredDock}
-            onReset={() => setStoredDock(null)}
-            className="max-md:hidden"
-          />
-          <EditorDock
-            sectionId={DOCK_ID}
-            store={store}
-            song={song}
-            track={track}
-            instruments={instruments}
-            onRetryInstruments={instruments.retry}
-            follow={follow}
-            isPlaying={playback.isPlaying}
-            onManualScroll={() => setFollow(false)}
-            subscribePosition={playback.subscribePosition}
-            onAudition={audition}
-            clipActions={clipActions}
-            onAnnounce={setStatus}
-            renamingLoopId={renamingLoopId}
-            onRenameDone={() => {
-              setRenamingLoopId(null);
-              const invoker = renameInvoker.current;
-              renameInvoker.current = null;
-              requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
-            }}
-          />
+          {dockOpen && (
+            <>
+              <HeightHandle
+                label="Resize piano roll"
+                value={dockHeight ?? Math.min(maxDock, Math.max(MIN_DOCK_PX, dockNatural))}
+                min={MIN_DOCK_PX}
+                max={maxDock}
+                grows="up"
+                onChange={setStoredDock}
+                onReset={() => setStoredDock(null)}
+                className="max-md:hidden"
+              />
+              {track ? (
+                <EditorDock
+                  sectionId={DOCK_ID}
+                  store={store}
+                  song={song}
+                  track={track}
+                  instruments={instruments}
+                  onRetryInstruments={instruments.retry}
+                  follow={follow}
+                  isPlaying={playback.isPlaying}
+                  onManualScroll={() => setFollow(false)}
+                  subscribePosition={playback.subscribePosition}
+                  onAudition={audition}
+                  clipActions={clipActions}
+                  onAnnounce={setStatus}
+                  renamingLoopId={renamingLoopId}
+                  onRenameDone={() => {
+                    setRenamingLoopId(null);
+                    const invoker = renameInvoker.current;
+                    renameInvoker.current = null;
+                    requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+                  }}
+                  onClose={closeDock}
+                />
+              ) : (
+                <NoTracksDock sectionId={DOCK_ID} onClose={closeDock} />
+              )}
+            </>
+          )}
         </>
       ) : (
         <>
@@ -458,12 +491,16 @@ export function StudioPage({
               <div key={i} className="h-14 rounded bg-zinc-100 motion-safe:animate-pulse dark:bg-zinc-900" />
             ))}
           </section>
-          <div aria-hidden="true" className="max-md:hidden" />
-          <section aria-hidden="true" className="flex flex-col gap-2 border-t border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-            {Array.from({ length: 12 }, (_, i) => (
-              <div key={i} className="h-5 rounded bg-zinc-100 motion-safe:animate-pulse dark:bg-zinc-900" />
-            ))}
-          </section>
+          {dockOpen && (
+            <>
+              <div aria-hidden="true" className="max-md:hidden" />
+              <section aria-hidden="true" className="flex flex-col gap-2 border-t border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                {Array.from({ length: 12 }, (_, i) => (
+                  <div key={i} className="h-5 rounded bg-zinc-100 motion-safe:animate-pulse dark:bg-zinc-900" />
+                ))}
+              </section>
+            </>
+          )}
         </>
       )}
 
@@ -478,7 +515,7 @@ export function StudioPage({
           onClose={generation.close}
         />
       )}
-      <AssistantPanel song={song} chat={chat} instruments={instruments.data} className="max-lg:hidden lg:col-start-2 lg:row-span-4 lg:row-start-1" />
+      <AssistantPanel song={song} chat={chat} instruments={instruments.data} className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`} />
       <ModalDialog
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}

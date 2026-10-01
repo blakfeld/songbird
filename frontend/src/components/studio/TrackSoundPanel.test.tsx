@@ -4,7 +4,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
-import { newSong } from "@/lib/song/types";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { drums } from "@/test/fixtures";
 import type { ClipActions } from "./useClipActions";
 import { TrackHeader } from "./TrackHeader";
@@ -25,7 +25,7 @@ const bass: InstrumentInfo = {
 const infos: Record<string, InstrumentInfo> = { drums, bass };
 
 function setup(sound?: object) {
-  const base = newSong();
+  const base = newSongWithTracks();
   const song = {
     ...base,
     tracks: [base.tracks[0], { ...base.tracks[1], instrument: "bass", name: "Bass", ...(sound && { sound }) }],
@@ -54,7 +54,6 @@ function setup(sound?: object) {
             track={t}
             number={i + 1}
             selected={false}
-            canDelete
             instrument={{ state: "ready", info: infos[t.instrument] }}
             actions={actions}
             soundOpen={open === t.id}
@@ -103,7 +102,7 @@ describe("Sound panel", () => {
   });
 
   it("shows drum knobs for a drums track while the instrument lookup is unavailable", async () => {
-    const base = newSong();
+    const base = newSongWithTracks();
     const store = createSongStore(base);
     const actions = { sound: () => {} } as unknown as TrackActions;
     render(
@@ -112,7 +111,6 @@ describe("Sound panel", () => {
         track={store.getState().song!.tracks[0]}
         number={1}
         selected={false}
-        canDelete
         instrument={{ state: "missing" }}
         actions={actions}
         soundOpen

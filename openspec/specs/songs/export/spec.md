@@ -16,12 +16,14 @@ The system SHALL expose `POST /api/v1/songs/export/midi`. It SHALL accept a song
 ### Requirement: Song validation for export
 The endpoint SHALL reject a song with status `422` and error code `invalid_song` when any of the following is true:
 - a field is outside the ranges of the song document, or the song document `version` is not 2;
-- the song has no tracks or more than 16 tracks;
+- the song has more than 16 tracks;
 - a loop note references a row that is not a row of its track's instrument, or extends past the end of its loop;
 - a loop or clip id is not unique within the song, or a loop's `measures` is outside 1–128;
 - a clip's `loop_id` does not name a loop on the same track;
 - a clip extends outside the song, or two clips on the same track overlap;
 - a track has more than 64 loops or more than 256 clips.
+
+A song with no tracks SHALL be accepted, and the file SHALL contain only the conductor track.
 
 These clip rules SHALL match the rules the browser applies when it opens a song, so a song the Studio can open is never rejected for its clips.
 
@@ -41,6 +43,14 @@ A track whose instrument is not listed by `GET /api/v1/instruments` SHALL be rej
 
 #### Scenario: Overlapping clips
 - **WHEN** a track has one clip covering measures 1–4 and another starting at measure 3
+- **THEN** the response is `422` with error code `invalid_song`
+
+#### Scenario: Song with no tracks
+- **WHEN** a client posts a valid song with no tracks
+- **THEN** the response is `200` with a MIDI file containing only the conductor track
+
+#### Scenario: Too many tracks
+- **WHEN** a client posts a song with 17 tracks
 - **THEN** the response is `422` with error code `invalid_song`
 
 ### Requirement: Multitrack MIDI file contents
@@ -105,11 +115,15 @@ Exported song files SHALL parse without errors in standard MIDI parsers, and SHA
 - **THEN** parsing succeeds, and for every track the recovered channel, notes, velocities, start times, and durations match the notes its clips play
 
 ### Requirement: Download song MIDI from the Studio
-The Studio page SHALL provide a "Download MIDI" action that exports the currently open song, including unsaved edits, through the export endpoint and saves the returned file. If export fails, the page SHALL show the error message and leave the song unchanged.
+The Studio page SHALL provide a "Download MIDI" action that exports the currently open song, including unsaved edits, through the export endpoint and saves the returned file. If export fails, the page SHALL show the error message and leave the song unchanged. The action SHALL be disabled while the song has no tracks, because the file would hold no music.
 
 #### Scenario: Download current song
 - **WHEN** the user clicks "Download MIDI" in the Studio
 - **THEN** a `.mid` file named from the song name and tempo is downloaded, containing every track
+
+#### Scenario: Nothing to download
+- **WHEN** the open song has no tracks
+- **THEN** the "Download MIDI" action is disabled
 
 ### Requirement: Project file download
 The Studio page SHALL provide a "Download project" action. It SHALL save the open song as a UTF-8 JSON file named `<slug of song name>.songbird.json` containing `{"format": "songbird-song", "version": 1, "song": <song document>}`. The project-file `version` is independent of the song document's own `version` (2), and the song document SHALL be saved with its loops and clips as they are, not flattened. Undo history and UI state SHALL NOT be included.

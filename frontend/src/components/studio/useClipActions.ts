@@ -27,6 +27,10 @@ export interface ClipActions {
   endGesture(): void;
   cancelGesture(): void;
   requestRename(loopId: string, invoker?: HTMLElement | null): void;
+  // Double-click and Enter both land here so a closed dock reopens on the clip they name.
+  open(trackId: string, clipId: string): void;
+  // Enter opens a closed dock without stealing focus from the clip, so an open dock behaves as it always did.
+  openDock(): void;
   focusRoll(): void;
   announce(message: string): void;
 }
@@ -86,6 +90,7 @@ export function useClipActions(
   requestRename: (loopId: string, invoker: HTMLElement | null) => void,
   // A drag starting mid-take would share the take's gesture, so the take has to end first.
   guardEdit: (edit: () => void) => void = (edit) => edit(),
+  openDock: () => void = () => {},
 ): ClipActions {
   return useMemo<ClipActions>(() => {
     const state = () => store.getState();
@@ -110,6 +115,7 @@ export function useClipActions(
       },
       create: (trackId, measure) => {
         if (report(state().newClip(trackId, measure), trackId)) return;
+        openDock();
         const id = selectedClipId();
         if (id) focusClip(id);
       },
@@ -229,10 +235,16 @@ export function useClipActions(
       cancelGesture: () => state().cancelGesture(),
       requestRename: (loopId, invoker) =>
         requestRename(loopId, invoker ?? (document.activeElement as HTMLElement | null)),
+      open: (trackId, clipId) => {
+        api.select(trackId, clipId);
+        openDock();
+        api.focusRoll();
+      },
+      openDock,
       focusRoll: () =>
         focusLater('[aria-roledescription="piano roll"] [tabindex="0"]'),
       announce,
     };
     return api;
-  }, [store, announce, requestRename, guardEdit]);
+  }, [store, announce, requestRename, guardEdit, openDock]);
 }

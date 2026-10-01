@@ -15,12 +15,15 @@ export function useRecordControl({
   onRecordToggle,
   onAnnounce,
   midi,
+  blockedReason,
 }: {
   playback: Pick<Playback, "status">;
   recording: RecordingState;
   onRecordToggle?: () => void;
   onAnnounce?: (msg: string) => void;
   midi?: MidiAccess;
+  // For a page that has nothing to record onto, so a press explains itself instead of silently doing nothing.
+  blockedReason?: string | null;
 }) {
   const { snapshot } = useMidiState(midi);
   // Ending a take or cancelling a count-in must stay possible whatever else changed.
@@ -28,7 +31,9 @@ export function useRecordControl({
   const reason =
     active
       ? null
-      : snapshot.status !== "granted"
+      : blockedReason
+        ? blockedReason
+        : snapshot.status !== "granted"
         ? RECORD_NEEDS_MIDI
         : playback.status === "loading"
           ? RECORD_LOADING

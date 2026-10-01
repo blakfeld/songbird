@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
@@ -13,7 +14,7 @@ import {
   songKey,
   type SongLibrary,
 } from "@/lib/song/songLibrary";
-import { newSong, type Song } from "@/lib/song/types";
+import { type Song } from "@/lib/song/types";
 import { drums } from "@/test/fixtures";
 import { SongFileActions } from "./SongFileActions";
 
@@ -76,7 +77,7 @@ describe("Download MIDI", () => {
       blob: new Blob(["x"]),
       filename: "songbird-late-train-96bpm.mid",
     });
-    const song = { ...newSong(), name: "Late Train", tempo_bpm: 96 };
+    const song = { ...newSongWithTracks(), name: "Late Train", tempo_bpm: 96 };
     renderActions(song);
     await userEvent.click(screen.getByRole("button", { name: "Download MIDI" }));
     await waitFor(() => expect(downloads).toEqual(["songbird-late-train-96bpm.mid"]));
@@ -85,7 +86,7 @@ describe("Download MIDI", () => {
 
   it("shows the error and keeps the song when the export fails", async () => {
     vi.mocked(api.exportSongMidi).mockRejectedValue(new api.ApiError("invalid_song", "track 1 is bad", 422));
-    const song = newSong();
+    const song = newSongWithTracks();
     const before = structuredClone(song);
     renderActions(song);
     await userEvent.click(screen.getByRole("button", { name: "Download MIDI" }));
@@ -95,9 +96,17 @@ describe("Download MIDI", () => {
   });
 });
 
+describe("Download MIDI with no tracks", () => {
+  it("is disabled while project download stays available", () => {
+    renderActions({ ...newSongWithTracks(), tracks: [] });
+    expect(screen.getByRole("button", { name: "Download MIDI" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Download project" })).toBeEnabled();
+  });
+});
+
 describe("Download project", () => {
   it("saves the song as <slug>.songbird.json", async () => {
-    renderActions({ ...newSong(), name: "Late Train" });
+    renderActions({ ...newSongWithTracks(), name: "Late Train" });
     await userEvent.click(screen.getByRole("button", { name: "Download project" }));
     expect(downloads).toEqual(["late-train.songbird.json"]);
   });
@@ -107,15 +116,15 @@ describe("Open project", () => {
   const choose = (file: File) => userEvent.upload(screen.getByLabelText("Project file"), file);
 
   it("adds the song to the library and opens it", async () => {
-    renderActions(newSong());
-    const incoming = { ...newSong(), name: "Imported" };
+    renderActions(newSongWithTracks());
+    const incoming = { ...newSongWithTracks(), name: "Imported" };
     await choose(projectFile(incoming));
     await waitFor(() => expect(onImported).toHaveBeenCalledWith(expect.objectContaining({ id: incoming.id })));
     expect((await library.list()).map((e) => e.name)).toEqual(["Imported"]);
   });
 
   it("keeps both songs when the id is already in the library", async () => {
-    const existing = { ...newSong(), name: "Existing" };
+    const existing = { ...newSongWithTracks(), name: "Existing" };
     await library.create(existing);
     renderActions(existing);
     await choose(projectFile({ ...existing, name: "Imported" }));
@@ -126,7 +135,7 @@ describe("Open project", () => {
   });
 
   it("shows the reason and leaves the library unchanged for a bad file", async () => {
-    renderActions(newSong());
+    renderActions(newSongWithTracks());
     await choose(new File(["{nope"], "bad.songbird.json"));
     expect(await screen.findByRole("alert")).toHaveTextContent(/isn't valid JSON/);
     expect(await library.list()).toEqual([]);
@@ -134,16 +143,16 @@ describe("Open project", () => {
   });
 
   it("shows an error and opens nothing when saving the import throws", async () => {
-    renderActions(newSong());
+    renderActions(newSongWithTracks());
     vi.spyOn(library, "create").mockRejectedValue(new Error("disk"));
-    await choose(projectFile({ ...newSong(), name: "Imported" }));
+    await choose(projectFile({ ...newSongWithTracks(), name: "Imported" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't open that project/);
     expect(onImported).not.toHaveBeenCalled();
     expect(await library.list()).toEqual([]);
   });
 
   it("does not overwrite a stored song whose index entry can't be read", async () => {
-    const existing = { ...newSong(), name: "Existing" };
+    const existing = { ...newSongWithTracks(), name: "Existing" };
     await createSongLibrary().create(existing);
     const kv = idbKeyValueStore();
     const blindIndex = {

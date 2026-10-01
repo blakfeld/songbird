@@ -16,7 +16,7 @@ A song SHALL have:
 - `swing`, from 0.0 to 0.75;
 - a `key`, with a `tonic` (one of `C`, `C#`, `D`, `D#`, `E`, `F`, `F#`, `G`, `G#`, `A`, `A#`, `B`) and a `mode` (`major` or `minor`);
 - `measures`, an integer from 1 to 128;
-- an ordered list of 1–16 `tracks`.
+- an ordered list of 0–16 `tracks`.
 
 `measures` SHALL always equal the end measure of the song's last-ending clip on any track, or 1 when the song has no clips. A song saved without a `key` SHALL open in C major, and a song saved with a stale `measures` SHALL be corrected when it opens.
 
@@ -33,14 +33,23 @@ Each track SHALL have:
 
 Every note in a track's loops SHALL reference a row of the track's instrument.
 
+Every place that checks a song document, including the browser song library, project-file import, and server-side song validation, SHALL accept a song with no tracks.
+
 #### Scenario: New song defaults
-- **WHEN** the user creates a new song
+- **WHEN** the user creates a new song, or opens the Studio for the first time with no saved songs
 - **THEN** it has these settings:
   - It is named "Untitled song".
   - It is in 4/4 and C major, at 120 BPM with swing 0.
   - It has no clips, so it is 1 measure long.
-  - It has two tracks: a Drums track using `drums` and a Piano track using `piano`.
-  - Each track is at 0 dB, centered, not muted, and not soloed, and has no loops and no clips.
+  - It has no tracks.
+
+#### Scenario: Existing songs keep their tracks
+- **WHEN** the user opens a song saved with Drums and Piano tracks before this change
+- **THEN** it opens with the same Drums and Piano tracks
+
+#### Scenario: Server accepts a song with no tracks
+- **WHEN** a client posts a song with no tracks to the song chat endpoint
+- **THEN** the song is not rejected for its track count
 
 #### Scenario: Rows come from the track's instrument
 - **WHEN** a track uses the `drums` instrument
@@ -54,8 +63,10 @@ Every note in a track's loops SHALL reference a row of the track's instrument.
 - **WHEN** the user opens a song saved before keys existed
 - **THEN** its key is C major and its notes are unchanged
 
-### Requirement: Tracks with one instrument each
-The Studio page SHALL let the user add a track by choosing an instrument from those listed by `GET /api/v1/instruments`, rename a track, and delete a track. Each track SHALL have exactly one instrument, which SHALL NOT change after the track is created. The same instrument MAY be used by several tracks. The Add Track control SHALL be disabled when the song has 16 tracks. The Delete control SHALL be disabled when the song has only one track.
+### Requirement: Adding, renaming, and deleting tracks
+The Studio page SHALL let the user add a track by choosing an instrument from those listed by `GET /api/v1/instruments`, rename a track, and delete a track. Each track SHALL have exactly one instrument, which SHALL NOT change after the track is created. The same instrument MAY be used by several tracks. The Add Track control SHALL be disabled when the song has 16 tracks. Every track, including the only remaining track, SHALL be deletable.
+
+The Add Track control SHALL have visible spacing on every side, so it does not touch the edges of the arrangement header cell that holds it or the track counter beside it, at both desktop and narrow widths.
 
 #### Scenario: Add a second piano track
 - **WHEN** a song already has a Piano track and the user adds another track choosing `piano`
@@ -65,9 +76,13 @@ The Studio page SHALL let the user add a track by choosing an instrument from th
 - **WHEN** a song has 16 tracks
 - **THEN** the Add Track control is disabled
 
-#### Scenario: Last track cannot be deleted
-- **WHEN** a song has exactly one track
-- **THEN** that track's Delete control is disabled
+#### Scenario: Delete the last track
+- **WHEN** a song has exactly one track and the user deletes it
+- **THEN** the song has no tracks and the Studio shows the empty arrangement
+
+#### Scenario: Undo deleting the last track
+- **WHEN** the user deletes a song's only track and presses Cmd/Ctrl+Z
+- **THEN** the track is restored with its loops, clips, and mixer values
 
 ### Requirement: Song settings
 The user SHALL be able to change these song settings from the Studio header:
@@ -127,8 +142,9 @@ Changes to the time signature and the key SHALL be song setting changes for undo
 ### Requirement: Arrangement overview and track editing
 The Studio page SHALL show one lane per track, in track order, on a shared measure timeline with measure numbers.
 - **Lanes:** each lane SHALL have a header and a timeline area. The header SHALL show the track's number, name, instrument, and mixer controls. The timeline area SHALL show the track's clips as described in `songs/clips`.
-- **Editing:** selecting a clip SHALL open its loop in a piano roll docked below the arrangement, as described in `songs/clips`, using the track's instrument rows.
+- **Editing:** selecting a clip SHALL make its loop the one shown in the piano roll docked below the arrangement, as described in `songs/clips`, using the track's instrument rows. Whether the dock is open is described in `songs/clips`, "Editing a loop in the dock".
 - **Updates:** edits SHALL be reflected immediately in the lane overview, in playback, and in saved state.
+- **No tracks:** when the song has no tracks, the arrangement SHALL show the measure timeline, the Add Track control, and an empty state that tells the user to add a track or describe a part in the chat. The dock, when open, SHALL show an empty state with no piano roll. Playback, song settings, the chat, and project download SHALL remain usable.
 
 #### Scenario: Edit the selected clip's loop
 - **WHEN** the user selects a Piano clip and clicks an empty cell in row `C4` at step 8
@@ -138,6 +154,14 @@ The Studio page SHALL show one lane per track, in track order, on a shared measu
 #### Scenario: Switching tracks keeps edits
 - **WHEN** the user edits a Drums clip, selects a Piano clip, and then selects the Drums clip again
 - **THEN** the Drums edits are still present
+
+#### Scenario: Empty song
+- **WHEN** the Studio opens a song with no tracks
+- **THEN** it shows the measure timeline, the Add Track control, and the empty-arrangement message, and no lanes
+
+#### Scenario: First track in an empty song
+- **WHEN** the user adds a Drums track to a song with no tracks
+- **THEN** the song has one Drums lane, and that track is selected
 
 ### Requirement: Track mixer
 Each track's header SHALL have a volume control (−60 to +6 dB, default 0), a pan control (−1.0 to +1.0, default 0, with a way to reset it to center), a Mute toggle, and a Solo toggle. A track SHALL be audible when it is not muted and either no track is soloed or it is soloed. Mixer changes SHALL take effect during playback within 50 ms, without restarting playback.

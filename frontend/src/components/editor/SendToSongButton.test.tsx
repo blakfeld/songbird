@@ -5,6 +5,7 @@ import { clear, get, set } from "idb-keyval";
 import { beforeEach, describe, expect, it } from "vitest";
 import { emptyPattern } from "@/lib/patternOps";
 import { createSongLibrary, INDEX_KEY, type SongIndexEntry, type SongLibrary } from "@/lib/song/songLibrary";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { newSong, newTrack } from "@/lib/song/types";
 import { drums, note, patternWith, trackWithNotes } from "@/test/fixtures";
 import { SendToSongButton } from "./SendToSongButton";
@@ -53,7 +54,7 @@ describe("send to song", () => {
   });
 
   it("lengthens a shorter song to the pattern's length and leaves the pattern alone", async () => {
-    const existing = { ...newSong(), name: "Demo" };
+    const existing = { ...newSongWithTracks(), name: "Demo" };
     existing.tracks[0] = trackWithNotes(existing.tracks[0], [note("kick", 0)], 8);
     await library.create(existing);
     const pattern = { ...emptyPattern(drums, 16), name: "Boom Bap", notes: [note("kick", 200)] };

@@ -14,21 +14,7 @@ describe("newSong", () => {
       tempo_bpm: 120,
       swing: 0,
     });
-    expect(s.tracks.map((t) => [t.name, t.instrument])).toEqual([
-      ["Drums", "drums"],
-      ["Piano", "piano"],
-    ]);
-    for (const t of s.tracks) {
-      expect(t).toMatchObject({
-        volume_db: 0,
-        pan: 0,
-        muted: false,
-        soloed: false,
-        loops: [],
-        clips: [],
-      });
-    }
-    expect(s.tracks[0].id).not.toBe(s.tracks[1].id);
+    expect(s.tracks).toEqual([]);
   });
 
   it("uses 12 steps per measure for 3/4", () => {

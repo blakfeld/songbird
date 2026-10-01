@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "./testFixtures";
 import { drums, note, patternWith } from "@/test/fixtures";
 import * as ops from "./songOps";
-import { newSong, type Clip, type Song } from "./types";
+import { type Clip, type Song } from "./types";
 
 const withClips = (song: Song, trackIndex: number, spans: [start: number, measures: number][]): Song => ({
   ...song,
@@ -18,7 +19,7 @@ const withClips = (song: Song, trackIndex: number, spans: [start: number, measur
 
 describe("tracks", () => {
   it("adds a second track with the same instrument, independently editable", () => {
-    const s = ops.addTrack(newSong(), { id: "piano", name: "Piano" });
+    const s = ops.addTrack(newSongWithTracks(), { id: "piano", name: "Piano" });
     const pianos = s.tracks.filter((t) => t.instrument === "piano");
     expect(pianos).toHaveLength(2);
     expect(pianos[0].id).not.toBe(pianos[1].id);
@@ -26,13 +27,13 @@ describe("tracks", () => {
   });
 
   it("refuses a 17th track", () => {
-    let s = newSong();
+    let s = newSongWithTracks();
     while (s.tracks.length < 16) s = ops.addTrack(s, { id: "piano", name: "Piano" });
     expect(ops.addTrack(s, { id: "piano", name: "Piano" })).toBe(s);
   });
 
   it("shrinks the song length when the track that set it is deleted", () => {
-    const base = ops.addTrack(newSong(), { id: "piano", name: "Piano" });
+    const base = ops.addTrack(newSongWithTracks(), { id: "piano", name: "Piano" });
     const long = ops.normalizeSong(withClips(base, 1, [[1, 20]]));
     expect(long.measures).toBe(20);
     const after = ops.deleteTrack(long, long.tracks[1].id);
@@ -40,15 +41,16 @@ describe("tracks", () => {
     expect(after.measures).toBeLessThan(20);
   });
 
-  it("refuses to delete the last track", () => {
-    let s = newSong();
+  it("deletes the last track", () => {
+    let s = newSongWithTracks();
     s = ops.deleteTrack(s, s.tracks[0].id);
-    expect(s.tracks).toHaveLength(1);
-    expect(ops.deleteTrack(s, s.tracks[0].id)).toBe(s);
+    s = ops.deleteTrack(s, s.tracks[0].id);
+    expect(s.tracks).toEqual([]);
+    expect(s.measures).toBe(1);
   });
 
   it("renames within limits and ignores empty names", () => {
-    const s = newSong();
+    const s = newSongWithTracks();
     expect(ops.renameTrack(s, s.tracks[0].id, "  Beat ").tracks[0].name).toBe("Beat");
     expect(ops.renameTrack(s, s.tracks[0].id, "  ")).toBe(s);
     expect(ops.renameTrack(s, s.tracks[0].id, "x".repeat(60)).tracks[0].name).toHaveLength(40);
@@ -57,7 +59,7 @@ describe("tracks", () => {
 
 describe("song settings", () => {
   it("follows the clips: lengthening appends silence and keeps existing clips", () => {
-    const s = withClips(newSong(), 0, [[1, 8]]);
+    const s = withClips(newSongWithTracks(), 0, [[1, 8]]);
     expect(ops.normalizeSong(s).measures).toBe(8);
     const moved = withClips(s, 0, [[11, 2]]);
     const longer = ops.normalizeSong(moved);
@@ -66,7 +68,7 @@ describe("song settings", () => {
   });
 
   it("shortens to the end of the last remaining clip, or 1 with no clips", () => {
-    let s = withClips(newSong(), 0, [[1, 6], [9, 4]]);
+    let s = withClips(newSongWithTracks(), 0, [[1, 6], [9, 4]]);
     expect(ops.normalizeSong(s).measures).toBe(12);
     s = withClips(s, 0, [[1, 6]]);
     expect(ops.normalizeSong(s).measures).toBe(6);
@@ -74,13 +76,13 @@ describe("song settings", () => {
   });
 
   it("returns the same song when the length is already right", () => {
-    const s = ops.normalizeSong(withClips(newSong(), 0, [[1, 4]]));
+    const s = ops.normalizeSong(withClips(newSongWithTracks(), 0, [[1, 4]]));
     expect(ops.normalizeSong(s)).toBe(s);
   });
 
   it("keeps a loop region that lies past the song's end but inside the timeline", () => {
     const s = ops.normalizeSong({
-      ...withClips(newSong(), 0, [[1, 4]]),
+      ...withClips(newSongWithTracks(), 0, [[1, 4]]),
       loop_region: { region: { start_measure: 3, end_measure: 12 }, enabled: true },
     });
     expect(s.loop_region?.region).toEqual({ start_measure: 3, end_measure: 12 });
@@ -88,7 +90,7 @@ describe("song settings", () => {
 
   it("clamps a loop region to the timeline when the song shrinks", () => {
     const s = ops.normalizeSong({
-      ...withClips(newSong(), 0, [[1, 4]]),
+      ...withClips(newSongWithTracks(), 0, [[1, 4]]),
       loop_region: { region: { start_measure: 20, end_measure: 30 }, enabled: true },
     });
     expect(s.loop_region?.region).toEqual({ start_measure: 16, end_measure: 16 });
@@ -102,14 +104,14 @@ describe("song settings", () => {
   });
 
   it("has a default key of C major when the song has none", () => {
-    expect(newSong().key).toEqual({ tonic: "C", mode: "major" });
-    const { key: _key, ...old } = newSong();
+    expect(newSongWithTracks().key).toEqual({ tonic: "C", mode: "major" });
+    const { key: _key, ...old } = newSongWithTracks();
     void _key;
     expect(ops.songKey(old)).toEqual({ tonic: "C", mode: "major" });
   });
 
   it("clamps tempo and swing and no-ops on equal values", () => {
-    const s = newSong();
+    const s = newSongWithTracks();
     expect(ops.setTempo(s, 1000).tempo_bpm).toBe(240);
     expect(ops.setTempo(s, 120)).toBe(s);
     expect(ops.setSwing(s, 2).swing).toBe(0.75);
@@ -117,7 +119,7 @@ describe("song settings", () => {
   });
 
   it("renames the song", () => {
-    const s = newSong();
+    const s = newSongWithTracks();
     expect(ops.renameSong(s, " Demo ").name).toBe("Demo");
     expect(ops.renameSong(s, "")).toBe(s);
   });
@@ -125,13 +127,13 @@ describe("song settings", () => {
 
 describe("mixer", () => {
   const three = () => {
-    let s = newSong();
+    let s = newSongWithTracks();
     s = ops.addTrack(s, { id: "bass", name: "Bass" });
     return s;
   };
 
   it("clamps volume and pan", () => {
-    const s = newSong();
+    const s = newSongWithTracks();
     const id = s.tracks[0].id;
     const m = ops.setMixer(s, id, { volume_db: -100, pan: 3 }).tracks[0];
     expect([m.volume_db, m.pan]).toEqual([-60, 1]);
@@ -165,7 +167,7 @@ describe("mixer", () => {
 describe("addTrack naming", () => {
   it("numbers repeated instruments with the smallest free suffix", () => {
     const piano = { id: "piano", name: "Piano" };
-    let s = ops.addTrack({ ...newSong(), tracks: [] }, piano);
+    let s = ops.addTrack({ ...newSongWithTracks(), tracks: [] }, piano);
     expect(s.tracks.map((t) => t.name)).toEqual(["Piano"]);
     s = ops.addTrack(s, piano);
     s = ops.addTrack(s, piano);
@@ -175,7 +177,7 @@ describe("addTrack naming", () => {
   });
 
   it("keeps an explicit name as given", () => {
-    const s = ops.addTrack(newSong(), { id: "piano", name: "Piano" }, "Lead");
+    const s = ops.addTrack(newSongWithTracks(), { id: "piano", name: "Piano" }, "Lead");
     expect(s.tracks.at(-1)?.name).toBe("Lead");
   });
 });
@@ -184,7 +186,7 @@ describe("addTrackFromPattern", () => {
   const pattern = patternWith([note("kick", 0), note("snare", 4)], { measures: 4 });
 
   it("adds a track named after the pattern with its notes", () => {
-    const s = ops.addTrackFromPattern(newSong(), pattern);
+    const s = ops.addTrackFromPattern(newSongWithTracks(), pattern);
     const t = s.tracks[s.tracks.length - 1];
     expect(t).toMatchObject({ name: "Boom Bap", instrument: drums.id });
     expect(t.loops).toMatchObject([{ name: "Boom Bap", measures: 4, notes: pattern.notes }]);
@@ -194,7 +196,7 @@ describe("addTrackFromPattern", () => {
 
   it("lengthens the song when the pattern is longer, leaving other tracks empty there", () => {
     const long = { ...pattern, measures: 16 as const };
-    const base = withClips(newSong(), 0, [[1, 8]]);
+    const base = withClips(newSongWithTracks(), 0, [[1, 8]]);
     const s = ops.addTrackFromPattern(base, long);
     expect(s.measures).toBe(16);
     expect(s.tracks[0].clips).toBe(base.tracks[0].clips);
@@ -203,24 +205,24 @@ describe("addTrackFromPattern", () => {
   });
 
   it("places a short pattern as a short clip in a longer song", () => {
-    const base = withClips(newSong(), 0, [[1, 16]]);
+    const base = withClips(newSongWithTracks(), 0, [[1, 16]]);
     const s = ops.addTrackFromPattern(base, { ...pattern, measures: 4 });
     expect(s.measures).toBe(16);
     expect(s.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 4 }]);
   });
 
   it("refuses at 16 tracks or a mismatched meter", () => {
-    let s = newSong();
+    let s = newSongWithTracks();
     while (s.tracks.length < 16) s = ops.addTrackFromPattern(s, pattern);
     expect(ops.addTrackFromPattern(s, pattern)).toBe(s);
-    const waltz = newSong("3/4");
+    const waltz = newSongWithTracks("3/4");
     expect(ops.addTrackFromPattern(waltz, pattern)).toBe(waltz);
   });
 });
 
 describe("time signature", () => {
   const loopSong = (notes: ReturnType<typeof note>[], spm = 16) => {
-    const s = withClips(newSong(spm === 16 ? "4/4" : "3/4"), 0, [[1, 2]]);
+    const s = withClips(newSongWithTracks(spm === 16 ? "4/4" : "3/4"), 0, [[1, 2]]);
     s.tracks[0].loops[0].notes = notes;
     return s;
   };
@@ -279,14 +281,14 @@ describe("time signature", () => {
   });
 
   it("is a no-op for the same signature", () => {
-    const s = newSong();
+    const s = newSongWithTracks();
     expect(ops.setTimeSignature(s, "4/4")).toBe(s);
   });
 });
 
 describe("key", () => {
   it("changes only the key", () => {
-    const s = withClips(newSong(), 0, [[1, 2]]);
+    const s = withClips(newSongWithTracks(), 0, [[1, 2]]);
     const next = ops.setKey(s, { tonic: "E", mode: "minor" });
     expect(next.key).toEqual({ tonic: "E", mode: "minor" });
     expect(next.tracks).toBe(s.tracks);
@@ -295,7 +297,7 @@ describe("key", () => {
 });
 
 describe("track sound", () => {
-  const song = () => newSong();
+  const song = () => newSongWithTracks();
   const id = (s: Song) => s.tracks[1].id;
 
   it("merges nested patches and keeps untouched and unknown fields", () => {

@@ -133,6 +133,13 @@ async fn two_track_song_exports_a_named_midi_file() {
 }
 
 #[tokio::test]
+async fn empty_song_exports_only_the_conductor_track() {
+    let (status, _, bytes) = export(&song(4, vec![])).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(Smf::parse(&bytes).unwrap().tracks.len(), 1);
+}
+
+#[tokio::test]
 async fn unknown_row_names_the_track() {
     let mut s = two_track_song();
     s["tracks"][1]["loops"][0]["notes"] = json!([note("kick", 0)]);
