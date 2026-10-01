@@ -12,7 +12,7 @@ describe("song playback model", () => {
     song.tempo_bpm = 90;
     song.tracks[1].pan = -1;
     const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
-    expect(model.getTiming()).toEqual({ tempo: 90, swing: 0, stepsPerMeasure: 16, measures: 1 });
+    expect(model.getTiming()).toEqual({ beatSteps: 4, tempo: 90, swing: 0, stepsPerMeasure: 16, measures: 1 });
     const voices = model.getVoices();
     expect(voices.map((v) => v.key)).toEqual(song.tracks.map((t) => t.id));
     expect(voices[1]).toMatchObject({ instrument: "piano", pan: -1, audible: true });

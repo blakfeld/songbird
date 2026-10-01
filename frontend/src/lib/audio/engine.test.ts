@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pattern } from "@/generated/Pattern";
 import type { PlaybackModel, Voice } from "./types";
 import { createPatternStore } from "@/lib/patternStore";
@@ -33,6 +33,11 @@ const h = vi.hoisted(() => {
     stopped: 0,
     kitLoads: [] as Record<string, string>[],
     channels: [] as MockChannel[],
+    now: 0,
+    outputLatency: 0,
+    baseLatency: 0,
+    clicks: [] as { time: number; hz: number }[],
+    contextState: "suspended",
   };
   return { state };
 });
@@ -49,8 +54,9 @@ vi.mock("tone", () => {
     scheduleOnce(cb: (t: number) => void, time: number) {
       state.events.push({ time, cb });
     },
-    getSecondsAtTime() {
-      return state.seconds;
+    // Shifted by the audio time's distance from the clock so stepAt's latency maths is observable.
+    getSecondsAtTime(t: number = state.now) {
+      return state.seconds + (t - state.now);
     },
     start() {
       state.started += 1;
@@ -131,12 +137,30 @@ vi.mock("tone", () => {
     }
     dispose() {}
   }
+  class Synth {
+    toDestination() {
+      return this;
+    }
+    triggerAttackRelease(hz: number, _d: number, time: number) {
+      state.clicks.push({ time, hz });
+    }
+    dispose() {}
+  }
   return {
+    Synth,
     start: async () => {
       state.startCalls += 1;
+      state.contextState = "running";
     },
     loaded: async () => {},
-    getContext: () => ({ currentTime: 0 }),
+    getContext: () => ({
+      state: state.contextState,
+      currentTime: state.now,
+      rawContext: {
+        outputLatency: state.outputLatency,
+        baseLatency: state.baseLatency,
+      },
+    }),
     getTransport: () => transport,
     ToneAudioBuffers,
     Gain,
@@ -211,6 +235,11 @@ beforeEach(() => {
     stopped: 0,
     kitLoads: [],
     channels: [],
+    now: 0,
+    outputLatency: 0,
+    baseLatency: 0,
+    clicks: [],
+    contextState: "suspended",
   });
 });
 
@@ -352,6 +381,8 @@ describe("playback engine", () => {
     registerSoundSource("spy", () => ({
       load: async () => {},
       trigger: () => {},
+      noteOn: () => ({}),
+      noteOff: () => {},
       stopAll,
     }));
     const store = createPatternStore("spy-test");
@@ -426,7 +457,7 @@ describe("audition", () => {
   it("triggers one half-second note at velocity 100 without touching the store", async () => {
     const trigger = vi.fn();
     const load = vi.fn(async () => {});
-    registerSoundSource("audition-test", () => ({ load, trigger, stopAll: () => {} }));
+    registerSoundSource("audition-test", () => ({ load, trigger, noteOn: () => ({}), noteOff: () => {}, stopAll: () => {} }));
     const store = createPatternStore("audition-test");
     const before = store.getState();
     const engine = createPlaybackEngine(
@@ -458,6 +489,8 @@ describe("multi-voice playback", () => {
       return {
         load: async () => {},
         trigger: (_row, time, _end, velocity) => hits.push({ id, time, velocity }),
+        noteOn: () => ({}),
+        noteOff: () => {},
         stopAll: () => {},
       };
     });
@@ -632,6 +665,8 @@ describe("clip playback", () => {
   registerSoundSource("clip-test", () => ({
     load: async () => {},
     trigger: (_row, time) => times.push(time - AUDIO_OFFSET),
+    noteOn: () => ({}),
+    noteOff: () => {},
     stopAll: () => {},
   }));
 
@@ -777,6 +812,8 @@ describe("play-once ending", () => {
     registerSoundSource("ring", () => ({
       load: async () => {},
       trigger: (_row, _start, end) => ends.push(end),
+      noteOn: () => ({}),
+      noteOff: () => {},
       stopAll: () => stops.push(h.state.seconds),
     }));
     const store = createPatternStore("ring-test");
@@ -876,6 +913,8 @@ describe("play-once ending", () => {
     registerSoundSource("crash", () => ({
       load: async () => {},
       trigger: () => {},
+      noteOn: () => ({}),
+      noteOff: () => {},
       stopAll,
     }));
     const store = createPatternStore("crash-test");
@@ -903,5 +942,394 @@ describe("play-once ending", () => {
     await start(engine);
     advanceTo(1);
     expect(measuresHeard()).toEqual([1]);
+  });
+});
+
+describe("live notes", () => {
+  const events: { kind: string; time: number; velocity?: number; handle?: object }[] = [];
+  registerSoundSource("live-a", () => ({
+    load: async () => {},
+    trigger: () => {},
+    noteOn: (_row, time, velocity) => {
+      const handle = {};
+      events.push({ kind: "on", time, velocity, handle });
+      return handle;
+    },
+    noteOff: (handle, time) => events.push({ kind: "off", time, handle }),
+    stopAll: () => {},
+  }));
+
+  const voice = (over: Partial<Voice> = {}): Voice => ({
+    key: "live-a",
+    instrument: "live-a",
+    rows: ROWS,
+    notes: [],
+    volumeDb: -6,
+    pan: -1,
+    audible: false,
+    ...over,
+  });
+
+  const setupLive = (v: Voice) => {
+    const model: PlaybackModel = {
+      getTiming: () => ({ tempo: 120, swing: 0, stepsPerMeasure: 16, measures: 1 }),
+      getVoices: () => [v],
+    };
+    return createPlaybackEngine(model, { requestFrame: () => 0, cancelFrame: () => {} });
+  };
+
+  beforeEach(() => {
+    events.length = 0;
+  });
+
+  it("plays on a muted track through the track's volume and pan", async () => {
+    const engine = setupLive(voice());
+    await engine.prepareLive("live-a");
+    h.state.now = 3;
+
+    const note = engine.liveNoteOn(ROWS[0], { voiceKey: "live-a", velocity: 90 });
+
+    expect(note).not.toBeNull();
+    expect(events).toEqual([{ kind: "on", time: 3, velocity: 90, handle: expect.any(Object) }]);
+    expect(h.state.channels).toHaveLength(1);
+    expect(h.state.channels[0].opts).toEqual({ volume: -6, pan: -1 });
+  });
+
+  it("releases the same note handle on note-off", async () => {
+    const engine = setupLive(voice());
+    await engine.prepareLive("live-a");
+    const note = engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" })!;
+    h.state.now = 4;
+    engine.liveNoteOff(note);
+
+    expect(events[1]).toEqual({ kind: "off", time: 4, handle: events[0].handle });
+  });
+
+  it("drops the note instead of waiting when audio has not been prepared", () => {
+    const engine = setupLive(voice());
+    expect(engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" })).toBeNull();
+    expect(events).toEqual([]);
+  });
+
+  it("returns null while the audio context is suspended, so nothing queues up to burst later", async () => {
+    const engine = setupLive(voice());
+    await engine.prepareLive("live-a");
+    h.state.contextState = "suspended";
+
+    expect(engine.liveBlocked()).toBe(true);
+    expect(engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" })).toBeNull();
+    expect(events).toEqual([]);
+
+    h.state.contextState = "running";
+    expect(engine.liveBlocked()).toBe(false);
+    expect(engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" })).not.toBeNull();
+  });
+
+  it("does not report blocked before audio has loaded, since a click would not fix that", () => {
+    const engine = setupLive(voice());
+    expect(engine.liveBlocked()).toBe(false);
+  });
+
+  it("does not touch the scheduler's channel for a muted voice", async () => {
+    const engine = setupLive(voice());
+    await engine.prepareLive("live-a");
+    engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" });
+    expect(h.state.channels.map((c) => c.opts.volume)).toEqual([-6]);
+  });
+});
+
+// The type only allows lengths a user can pick, but a one-bar run keeps these timelines short.
+const ONE_MEASURE = 1 as Pattern["measures"];
+
+describe("stepAt", () => {
+  const NOW_MS = 1000;
+  beforeEach(() => {
+    vi.spyOn(performance, "now").mockReturnValue(NOW_MS);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  // The event happens "now"; the engine clock has advanced to the heard time plus any latency.
+  const stepAt = (engine: ReturnType<typeof createPlaybackEngine>, ageMs = 0) =>
+    engine.stepAt(NOW_MS - ageMs);
+
+  it("quantizes to the nearest step", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    advanceTo(0.53);
+    expect(stepAt(engine)?.step).toBe(4);
+    expect(stepAt(engine)?.frac).toBeCloseTo(0.24);
+
+    advanceTo(0.78);
+    expect(stepAt(engine)?.step).toBe(6);
+  });
+
+  it("uses the time the event happened rather than when it was handled", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    advanceTo(0.7);
+    expect(stepAt(engine, 170)?.step).toBe(4);
+  });
+
+  it("subtracts the output latency so the step is the one the player heard", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    h.state.outputLatency = 0.1;
+    advanceTo(0.6);
+    expect(stepAt(engine)?.step).toBe(4);
+  });
+
+  it("subtracts the base latency alone when the output latency is unknown", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    h.state.outputLatency = 0;
+    h.state.baseLatency = 0.1;
+    advanceTo(0.6);
+    expect(stepAt(engine)?.step).toBe(4);
+  });
+
+  it("subtracts base and output latency together", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    h.state.outputLatency = 0.06;
+    h.state.baseLatency = 0.04;
+    advanceTo(0.6);
+    // Either latency alone would land on step 5.
+    expect(stepAt(engine)?.step).toBe(4);
+  });
+
+  it("reports the event's transport time and the step length", async () => {
+    const { engine } = setup(makePattern());
+    await start(engine);
+    advanceTo(0.53);
+    expect(stepAt(engine)).toMatchObject({ seconds: 0.53, stepSeconds: 0.125 });
+  });
+
+  it("honours a pending seek when the event falls past the last scheduled bar", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(1.98);
+    expect(stepAt(engine)).toBeNull();
+    engine.seek?.(1);
+    expect(stepAt(engine)?.step).toBe(0);
+  });
+
+  it("inverts swing so a swung odd step is found", async () => {
+    const { engine } = setup(makePattern({ swing: 0.5 }));
+    await start(engine);
+    // Step 1 sounds at 0.1875 s; without swing this time would round to step 2.
+    advanceTo(0.19);
+    expect(stepAt(engine)?.step).toBe(1);
+  });
+
+  it("wraps an early downbeat to the loop region's first step", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLoop({ start: 1, end: 2 });
+    await start(engine);
+    advanceTo(3.98);
+    expect(stepAt(engine)?.step).toBe(0);
+  });
+
+  it("maps a note held across a loop wrap to an earlier step than its start", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLoop({ start: 1, end: 2 });
+    await start(engine);
+    advanceTo(3.9);
+    const on = stepAt(engine)!;
+    advanceTo(4.2);
+    const off = stepAt(engine)!;
+
+    expect(on.step).toBe(31);
+    expect(off.step).toBe(2);
+  });
+
+  it("discards a note-on past the end when looping is off", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(1.5);
+    expect(stepAt(engine)?.step).toBe(12);
+    advanceTo(1.98);
+    expect(stepAt(engine)).toBeNull();
+  });
+
+  it("maps an event during the load before a plain Play to the first step instead of dropping it", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    await start(engine);
+    engine.stop();
+    void engine.play();
+    expect(engine.getSnapshot().status).toBe("loading");
+    expect(stepAt(engine)).toMatchObject({ step: 0, stepSeconds: 0.125 });
+  });
+
+  it("maps an event before the first bar sounds to the first step, at the loop region's start when looping", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLoop({ start: 2, end: 3 });
+    await start(engine);
+    expect(stepAt(engine, 500)?.step).toBe(16);
+  });
+
+  it("still drops events during the load of a count-in run, which are heard over the clicks", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    await start(engine);
+    engine.stop();
+    void engine.play({ countIn: true });
+    expect(stepAt(engine)).toBeNull();
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    expect(stepAt(engine, 500)).toBeNull();
+  });
+
+  it("returns null before anything is scheduled", () => {
+    const { engine } = setup(makePattern());
+    expect(stepAt(engine)).toBeNull();
+  });
+});
+
+describe("metronome and count-in", () => {
+  const clickTimes = () => h.state.clicks.map((c) => c.time - AUDIO_OFFSET);
+  const kick = (step: number) => ({
+    row_id: "kick",
+    step,
+    length_steps: 1,
+    velocity: 100,
+  });
+
+  it("clicks on steps 0, 4, 8 and 12 with an accented downbeat", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE }));
+    engine.setLooping(false);
+    engine.setMetronome(true);
+    await start(engine);
+    advanceTo(1.9);
+
+    expect(clickTimes()).toEqual([0, 0.5, 1, 1.5]);
+    const [first, ...rest] = h.state.clicks;
+    expect(rest.every((c) => c.hz < first.hz)).toBe(true);
+  });
+
+  it("clicks twice per measure in 6/8", async () => {
+    const { engine } = setup(
+      makePattern({ measures: ONE_MEASURE, time_signature: "6/8", steps_per_measure: 12 }),
+    );
+    engine.setLooping(false);
+    engine.setMetronome(true);
+    await start(engine);
+    advanceTo(1.4);
+
+    expect(clickTimes()).toEqual([0, 0.75]);
+    expect(h.state.clicks[0].hz).toBeGreaterThan(h.state.clicks[1].hz);
+  });
+
+  it("stays silent with the metronome off and no count-in", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE, notes: [kick(0)] }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(1.9);
+    expect(h.state.clicks).toEqual([]);
+  });
+
+  it("plays one bar of clicks before the first bar when counting in, even with the metronome off", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE, notes: [kick(0)] }));
+    engine.setLooping(false);
+    engine.setMetronome(false);
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    advanceTo(3.9);
+
+    expect(clickTimes()).toEqual([0, 0.5, 1, 1.5]);
+    // The real bar starts the moment the pre-roll ends, and clicks stop after it.
+    expect(h.state.hits.map((x) => x.time - AUDIO_OFFSET)).toEqual([2]);
+  });
+
+  it("does not play notes during the count-in", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE, notes: [kick(4), kick(8)] }));
+    engine.setLooping(false);
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    advanceTo(1.9);
+    expect(h.state.hits).toEqual([]);
+  });
+
+  it("starts with no count-in when playing normally", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE, notes: [kick(0)] }));
+    engine.setLooping(false);
+    await start(engine);
+    advanceTo(0.1);
+    expect(h.state.clicks).toEqual([]);
+    expect(h.state.hits.map((x) => x.time - AUDIO_OFFSET)).toEqual([0]);
+  });
+
+  it("keeps clicks out of the reported position and counts down the beats", async () => {
+    const positions: (number | null)[] = [];
+    const beats: (number | null)[] = [];
+    let frame: (() => void) | undefined;
+    const store = createPatternStore("drums-countin");
+    store.getState().setPattern(makePattern({ measures: ONE_MEASURE }));
+    const engine = createPlaybackEngine(createPatternPlaybackModel("drums", store), {
+      requestFrame: (cb) => ((frame = cb), 1),
+      cancelFrame: () => {},
+    });
+    engine.setLooping(false);
+    engine.subscribePosition((s) => positions.push(s));
+    engine.subscribeCountIn((b) => beats.push(b));
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    for (const t of [0, 0.6, 1.1, 1.6, 2.1]) {
+      advanceTo(t);
+      frame?.();
+    }
+
+    expect(beats).toEqual([4, 3, 2, 1, null]);
+    expect(positions).toEqual([0]);
+  });
+
+  it("ends the count-in when the first real bar is scheduled, without any frame running", async () => {
+    const ended = vi.fn();
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE }));
+    engine.setLooping(false);
+    engine.subscribeCountInEnd(ended);
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    advanceTo(1.9);
+    await Promise.resolve();
+    expect(ended).not.toHaveBeenCalled();
+    advanceTo(2.1);
+    await Promise.resolve();
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the measure the next play starts on, including a pending seek", () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLoop({ start: 2, end: 3 });
+    expect(engine.startMeasure()).toBe(2);
+    engine.setLooping(false);
+    expect(engine.startMeasure()).toBe(1);
+    engine.seek?.(3);
+    expect(engine.startMeasure()).toBe(3);
+  });
+
+  it("discards the rest of the count-in when stopped during it", async () => {
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE, notes: [kick(0)] }));
+    engine.setLooping(false);
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    advanceTo(0.6);
+    engine.stop();
+    const clicks = h.state.clicks.length;
+    advanceTo(5);
+
+    expect(engine.isPlaying).toBe(false);
+    expect(h.state.clicks).toHaveLength(clicks);
+    expect(h.state.hits).toEqual([]);
+  });
+
+  it("does not map events to steps during the count-in", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(1000);
+    const { engine } = setup(makePattern({ measures: ONE_MEASURE }));
+    engine.setLooping(false);
+    void engine.play({ countIn: true });
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(true));
+    advanceTo(1);
+    expect(engine.stepAt(1000)).toBeNull();
+    vi.restoreAllMocks();
   });
 });

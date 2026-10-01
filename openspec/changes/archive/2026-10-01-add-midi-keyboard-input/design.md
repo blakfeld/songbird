@@ -17,7 +17,7 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 - `getPosition()` returns an integer step, and is private. `play()` sets the transport to 0 and the first bar at 0 (`engine.ts:351-355`).
 
 **Stores.**
-- `patternStore.edit` pushes one undo entry per call, and has no gestures.
+- `patternStore.edit` pushes one undo entry per call. Its gestures (`beginGesture`/`commitGesture`/`cancelGesture`, with `transient` `editNotes`) fold a drag into one entry, and any `edit` during a gesture folds in and ends it.
 - `songStore` has `beginGesture`/`endGesture`/`cancelGesture`. Only `transient` ops stay inside a gesture. Other edits commit the gesture (`songStore.ts:119-131, 263-282`).
 - `clipOps.newClip` makes a 1-measure clip. `freeSpanAt` finds the free measures ahead of a position, up to the end of the visible timeline (`timelineMeasures(song) = min(128, max(16, measures + 8))`). `resolveTrackNotes` is cached per `(loops, clips)` reference.
 - Every clip op passes its result through `normalizeSong`, which sets `measures` to the end of the last-ending clip (improve-song-and-note-editing D1). A clip created past the song's end therefore lengthens the song.
@@ -63,10 +63,10 @@ See proposal.md for the motivation and the specs for the behavior. The current s
 - **Timing:** notes start at `context.currentTime`, with no added offset. The engine's playback lookahead doesn't apply to live notes. Tone's context uses the default `latencyHint: "interactive"`, and no change is needed. The 20 ms budget is then the time spent on the main thread, which a Vitest timing check guards.
 - **Alternative:** a long fixed-length trigger, cut short by `triggerRelease`. It fights the voice pool's `freeAt` bookkeeping.
 
-### D3. Mapping event times to steps: `engine.stepAt(domTimeStamp): {step, frac} | null`
+### D3. Mapping event times to steps: `engine.stepAt(domTimeStamp): {step, frac, seconds, stepSeconds} | null`
 - **From MIDI time to transport time:**
   - `audioTime = ctx.currentTime − (performance.now() − timeStamp) / 1000`;
-  - then `outputLatency` is subtracted, so the step matches what the player *heard*;
+  - then `baseLatency + outputLatency` is subtracted (a missing one counts as 0), so the step matches what the player *heard*;
   - then `Transport.getSecondsAtTime(audioTime)` gives transport seconds.
 - **Finding the step:** the engine finds the containing `ScheduledBar` among the kept bars, and inverts `stepToSeconds` within that bar, trying both even and odd steps with swing. It returns the nearest step's song-absolute index, which already reflects loop wrapping because `firstStep` is wrapped.
 - **Wrap-around:** when the nearest step is the one just past the bar, and that bar was the last bar of the loop region, it maps to the region's first step. That covers the "Early downbeat" scenario. With looping off it maps to `null`, and the note is discarded.
@@ -79,8 +79,8 @@ See proposal.md for the motivation and the specs for the behavior. The current s
   2. calls the engine's live note API;
   3. while a take is active, sends the finished `{row_id, step, length_steps, velocity}` to the take on note-off.
 - **`Take`** merges notes with the existing pure `mergeNotes(existing, recorded)` from `lib/patternOps.ts`, so recording and paste resolve collisions identically and there is no recording-specific merge. The same row and step replaces the old note, and an existing note that a recorded note overlaps is shortened. Adapters decide where the result goes:
-  - **Pattern adapter:** it holds `baseNotes`, the notes before the take. On each finished note it calls a new `patternStore.previewTake(notes)`. That sets `pattern.notes` without touching history, so playback and the piano roll see the notes right away. When the take ends, `commitTake()` pushes one history entry whose "before" is `baseNotes`. When a take ends with no notes, nothing changes.
-  - **Song adapter:** it calls `store.beginGesture()` at the start of the take. Take edits are `transient` ops (D5), and `endGesture()` at the end makes one undo step. This also covers loops and clips the take creates. Undo and redo already call `endGesture` first, so pressing Cmd/Ctrl+Z mid-take ends the take and then undoes it.
+  - **Pattern adapter:** it rides the pattern store's gesture, like the song adapter. `beginGesture()` at the start of the take, each finished note is a `transient` `editNotes` that re-merges the recorded notes onto the gesture's base, and `commitGesture()` at the end makes one undo step. When a take ends with no notes, nothing changes. A non-transient edit (toggle, tempo, clear) folds into the gesture and ends it, so the take's notes and that edit are one undo step. Both adapters remember the base they began and re-base on the current state whenever the store's `gestureBase` is no longer that object, so the next recorded note never merges onto a stale base. Drags (piano roll, clip move/resize, mixer sliders) start through the recording session's `guardEdit`, which ends the take first, because a drag shares the store's single gesture and its cancel or replay would otherwise discard the take.
+  - **Song adapter:** it calls `store.beginGesture()` at the start of the take. Take edits are `transient` ops (D5), and `endGesture()` at the end makes one undo step. This also covers loops and clips the take creates. Undo and redo already call `endGesture` first, but the page also routes them (shortcut and buttons) through the recording session's finish, so the take is ended, announced and its router state cleared before the history moves. Leaving the page, or changing the engine, also ends and commits the take; only cancelling a count-in discards.
 - **Alternative:** buffer everything and write it only when the take ends. That is simpler, but notes from the first pass wouldn't be heard on the second pass, which the spec requires.
 
 ### D5. Studio placement: `clipOps.recordNotes(song, trackId, notes, takeState)`
@@ -100,7 +100,7 @@ This is a pure op, marked `transient`.
 - **The click source:** `metronomeSource` is a tiny Tone `MembraneSynth`/`Synth` pair, with an accented downbeat, connected straight to the destination and skipping the track channels.
 - **Scheduling clicks:** `scheduleStep` adds a click when `metronome` is on and `stepInBar % beatSteps === 0`. `beatSteps` is already derived per time signature for the ruler: 4 for 4/4 and 3/4, and 6 for 6/8.
 - **The count-in:** `play({countIn: true})` schedules one pre-roll bar at transport 0. The pre-roll bar has only clicks, is `measure: 0`, and is excluded from `getPosition`. The first real bar then starts at `preRoll.duration`.
-  - `subscribeCountIn(cb)` drives the "Count-in" indicator, a beat counter that counts down 4-3-2-1.
+  - `subscribeCountIn(cb)` drives the "Count-in" indicator, a beat counter that counts down 4-3-2-1. `subscribeCountInEnd(cb)` fires from a transport event when the first real bar is scheduled (up to the 100 ms lookahead before it is audible), so recording begins even when animation frames are throttled.
   - Stop during the pre-roll uses the normal `stop()`, and the adapter discards the take.
 - **Where settings are saved:** `songbird.metronome.v1 = {metronome, countIn}` in localStorage, read by a small shared hook.
 - **Alternative:** schedule clicks as a hidden voice. It would go through voice and mixer code and could leak into export.
@@ -117,7 +117,7 @@ This is a pure op, marked `transient`.
 
 ## Risks / Trade-offs
 
-- **[Risk] `outputLatency` is missing or wrong on some systems, so notes land a step late** → fall back to `baseLatency`, and cover the mapping with injected latencies in tests. Quantizing to the nearest sixteenth (±62 ms at 120 BPM) absorbs typical errors. A calibration setting can come later.
+- **[Risk] `outputLatency` is missing or wrong on some systems, so notes land a step late** → `baseLatency` is always part of the sum, so a missing `outputLatency` costs only the device delay, and cover the mapping with injected latencies in tests. Quantizing to the nearest sixteenth (±62 ms at 120 BPM) absorbs typical errors. A calibration setting can come later.
 - **[Risk] Only 3 bars are kept, so a very late note-off of a long-held note can't be mapped** → note-off mapping falls back to the end of the range. A note held longer than the kept bars is recorded as lasting to the range's end, which is the correct clamp anyway.
 - **[Risk] Held synth voices starve the pool when many keys are held with the pedal down** → steal the oldest held voice as a last resort. 32 voices exceed what a pedalled keyboard part typically needs.
 - **[Risk] A song gesture that spans a long take conflicts with other edits the user makes mid-take** → a non-transient edit already commits the gesture. The adapter detects that (the gesture base was cleared), starts a new gesture for the rest of the take, and the take then spans two undo steps. That is documented, and it is an edge case.

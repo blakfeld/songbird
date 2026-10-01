@@ -19,16 +19,24 @@ const onKeyboardKey = (t: EventTarget | null) => t instanceof Element && t.close
 // The loop region's body is a button whose Space toggles looping; playback must not also start.
 const onLoopRegion = (t: EventTarget | null) => t instanceof Element && t.closest("[data-loop-region]") !== null;
 
-export function useEditorShortcuts(instrumentId: string, onTogglePlayback?: () => void) {
+export function useEditorShortcuts(
+  instrumentId: string,
+  onTogglePlayback?: () => void,
+  onToggleRecord?: () => void,
+  // Undo and redo must end a take first, or its pending notes would be written over the restored pattern.
+  guardEdit: (edit: () => void) => void = (edit) => edit(),
+) {
   useShortcuts({
     togglePlayback: onTogglePlayback,
-    undo: () => getPatternStore(instrumentId).getState().undo(),
-    redo: () => getPatternStore(instrumentId).getState().redo(),
+    toggleRecord: onToggleRecord,
+    undo: () => guardEdit(() => getPatternStore(instrumentId).getState().undo()),
+    redo: () => guardEdit(() => getPatternStore(instrumentId).getState().redo()),
   });
 }
 
 interface ShortcutActions {
   togglePlayback?: () => void;
+  toggleRecord?: () => void;
   undo: () => void;
   redo: () => void;
   // Only the Studio has clips; other pages leave Cmd/Ctrl+D to the browser.
@@ -50,6 +58,22 @@ export function useShortcuts(actions: ShortcutActions) {
         if (!inRoll && e.target instanceof Element && e.target.closest(SELF_ACTIVATING)) return;
         e.preventDefault();
         if (!e.repeat) latest.current.togglePlayback?.();
+        return;
+      }
+      if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (
+          e.defaultPrevented ||
+          e.repeat ||
+          isTextEntryTarget(e.target) ||
+          // A modal owns its keys, and a take must not start behind it.
+          (e.target instanceof Element && e.target.closest("dialog, [role=dialog], [role=alertdialog]"))
+        ) {
+          return;
+        }
+        if (latest.current.toggleRecord) {
+          e.preventDefault();
+          latest.current.toggleRecord();
+        }
         return;
       }
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;

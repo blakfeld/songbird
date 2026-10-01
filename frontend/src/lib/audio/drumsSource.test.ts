@@ -4,6 +4,7 @@ import { createDrumsSource } from "./drumsSource";
 const h = vi.hoisted(() => ({
   connected: [] as unknown[],
   toDestinationCalls: 0,
+  starts: [] as number[],
 }));
 
 vi.mock("tone", () => ({}));
@@ -24,7 +25,9 @@ class ToneBufferSource {
   connect() {
     return this;
   }
-  start() {}
+  start(t: number) {
+    h.starts.push(t);
+  }
   stop() {}
   dispose() {}
 }
@@ -62,5 +65,16 @@ describe("drums source routing", () => {
 
     expect(h.toDestinationCalls).toBe(1);
     expect(h.connected).toEqual([]);
+  });
+});
+
+describe("drums source live notes", () => {
+  it("fires the full one-shot on noteOn and ignores noteOff", async () => {
+    h.starts = [];
+    const source = createDrumsSource(tone);
+    await source.load([row]);
+    const handle = source.noteOn(row, 5, 100);
+    source.noteOff(handle, 6);
+    expect(h.starts).toEqual([5]);
   });
 });

@@ -1,4 +1,5 @@
 import { getPatternStore, type PatternStore } from "@/lib/patternStore";
+import { beatSteps } from "@/lib/pianoRoll";
 import type { PlaybackModel } from "./types";
 
 // The pattern is read on every call rather than captured, so live edits reach
@@ -15,6 +16,7 @@ export function createPatternPlaybackModel(
       return {
         tempo: p.tempo_bpm,
         swing: p.swing,
+        beatSteps: beatSteps(p.time_signature),
         stepsPerMeasure: p.steps_per_measure,
         measures: p.measures,
       };

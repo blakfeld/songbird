@@ -19,6 +19,25 @@ export function createDrumsSource(
   const covers = (notes: Set<number>) =>
     [...notes].every((n) => loadedNotes.has(n));
 
+  const hit = (row: Row, startSeconds: number, velocity: number) => {
+    const key = String(row.midi_note);
+    if (!buffers?.has(key)) return;
+    // Own gain per hit so a soft hit cannot change a still-ringing loud one.
+    const gain = new tone.Gain(velocityToGain(velocity));
+    if (output) gain.connect(output);
+    else gain.toDestination();
+    const src = new tone.ToneBufferSource({
+      url: buffers.get(key),
+      onended: () => {
+        active.delete(src);
+        src.dispose();
+        gain.dispose();
+      },
+    }).connect(gain);
+    active.add(src);
+    src.start(startSeconds);
+  };
+
   return {
     // Kept across plays so playback still works if the network drops after the
     // first load; only a row whose sample isn't loaded yet triggers a fetch.
@@ -52,23 +71,16 @@ export function createDrumsSource(
 
     // endSeconds is unused: a drum hit always rings out fully.
     trigger(row, startSeconds, _endSeconds, velocity) {
-      const key = String(row.midi_note);
-      if (!buffers?.has(key)) return;
-      // Own gain per hit so a soft hit cannot change a still-ringing loud one.
-      const gain = new tone.Gain(velocityToGain(velocity));
-      if (output) gain.connect(output);
-      else gain.toDestination();
-      const src = new tone.ToneBufferSource({
-        url: buffers.get(key),
-        onended: () => {
-          active.delete(src);
-          src.dispose();
-          gain.dispose();
-        },
-      }).connect(gain);
-      active.add(src);
-      src.start(startSeconds);
+      hit(row, startSeconds, velocity);
     },
+
+    // A drum hit is a one-shot, so a live key press never needs to hold anything.
+    noteOn(row, startSeconds, velocity) {
+      hit(row, startSeconds, velocity);
+      return {};
+    },
+
+    noteOff() {},
 
     stopAll() {
       for (const src of active) src.stop();

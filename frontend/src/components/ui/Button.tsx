@@ -8,6 +8,10 @@ const variants = {
     "rounded-full border border-zinc-300 bg-white px-4 py-2 text-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900",
 } as const;
 
+export function buttonClass(variant: keyof typeof variants = "secondary") {
+  return `inline-flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${focusRing}`;
+}
+
 export function Button({
   variant = "secondary",
   className = "",
@@ -17,7 +21,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${focusRing} ${className}`}
+      className={`${buttonClass(variant)} ${className}`}
       {...props}
     />
   );

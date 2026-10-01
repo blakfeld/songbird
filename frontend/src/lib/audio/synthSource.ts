@@ -1,4 +1,4 @@
-import type { SoundSource } from "./types";
+import type { NoteHandle, SoundSource } from "./types";
 import { velocityToGain } from "./velocity";
 
 type ToneModule = typeof import("tone");
@@ -25,6 +25,8 @@ interface PooledVoice {
   freeAt: number;
   // Tone rejects a restart that is not strictly after the previous start.
   startedAt: number;
+  // The live note currently holding this voice open, so a stale noteOff cannot release a successor.
+  held: NoteHandle | null;
 }
 
 // Voices are driven directly rather than through Tone.PolySynth: its voices
@@ -49,15 +51,21 @@ export function createSynthSource(preset: SynthPreset) {
       if (pool.voices.length < MAX_POLYPHONY) {
         const synth = new tone[preset.voice](preset.options as never) as Voice;
         synth.connect(pool.bus);
-        const created = { synth, freeAt: 0, startedAt: -Infinity };
+        const created = { synth, freeAt: 0, startedAt: -Infinity, held: null };
         pool.voices.push(created);
         return created;
       }
       // A voice that started at or after this note cannot be stolen without
       // wiping its queued events, so the note is dropped instead.
+      // Held voices go last: cutting a key the player is still pressing is worse than cutting a tail.
       let oldest: PooledVoice | undefined;
       for (const v of pool.voices) {
-        if (v.startedAt < startSeconds && (!oldest || v.startedAt < oldest.startedAt)) {
+        if (v.startedAt >= startSeconds) continue;
+        if (
+          !oldest ||
+          (oldest.held && !v.held) ||
+          (!oldest.held === !v.held && v.startedAt < oldest.startedAt)
+        ) {
           oldest = v;
         }
       }
@@ -89,6 +97,32 @@ export function createSynthSource(preset: SynthPreset) {
         );
         voice.synth.triggerRelease(endSeconds);
         voice.startedAt = startSeconds;
+        voice.held = null;
+        voice.freeAt =
+          endSeconds + Number(voice.synth.toSeconds(voice.synth.envelope.release));
+      },
+
+      noteOn(row, startSeconds, velocity) {
+        const handle: NoteHandle = {};
+        const voice = acquire(startSeconds);
+        if (!voice) return handle;
+        voice.synth.triggerAttack(
+          midiToFrequency(row.midi_note),
+          startSeconds,
+          velocityToGain(velocity),
+        );
+        voice.startedAt = startSeconds;
+        voice.held = handle;
+        // Unknown until noteOff, so nothing may reuse the voice in the meantime.
+        voice.freeAt = Infinity;
+        return handle;
+      },
+
+      noteOff(handle, endSeconds) {
+        const voice = pool.voices.find((v) => v.held === handle);
+        if (!voice) return;
+        voice.synth.triggerRelease(endSeconds);
+        voice.held = null;
         voice.freeAt =
           endSeconds + Number(voice.synth.toSeconds(voice.synth.envelope.release));
       },

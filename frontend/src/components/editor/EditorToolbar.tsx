@@ -20,14 +20,21 @@ export function EditorToolbar({
   pattern,
   measureOptions,
   onStatus,
+  guardEdit = (edit) => edit(),
 }: {
   instrumentId: string;
   instrument: InstrumentInfo | null;
   pattern: Pattern;
   measureOptions: number[] | null;
   onStatus: (message: string) => void;
+  // Ends a running take before the history moves, so the take's notes are not lost to the undo.
+  guardEdit?: (edit: () => void) => void;
 }) {
-  const canUndo = usePatternStore(instrumentId, (s) => s.past.length > 0);
+  const canUndo = usePatternStore(
+    instrumentId,
+    // A take or drag in flight has no history entry yet, but undo still works because it commits that gesture first.
+    (s) => s.past.length > 0 || (s.gestureBase !== null && s.gestureBase !== s.pattern),
+  );
   const canRedo = usePatternStore(instrumentId, (s) => s.future.length > 0);
   const actions = () => getPatternStore(instrumentId).getState();
 
@@ -62,7 +69,7 @@ export function EditorToolbar({
           title="Undo (⌘Z / Ctrl+Z)"
           aria-keyshortcuts="Meta+Z Control+Z"
           disabled={!canUndo}
-          onClick={() => actions().undo()}
+          onClick={() => guardEdit(() => actions().undo())}
         >
           <span aria-hidden="true">↶</span>
           <span className="max-sm:hidden">Undo</span>
@@ -72,7 +79,7 @@ export function EditorToolbar({
           title="Redo (⇧⌘Z / Ctrl+Shift+Z)"
           aria-keyshortcuts="Shift+Meta+Z Shift+Control+Z"
           disabled={!canRedo}
-          onClick={() => actions().redo()}
+          onClick={() => guardEdit(() => actions().redo())}
         >
           <span aria-hidden="true">↷</span>
           <span className="max-sm:hidden">Redo</span>

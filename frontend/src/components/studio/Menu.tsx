@@ -16,7 +16,11 @@ export function useMenuBehavior(
 ) {
   useEffect(() => {
     if (!open) return;
-    root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    // Radio menus open on the checked item (ARIA APG); plain menus have none and fall back to the first.
+    const first =
+      root.current?.querySelector<HTMLElement>('[role^="menuitem"][aria-checked="true"]') ??
+      root.current?.querySelector<HTMLElement>('[role^="menuitem"]');
+    first?.focus();
     const onPointerDown = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) onClose(false);
     };
@@ -34,9 +38,11 @@ export function useMenuBehavior(
       onClose(true);
     } else if (e.key === "Tab") {
       onClose(false);
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Home" || e.key === "End") {
       e.preventDefault();
-      const items = [...(root.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+      const items = [...(root.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
+      if (e.key === "Home") return items[0]?.focus();
+      if (e.key === "End") return items[items.length - 1]?.focus();
       const at = items.indexOf(document.activeElement as HTMLElement);
       const step = e.key === "ArrowDown" ? 1 : -1;
       items[(at + step + items.length) % items.length]?.focus();
@@ -47,22 +53,28 @@ export function useMenuBehavior(
 // Arrow keys move between items and Tab closes, so the menu never traps keyboard users.
 export function Menu({
   label,
+  triggerLabel = label,
   trigger,
   triggerClassName,
   disabled = false,
+  defaultOpen = false,
   align = "left",
   panelClassName = "w-56",
   children,
 }: {
   label: string;
+  // Separate so a trigger's accessible name can contain its visible text while the panel keeps the plain name.
+  triggerLabel?: string;
   trigger: ReactNode;
   triggerClassName: string;
   disabled?: boolean;
+  // For a menu that replaces the control which just granted it access, so keyboard focus lands inside it.
+  defaultOpen?: boolean;
   align?: "left" | "right";
   panelClassName?: string;
   children: (close: () => void) => ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -79,7 +91,7 @@ export function Menu({
       <button
         ref={button}
         type="button"
-        aria-label={label}
+        aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
