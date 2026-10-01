@@ -12,6 +12,7 @@ Before doing any task yourself, ask: "Does this need to live in my context, or o
 | Next.js/React/TS implementation, Vitest/Playwright work in `frontend/` | `frontend-developer` |
 | Layout, UX flows, visual design, accessibility, styling critique | `ui-designer` |
 | Reviewing a diff/branch/files before commit or on request | `code-reviewer` |
+| Security audit of a diff, feature, or the whole app (XSS, injection, CORS, auth, DoS, secrets, deps) | `security-researcher` |
 | Multi-file investigation, "how does X work", library/docs/web research | `researcher` |
 
 Handle it yourself only when it's genuinely small: a single-fact lookup in a file you already know, a one- or two-line edit, or answering from context you already hold.

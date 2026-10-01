@@ -7,7 +7,7 @@
 ## 2. Database layer
 
 - [ ] 2.1 Add `sqlx` (`any`, `sqlite`, `postgres`, `runtime-tokio`, `tls-rustls`, `migrate`), `uuid` (v7), and `tempfile` (dev) to `backend/crates/api/Cargo.toml`. Verify that `cargo build -p api` passes.
-- [ ] 2.2 Implement the `db` module (D2): scheme detection, the default `sqlite://data/songbird.db?mode=rwc` with parent-directory creation, rejection of `:memory:` and unknown schemes, SQLite `after_connect` pragmas, and `DbError` with a redacted URL. Verify with unit tests for each URL case, plus a test showing that `PRAGMA foreign_keys` reads 1 on a pooled SQLite connection.
+- [ ] 2.2 Implement the `db` module (D2): scheme detection, the default `sqlite://data/songbird.db?mode=rwc` with parent-directory creation, rejection of `:memory:` and unknown schemes, SQLite `after_connect` pragmas, and `DbError` with a redacted URL. Verify with unit tests for each URL case (including a Postgres URL with `sslmode=verify-full&sslrootcert=...` being accepted with those options applied), plus a test showing that `PRAGMA foreign_keys` reads 1 on a pooled SQLite connection.
 - [ ] 2.3 Add `migrations/sqlite/0001_init.sql` and `migrations/postgres/0001_init.sql` (no-ops). Embed both migrators, and run the right one in `Db::connect`. Add the parity test comparing `(version, description)` lists. Verify that the parity test passes and fails when a file is added to only one set.
 - [ ] 2.4 Write `backend/crates/api/src/db/README.md` with the portable SQL conventions (D4). Verify that it covers ids, times, booleans, JSON, case-insensitivity, placeholders, allowed and avoided syntax, and how to add a migration to both sets.
 
