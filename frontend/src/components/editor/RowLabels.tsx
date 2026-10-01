@@ -64,9 +64,9 @@ function KeyLane({ highlight, tints }: { highlight: KeyHighlight; tints: RowTint
           style={{ height: "var(--row-h)" }}
           className={
             tint === "tonic"
-              ? "flex items-center justify-center border-b border-emerald-600 bg-emerald-400 text-[10px] leading-none font-bold text-emerald-950 dark:border-emerald-500 dark:bg-emerald-700 dark:text-emerald-50"
+              ? "flex items-center justify-center bg-emerald-300 text-[10px] leading-none font-bold text-emerald-950 dark:bg-emerald-700 dark:text-emerald-50"
               : tint === "scale"
-                ? "bg-emerald-200 dark:bg-emerald-900"
+                ? "bg-emerald-100 dark:bg-emerald-900/50"
                 : undefined
           }
         >
