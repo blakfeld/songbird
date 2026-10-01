@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { inputClass } from "@/components/ui/classes";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import { isSubmitEnter } from "@/lib/isSubmitEnter";
 import type { Song, Track } from "@/lib/song/types";
 import type { ChatController } from "./useChat";
 
@@ -128,7 +129,7 @@ export function AssistantPanel({
           disabled={!song}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (isSubmitEnter(e)) {
               e.preventDefault();
               if (!chat.sending) e.currentTarget.form?.requestSubmit();
             }
