@@ -263,6 +263,188 @@ describe("tracks", () => {
     expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
   });
 
+  describe("reordering tracks", () => {
+    const threeTracks = () => {
+      const song = newSongWithTracks();
+      song.tracks.push(newTrack("bass", "Bass"));
+      return song;
+    };
+    const order = () =>
+      screen.getAllByRole("group", { name: /^Track \d+:/ }).map((g) => /^Track \d+: ([^,]+)/.exec(g.getAttribute("aria-label")!)![1]);
+
+    it("moves a track down from its options menu", async () => {
+      await renderStudio(threeTracks());
+      await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Move track down" }));
+      expect(order()).toEqual(["Piano", "Drums", "Bass"]);
+      expect(screen.getByRole("button", { name: /^Select Drums track/ })).toHaveFocus();
+    });
+
+    it("disables the move item at each end of the list", async () => {
+      await renderStudio(threeTracks());
+      await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+      expect(screen.getByRole("menuitem", { name: "Move track up" })).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByRole("menuitem", { name: "Move track down" })).toHaveAttribute("aria-disabled", "false");
+      await userEvent.click(screen.getByRole("menuitem", { name: "Move track up" }));
+      expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+      await userEvent.keyboard("{Escape}");
+      await userEvent.click(screen.getByRole("button", { name: "Track options for Bass" }));
+      expect(screen.getByRole("menuitem", { name: "Move track down" })).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByRole("menuitem", { name: "Move track up" })).toHaveAttribute("aria-disabled", "false");
+    });
+
+    it("keeps focus on the header and announces the move with Alt+Shift+Down", async () => {
+      await renderStudio(threeTracks());
+      const select = () => screen.getByRole("button", { name: /^Select Piano track/ });
+      select().focus();
+      await userEvent.keyboard("{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}");
+      expect(order()).toEqual(["Drums", "Bass", "Piano"]);
+      expect(select()).toHaveFocus();
+      expect(screen.getByText("Piano moved to position 3 of 3").closest("[aria-live]")).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+    });
+
+    it("announces a repeated identical move as a new message", async () => {
+      await renderStudio(threeTracks());
+      const first = () => screen.getByRole("button", { name: /^Select Drums track/ });
+      first().focus();
+      await userEvent.keyboard("{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}");
+      const before = screen.getByText("Drums moved to position 2 of 3");
+      await userEvent.keyboard("{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}");
+      await userEvent.keyboard("{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}");
+      const after = screen.getByText("Drums moved to position 2 of 3");
+      expect(after).not.toBe(before);
+      expect(before).not.toBeInTheDocument();
+    });
+
+    describe("dragging", () => {
+      const LANE_H = 80;
+      beforeEach(() => {
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          const index = this.dataset.trackLane
+            ? screen.getAllByRole("group", { name: /^Track \d+:/ }).indexOf(this)
+            : -1;
+          const top = index >= 0 ? index * LANE_H : 0;
+          const bottom = index >= 0 ? top + LANE_H : this.getAttribute("aria-label") === "Arrangement" ? 1000 : 0;
+          return { x: 0, y: top, left: 0, top, right: 0, bottom, width: 0, height: bottom - top, toJSON: () => ({}) } as DOMRect;
+        });
+      });
+      afterEach(() => vi.restoreAllMocks());
+
+      const grip = (name: string) => screen.getByRole("button", { name: `Reorder ${name}` });
+      const startDrag = (name: string, from: number, to: number) => {
+        fireEvent.pointerDown(grip(name), { clientY: from, button: 0, buttons: 1 });
+        fireEvent.pointerMove(grip(name), { clientY: from + 2, buttons: 1 });
+        fireEvent.pointerMove(grip(name), { clientY: to, buttons: 1 });
+      };
+
+      it("drags a track up and renumbers the lanes", async () => {
+        await renderStudio(threeTracks());
+        startDrag("Bass", 200, 100);
+        fireEvent.pointerUp(grip("Bass"), { clientY: 100 });
+        expect(order()).toEqual(["Drums", "Bass", "Piano"]);
+        expect(screen.getByRole("group", { name: /^Track 2: Bass/ })).toBeInTheDocument();
+        expect(screen.getByText("Bass moved to position 2 of 3")).toBeInTheDocument();
+      });
+
+      it("treats a small wobble as a click, not a drag", async () => {
+        await renderStudio(threeTracks());
+        fireEvent.pointerDown(grip("Bass"), { clientY: 200, button: 0, buttons: 1 });
+        fireEvent.pointerMove(grip("Bass"), { clientY: 202, buttons: 1 });
+        fireEvent.pointerUp(grip("Bass"), { clientY: 202 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+      });
+
+      it("cancels a drag with Escape and records nothing", async () => {
+        await renderStudio(threeTracks());
+        startDrag("Bass", 200, 10);
+        fireEvent.keyDown(document, { key: "Escape" });
+        fireEvent.pointerUp(grip("Bass"), { clientY: 10 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+        expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+      });
+
+      it("cancels a drag when the pointer capture is lost", async () => {
+        await renderStudio(threeTracks());
+        startDrag("Bass", 200, 10);
+        fireEvent.lostPointerCapture(grip("Bass"));
+        fireEvent.pointerUp(grip("Bass"), { clientY: 10 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+        expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+      });
+
+      it("cancels a drag when the button was released out of sight", async () => {
+        await renderStudio(threeTracks());
+        startDrag("Bass", 200, 150);
+        fireEvent.pointerMove(grip("Bass"), { clientY: 10, buttons: 0 });
+        fireEvent.pointerUp(grip("Bass"), { clientY: 10 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+      });
+
+      it("ignores Ctrl+press on the grip", async () => {
+        await renderStudio(threeTracks());
+        fireEvent.pointerDown(grip("Bass"), { clientY: 200, button: 0, buttons: 1, ctrlKey: true });
+        fireEvent.pointerMove(grip("Bass"), { clientY: 10, buttons: 1 });
+        fireEvent.pointerUp(grip("Bass"), { clientY: 10 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+      });
+
+      it("cancels a drag when the tracks change underneath it", async () => {
+        await renderStudio(threeTracks());
+        await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+        await userEvent.click(screen.getByRole("menuitem", { name: "Move track down" }));
+        expect(order()).toEqual(["Piano", "Drums", "Bass"]);
+        startDrag("Bass", 200, 10);
+        await userEvent.keyboard("{Meta>}z{/Meta}");
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+        fireEvent.pointerUp(grip("Bass"), { clientY: 10 });
+        expect(order()).toEqual(["Drums", "Piano", "Bass"]);
+      });
+
+      it("clears the drag when undo and redo bring the old order back mid-drag", async () => {
+        await renderStudio(threeTracks());
+        await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+        await userEvent.click(screen.getByRole("menuitem", { name: "Move track down" }));
+        startDrag("Bass", 200, 10);
+        expect(document.querySelector("[data-dragging]")).not.toBeNull();
+        await userEvent.keyboard("{Meta>}z{/Meta}");
+        await userEvent.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
+        expect(order()).toEqual(["Piano", "Drums", "Bass"]);
+        expect(document.querySelector("[data-dragging]")).toBeNull();
+        expect(document.querySelector("[class*='bg-indigo-600'][aria-hidden='true'][style]")).toBeNull();
+      });
+
+      it("keeps the drag going through a change that leaves the order alone", async () => {
+        await renderStudio(threeTracks());
+        startDrag("Bass", 200, 150);
+        await userEvent.click(screen.getByRole("button", { name: "Mute Drums" }));
+        fireEvent.pointerMove(grip("Bass"), { clientY: 100, buttons: 1 });
+        fireEvent.pointerUp(grip("Bass"), { clientY: 100 });
+        expect(order()).toEqual(["Drums", "Bass", "Piano"]);
+      });
+
+      it("keeps scrolling while the pointer rests at the edge, and stops on drop", async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+        vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {
+          frames.length = 0;
+        });
+        await renderStudio(threeTracks());
+        const region = screen.getByRole("region", { name: "Arrangement" });
+        let top = 0;
+        Object.defineProperty(region, "scrollTop", { get: () => top, set: (v: number) => (top = v), configurable: true });
+        startDrag("Bass", 200, 990);
+        expect(frames).toHaveLength(1);
+        for (let i = 0; i < 3; i++) act(() => frames.shift()!(0));
+        expect(top).toBe(48);
+        fireEvent.pointerUp(grip("Bass"), { clientY: 990 });
+        expect(frames).toHaveLength(0);
+      });
+    });
+  });
+
   it("closes a track's Sound panel when the track is deleted, and undo does not reopen it", async () => {
     await renderStudio();
     await userEvent.click(screen.getByRole("button", { name: "Sound for Piano" }));
@@ -1319,6 +1501,43 @@ describe("MIDI keyboard", () => {
     expect(status()).toHaveTextContent("Recorded 1 note.");
     expect(within(lane("Piano")).queryByTestId("clip-notes")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+  });
+
+  it("ends the take when a track is moved mid-take, so undoing the move keeps the recorded notes", async () => {
+    await recordPianoNote();
+    await userEvent.click(screen.getByRole("button", { name: "Track options for Piano" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Move track up" }));
+
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })[0]).toHaveAccessibleName(/^Track 1: Piano/);
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })[0]).toHaveAccessibleName(/^Track 1: Drums/);
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+  });
+
+  it("ends the take when a track is renamed mid-take, so undoing the rename keeps the recorded notes", async () => {
+    await recordPianoNote();
+    await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Rename track…" }));
+    const input = screen.getByRole("textbox", { name: "Track name Drums" });
+    await userEvent.clear(input);
+    await userEvent.type(input, "Beats{Enter}");
+
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })[0]).toHaveAccessibleName(/^Track 1: Drums/);
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+  });
+
+  it("ends the take when a track is deleted mid-take, so undoing the delete keeps the recorded notes", async () => {
+    await recordPianoNote();
+    await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete track" }));
+
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })[0]).toHaveAccessibleName(/^Track 1: Drums/);
     expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
   });
 

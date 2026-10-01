@@ -126,6 +126,17 @@ export function deleteTrack(song: Song, trackId: string): Song {
   return normalizeSong({ ...song, tracks: song.tracks.filter((t) => t.id !== trackId) });
 }
 
+export function moveTrack(song: Song, trackId: string, toIndex: number): Song {
+  const from = song.tracks.findIndex((t) => t.id === trackId);
+  if (from < 0) return song;
+  const to = clamp(toIndex, 0, song.tracks.length - 1);
+  if (to === from) return song;
+  const tracks = song.tracks.slice();
+  const [moved] = tracks.splice(from, 1);
+  tracks.splice(to, 0, moved);
+  return { ...song, tracks };
+}
+
 export function renameTrack(song: Song, trackId: string, name: string): Song {
   const next = name.trim().slice(0, TRACK_NAME_MAX);
   if (!next) return song;

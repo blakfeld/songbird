@@ -84,6 +84,30 @@ describe("songStore history", () => {
     expect(store.getState().selectedTrackId).toBe(a.id);
   });
 
+  it("moves a track as one undo step, keeping the selection", () => {
+    const store = setup();
+    const [a, b] = store.getState().song!.tracks;
+    store.getState().newClip(b.id, 1);
+    store.getState().selectTrack(b.id);
+    const { selectedTrackId, selectedClipId } = store.getState();
+    const depth = store.getState().past.length;
+    store.getState().moveTrack(b.id, 0);
+    expect(store.getState().song!.tracks.map((t) => t.id)).toEqual([b.id, a.id]);
+    expect(store.getState().past).toHaveLength(depth + 1);
+    expect(store.getState().selectedTrackId).toBe(selectedTrackId);
+    expect(store.getState().selectedClipId).toBe(selectedClipId);
+    store.getState().undo();
+    expect(store.getState().song!.tracks.map((t) => t.id)).toEqual([a.id, b.id]);
+  });
+
+  it("records nothing for a no-op move", () => {
+    const store = setup();
+    const [a] = store.getState().song!.tracks;
+    store.getState().moveTrack(a.id, 0);
+    store.getState().moveTrack("missing", 1);
+    expect(store.getState().past).toHaveLength(0);
+  });
+
   it("caps history at 100 entries and clears redo on a new edit", () => {
     const store = setup();
     for (let i = 0; i < 120; i++) store.getState().setTempo(41 + i);
