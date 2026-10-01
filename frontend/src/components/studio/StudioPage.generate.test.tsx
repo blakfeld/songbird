@@ -137,6 +137,23 @@ describe("generate a track", () => {
     expect(within(dialog).getByRole("radio", { name: "Custom measures" })).toBeChecked();
   }, SLOW);
 
+  it("defaults a one-measure song to a custom 1-8 span that may run past the song's end", async () => {
+    vi.mocked(api.generateTrack).mockResolvedValue(response({ start_measure: 1, end_measure: 16 }));
+    await renderStudio(songOf(1));
+    const dialog = await openGenerate("Piano");
+    expect(within(dialog).getByRole("radio", { name: "Custom measures" })).toBeChecked();
+    expect(within(dialog).getByRole("spinbutton", { name: "From measure" })).toHaveValue(1);
+    expect(within(dialog).getByRole("spinbutton", { name: "To measure" })).toHaveValue(8);
+    const end = within(dialog).getByRole("spinbutton", { name: "To measure" });
+    await userEvent.clear(end);
+    await userEvent.type(end, "16");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Describe the part" }), "pad");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(api.generateTrack).toHaveBeenCalled());
+    expect(vi.mocked(api.generateTrack).mock.calls[0][0].range).toEqual({ start_measure: 1, end_measure: 16 });
+    await waitFor(() => expect(lane("Piano").querySelectorAll("[data-clip-id]")).toHaveLength(1));
+  });
+
   it("offers the whole song for a song of at most 32 measures", async () => {
     await renderStudio(songOf(32));
     const dialog = await openGenerate("Piano");

@@ -11,7 +11,7 @@ import { focusRing, inputClass } from "@/components/ui/classes";
 import { getSongLimits } from "@/lib/api";
 import { estimateTokens } from "@/lib/estimateTokens";
 import { activeLoopRange, MAX_GENERATE_MEASURES } from "@/lib/song/songLoop";
-import type { Song, Track } from "@/lib/song/types";
+import { MEASURE_RANGE, type Song, type Track } from "@/lib/song/types";
 import { useApiResource } from "@/lib/useApiResource";
 
 export interface GenerateRequest {
@@ -21,6 +21,9 @@ export interface GenerateRequest {
 }
 
 type Choice = "song" | "loop" | "custom";
+
+const SHORT_SONG_MEASURES = 4;
+const DEFAULT_NEW_SPAN = 8;
 
 const numberOrNaN = (text: string) => (text.trim() === "" ? NaN : Number(text));
 
@@ -44,11 +47,13 @@ function GenerateForm({
   const [prompt, setPrompt] = useState(initialPrompt);
   const loopRange = activeLoopRange(song);
   const wholeSongOffered = song.measures <= MAX_GENERATE_MEASURES;
+  // A new song is one measure long, so "whole song" would generate a single bar; the span grows the song instead.
+  const tiny = song.measures < SHORT_SONG_MEASURES;
   const [choice, setChoice] = useState<Choice>(
-    loopRange ? "loop" : wholeSongOffered ? "song" : "custom",
+    loopRange ? "loop" : wholeSongOffered && !tiny ? "song" : "custom",
   );
   const [start, setStart] = useState("1");
-  const [end, setEnd] = useState(String(Math.min(4, song.measures)));
+  const [end, setEnd] = useState(String(tiny ? DEFAULT_NEW_SPAN : SHORT_SONG_MEASURES));
 
   const max = limits.data?.max_input_tokens ?? null;
   const count = estimateTokens(prompt);
@@ -61,8 +66,8 @@ function GenerateForm({
       ? null
       : !Number.isInteger(startNumber) || !Number.isInteger(endNumber)
         ? "Enter whole measure numbers."
-        : startNumber < 1 || endNumber > song.measures || startNumber > endNumber
-          ? `Choose measures from 1 to ${song.measures}, with the end after the start.`
+        : startNumber < 1 || endNumber > MEASURE_RANGE.max || startNumber > endNumber
+          ? `Choose measures from 1 to ${MEASURE_RANGE.max}, with the end after the start.`
           : endNumber - startNumber + 1 > MAX_GENERATE_MEASURES
             ? `Generate at most ${MAX_GENERATE_MEASURES} measures at a time.`
             : null;
@@ -139,7 +144,7 @@ function GenerateForm({
                 type="number"
                 inputMode="numeric"
                 min={1}
-                max={song.measures}
+                max={MEASURE_RANGE.max}
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
                 aria-invalid={customError !== null}
@@ -153,7 +158,7 @@ function GenerateForm({
                 type="number"
                 inputMode="numeric"
                 min={1}
-                max={song.measures}
+                max={MEASURE_RANGE.max}
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
                 aria-invalid={customError !== null}
@@ -170,7 +175,7 @@ function GenerateForm({
         )}
       </fieldset>
       <p className="text-xs text-zinc-600 dark:text-zinc-400">
-        Replaces what {track.name} plays in that range. Undo restores it.
+        Replaces what {track.name} plays in that range. A range past the end of the song makes it longer. Undo restores it.
       </p>
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>

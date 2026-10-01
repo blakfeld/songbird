@@ -136,8 +136,10 @@ fn resolve_range(
         },
         None => return Err(TrackRequestError::InvalidRange),
     };
+    // Bounded by the song-length cap, not the current length, because a song's
+    // length follows its clips and a new song is only one measure long.
     let ordered = range.start_measure >= 1 && range.start_measure <= range.end_measure;
-    if !ordered || range.end_measure > song_measures || range.measures() > MAX_RANGE_MEASURES {
+    if !ordered || range.end_measure > MAX_MEASURES || range.measures() > MAX_RANGE_MEASURES {
         return Err(TrackRequestError::InvalidRange);
     }
     Ok(range)
@@ -223,8 +225,12 @@ mod tests {
     }
 
     #[test]
-    fn a_range_past_the_end_is_rejected() {
-        assert_eq!(code(&body(8, Some((7, 10)))), "invalid_range");
+    fn a_range_may_extend_past_the_song_end_up_to_measure_128() {
+        assert!(outcome(&body(8, Some((7, 10)))).is_ok());
+        assert!(outcome(&body(1, Some((1, 16)))).is_ok());
+        assert!(outcome(&body(8, Some((97, 128)))).is_ok());
+        assert_eq!(code(&body(8, Some((120, 129)))), "invalid_range");
+        assert_eq!(code(&body(8, Some((129, 130)))), "invalid_range");
     }
 
     #[test]

@@ -28,7 +28,7 @@ The system SHALL validate the request before invoking the AI provider, and a rej
 - **Song:** the song SHALL be valid under the song export validation rules, with the same error codes.
 - **Track:** `track_id` SHALL name a track in the song; otherwise the request SHALL be rejected with `422` and error code `invalid_track`.
 - **Prompt:** `prompt` SHALL follow the same rules as pattern generation (`invalid_prompt`, and `prompt_too_long` against `max_input_tokens`).
-- **Range:** `range` SHALL satisfy `1 ≤ start_measure ≤ end_measure ≤ song measures` and span at most 32 measures; otherwise the request SHALL be rejected with `422` and error code `invalid_range`.
+- **Range:** `range` SHALL satisfy `1 ≤ start_measure ≤ end_measure ≤ 128` and span at most 32 measures; otherwise the request SHALL be rejected with `422` and error code `invalid_range`. A range MAY extend past the song's current last measure, because the song's length follows its clips and grows to include the generated clip; measures past the end have no context from other tracks.
 - **Missing range on a long song:** a request without `range` for a song longer than 32 measures SHALL be rejected with `invalid_range`.
 
 #### Scenario: Unknown track
@@ -46,6 +46,10 @@ The system SHALL validate the request before invoking the AI provider, and a rej
 #### Scenario: Range past the end
 - **WHEN** a client requests `range` `{7, 10}` on an 8-measure song
 - **THEN** the response is `422` with error code `invalid_range`
+
+#### Scenario: Range past the song end
+- **WHEN** a 1-measure song is sent with `range` `{1, 16}`
+- **THEN** the response is `200` and the notes cover measures 1–16
 
 ### Requirement: Song settings are fixed during track generation
 Track generation SHALL use the song's `tempo_bpm`, `time_signature`, `swing`, and `key`. It SHALL NOT change them, and it SHALL NOT return values for them. The returned notes SHALL satisfy the pattern document's consistency rules: `velocity` 1–127, `length_steps` ≥ 1, and no overlaps within a row. No note SHALL start before step 0 or end after the range's length in steps.
@@ -129,7 +133,7 @@ The system SHALL expose `GET /api/v1/songs/limits`, returning `200` with `{"max_
 ### Requirement: Generate a track in the Studio
 Each track in the Studio SHALL offer a Generate action. The action SHALL open a form with:
 - a prompt field, with the live token counter and over-limit behavior of the pattern editor;
-- a range choice: "Whole song" (offered only when the song has at most 32 measures), "Loop range" (offered only while looping is on, the song has a loop region, and that region covers less than the whole song and spans at most 32 measures; it uses that region's measures), or a custom start and end measure limited to 32 measures.
+- a range choice: "Whole song" (offered only when the song has at most 32 measures), "Loop range" (offered only while looping is on, the song has a loop region, and that region covers less than the whole song and spans at most 32 measures; it uses that region's measures), or a custom start and end measure limited to 32 measures, which MAY extend past the song's current end up to measure 128.
 
 While the request is in flight:
 - the target track SHALL show a loading state, and its clips and loops SHALL NOT be editable;
@@ -192,7 +196,7 @@ Later messages SHALL be understood in the light of the earlier conversation and 
 
 While a chat request is in flight, the chat input SHALL be disabled, and editing, the mixer, and playback SHALL remain usable. A track added from the chat SHALL be recorded as one undo step. When the song already has 16 tracks, the reply SHALL say so and the song SHALL be unchanged. When generation fails, the error SHALL be shown in the chat and the song SHALL be unchanged.
 
-The chat SHALL generate over the whole song when the song has at most 32 measures, and otherwise over the song's loop region when looping is on, a region exists, it covers less than the whole song, and it spans at most 32 measures. When neither applies, the reply SHALL ask the user to turn on looping and set a loop region of at most 32 measures, and no track SHALL be added. The conversation, up to its latest 20 messages, SHALL be saved with the song and restored on reload.
+When the user's message names a length of 1–32 measures (for example "16 bars"), the chat SHALL generate over measures 1 to that length, extending the song if it is shorter. Otherwise, when no track of the song has any clip, the chat SHALL generate over measures 1–8. Otherwise the chat SHALL generate over the whole song when the song has at most 32 measures, and otherwise over the song's loop region when looping is on, a region exists, it covers less than the whole song, and it spans at most 32 measures. When none of these applies, the reply SHALL ask the user to turn on looping and set a loop region of at most 32 measures, and no track SHALL be added. The conversation, up to its latest 20 messages, SHALL be saved with the song and restored on reload.
 
 #### Scenario: Build a song one part at a time
 - **WHEN** in an empty song the user sends "give me a piano that plays slow jazzy chords", then "give me the drums to match", then "now the bass"
@@ -209,6 +213,14 @@ The chat SHALL generate over the whole song when the song has at most 32 measure
 #### Scenario: Chat failure leaves the song unchanged
 - **WHEN** a chat request fails
 - **THEN** the error is shown in the chat and no track is added
+
+#### Scenario: Named length grows the song
+- **WHEN** the song is 1 measure long and the user asks the chat for "16 bars of slow jazzy piano"
+- **THEN** a Piano track is added whose one clip covers measures 1–16, and the song is 16 measures long
+
+#### Scenario: Default length for an empty song
+- **WHEN** no track has any clip and the user asks the chat for a drum beat without naming a length
+- **THEN** a Drums track is added whose one clip covers measures 1–8
 
 #### Scenario: Long song without a loop range
 - **WHEN** the song is 48 measures long, looping is off, and the user asks the chat for a bass part

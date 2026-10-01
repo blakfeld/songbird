@@ -46,14 +46,15 @@ async fn chat(
         plan_chat(state.providers.plans.as_ref(), &plan_request),
     )
     .await?;
-    let (reply, instrument, track_name, prompt) = match plan {
+    let (reply, instrument, track_name, prompt, measures) = match plan {
         Plan::ReplyOnly { reply } => return Ok(Json(ChatResponse::reply_only(reply))),
         Plan::AddTrack {
             reply,
             instrument,
             track_name,
             prompt,
-        } => (reply, instrument, track_name, prompt),
+            measures,
+        } => (reply, instrument, track_name, prompt, measures),
     };
 
     // Enforced here whatever the planner decided, so a confused model cannot
@@ -61,7 +62,7 @@ async fn chat(
     if track_limit_reached(&chat.song) {
         return Ok(Json(ChatResponse::reply_only(TRACK_LIMIT_REPLY)));
     }
-    let ChatRange::Range(range) = chat.range else {
+    let ChatRange::Range(range) = chat.range_for(measures) else {
         return Ok(Json(ChatResponse::reply_only(LOOP_RANGE_REPLY)));
     };
 

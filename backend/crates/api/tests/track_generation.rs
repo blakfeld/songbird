@@ -231,10 +231,34 @@ async fn long_song_without_a_range_is_422() {
 }
 
 #[tokio::test]
-async fn range_past_the_end_is_422() {
+async fn range_past_measure_128_is_422() {
     assert_eq!(
-        rejected(body(drums_and_empty_bass(8), Some((7, 10)))).await,
+        rejected(body(drums_and_empty_bass(8), Some((120, 129)))).await,
         (StatusCode::UNPROCESSABLE_ENTITY, json!("invalid_range"), 0)
+    );
+}
+
+#[tokio::test]
+async fn a_range_past_the_song_end_is_generated() {
+    let mut one_measure = drums_and_empty_bass(1);
+    one_measure["tracks"][0]["clips"][0]["measures"] = json!(1);
+    let (status, response) = generate(
+        app_with(MockProvider, &[]),
+        body(one_measure, Some((1, 16))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(
+        response["range"],
+        json!({"start_measure": 1, "end_measure": 16})
+    );
+    let notes = response["notes"].as_array().unwrap();
+    assert!(notes
+        .iter()
+        .all(|n| n["step"].as_u64().unwrap() + n["length_steps"].as_u64().unwrap() <= 256));
+    assert!(
+        notes.iter().any(|n| n["step"].as_u64().unwrap() >= 16),
+        "notes cover more than measure 1"
     );
 }
 

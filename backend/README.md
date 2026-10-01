@@ -139,9 +139,11 @@ curl -s localhost:8080/api/v1/songs/tracks/generate \
 
 Body: `song` (a song document, validated as for song export), `track_id`,
 `prompt` (the pattern endpoint's prompt rules), and optional `range`
-(`{"start_measure", "end_measure"}`, 1-based and inclusive, at most 32
-measures). Without `range` the whole song is generated, which a song longer than
-32 measures does not allow. The response is
+(`{"start_measure", "end_measure"}`, 1-based and inclusive, from measure 1 to
+128 and at most 32 measures). A range may extend past the song's current last
+measure, because a song's length follows its clips; measures past the end have
+no context from other tracks. Without `range` the whole song is generated, which
+a song longer than 32 measures does not allow. The response is
 `{"track_id", "range", "notes"}`. The notes use the target instrument's rows and
 count `step` from the first step of `range`, so a client can store them as a loop
 that starts at the range. Tempo, time signature, swing and key come from the
@@ -149,7 +151,7 @@ song; the AI cannot change them.
 
 Errors are those of the pattern endpoint, plus `422 invalid_song` (with the
 song-export validation message), `422 invalid_track` (`track_id` is not in the
-song) and `422 invalid_range` (outside the song, longer than 32 measures, or
+song) and `422 invalid_range` (outside measures 1-128, longer than 32 measures, or
 missing for a song longer than 32 measures). The body limit is 2 MiB.
 
 The provider is shown a text summary of the song, rendered by
@@ -188,9 +190,14 @@ last message follows the prompt rules of pattern generation. The response is
 `{"name", "instrument", "range", "notes"}`; `notes` count from the start of
 `range`, as for track generation. Ids stay with the client.
 
-The range is the whole song when the song has at most 32 measures. A longer song
-uses the supplied `range` if it spans at most 32 measures; otherwise the reply
-asks the user to turn on looping and draw a loop region, and no track is added.
+The range is chosen in this order. A length the user names ("16 bars", "eight
+measures"), which the planner reports as `measures` (1-32), gives measures
+1 to that length, extending the song if needed. Otherwise a song in which no
+track has a clip gets measures 1-8. Otherwise the whole song is used when it has
+at most 32 measures. A longer song uses the supplied `range` if it spans at most
+32 measures; otherwise the reply asks the user to turn on looping and draw a
+loop region, and no track is added. A planner `measures` outside 1-32 is treated
+as not named.
 A reply with `track: null` is also returned for questions, and when the song
 already has 16 tracks (enforced by the server whatever the planner says).
 
@@ -202,7 +209,8 @@ message over 4000 characters. Provider failures are `502 generation_failed` and
 `504 generation_timeout`. The planner prompt holds the song's
 tracks (and the measures they play in) and the conversation, trimmed oldest
 first to `SONGBIRD_MAX_CONTEXT_TOKENS`; the latest message is never trimmed.
-With `SONGBIRD_AI_PROVIDER=mock` the planner is keyword based: a question gets a
+With `SONGBIRD_AI_PROVIDER=mock` the planner is keyword based: a number (digits
+or words, 1-32) followed by bar(s) or measure(s) is the named length; a question gets a
 reply only; `drum` or `beat` gives a Drums track, `piano`, `chord` or `keys` a
 Piano track, `bass` a Bass track, and anything else the first melodic
 instrument (Piano).

@@ -21,6 +21,10 @@ use crate::track_generation::{MeasureRange, MAX_RANGE_MEASURES};
 
 pub const MAX_CHAT_MESSAGES: usize = 20;
 
+/// A new song is one measure long, so an empty song's default part would
+/// otherwise be a single bar.
+pub const DEFAULT_EMPTY_SONG_MEASURES: u32 = 8;
+
 /// Fixed server-side text because the planner is never asked for these replies.
 pub const TRACK_LIMIT_REPLY: &str =
     "This song already has 16 tracks, which is the limit. Remove a track and ask again.";
@@ -91,8 +95,9 @@ impl ChatRequestError {
     }
 }
 
-/// Decided before any provider call so a long song without a usable range can be
-/// answered without spending a generation.
+/// Decided after the planner because the length the user named comes from it;
+/// a long song without a usable range is still answered without spending a
+/// generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRange {
     Range(MeasureRange),
@@ -107,7 +112,36 @@ pub struct ValidChat<'a> {
     /// Kept trimmed so the planner and the prompt-size rules see the same text
     /// the user meant, without stray whitespace counting toward the limit.
     pub prompt: String,
-    pub range: ChatRange,
+    /// The client's loop range, shape-checked; only a long song uses it.
+    loop_range: Option<MeasureRange>,
+}
+
+impl ValidChat<'_> {
+    /// Order matters: a length the user named wins because it is the most
+    /// explicit request; an empty song gets a default because "the whole song"
+    /// would be one measure; only then does the song's own length decide.
+    pub fn range_for(&self, named_measures: Option<u32>) -> ChatRange {
+        let whole = |measures| {
+            ChatRange::Range(MeasureRange {
+                start_measure: 1,
+                end_measure: measures,
+            })
+        };
+        if let Some(measures) = named_measures {
+            return whole(measures);
+        }
+        if self.song.song.tracks.iter().all(|t| t.clips.is_empty()) {
+            return whole(DEFAULT_EMPTY_SONG_MEASURES);
+        }
+        let song_measures = self.song.song.measures;
+        if song_measures <= MAX_RANGE_MEASURES {
+            return whole(song_measures);
+        }
+        match self.loop_range {
+            Some(range) if range.measures() <= MAX_RANGE_MEASURES => ChatRange::Range(range),
+            _ => ChatRange::NeedsLoopRange,
+        }
+    }
 }
 
 impl ChatBody {
@@ -128,30 +162,24 @@ impl ChatBody {
             return Err(ChatRequestError::InvalidMessages);
         }
         let prompt = validate_prompt(&last.content, max_input_tokens)?;
-        let range = chat_range(self.song.measures, self.range)?;
+        let loop_range = check_loop_range(self.song.measures, self.range)?;
         Ok(ValidChat {
             song,
             messages: &self.messages,
             prompt,
-            range,
+            loop_range,
         })
     }
 }
 
-/// Whole song when it fits one generation, otherwise only a loop range the
-/// user drew, so a long song is never quietly generated in part.
-fn chat_range(
+/// A malformed loop range is a client bug worth reporting, but only a long song
+/// ever uses one, so shorter songs ignore it.
+fn check_loop_range(
     song_measures: u32,
     supplied: Option<MeasureRange>,
-) -> Result<ChatRange, ChatRequestError> {
-    if song_measures <= MAX_RANGE_MEASURES {
-        return Ok(ChatRange::Range(MeasureRange {
-            start_measure: 1,
-            end_measure: song_measures,
-        }));
-    }
-    let Some(range) = supplied else {
-        return Ok(ChatRange::NeedsLoopRange);
+) -> Result<Option<MeasureRange>, ChatRequestError> {
+    let Some(range) = supplied.filter(|_| song_measures > MAX_RANGE_MEASURES) else {
+        return Ok(None);
     };
     if range.start_measure < 1
         || range.start_measure > range.end_measure
@@ -159,11 +187,7 @@ fn chat_range(
     {
         return Err(ChatRequestError::InvalidRange);
     }
-    Ok(if range.measures() <= MAX_RANGE_MEASURES {
-        ChatRange::Range(range)
-    } else {
-        ChatRange::NeedsLoopRange
-    })
+    Ok(Some(range))
 }
 
 pub fn track_limit_reached(song: &ValidSong) -> bool {
@@ -387,36 +411,57 @@ mod tests {
         assert_eq!(code(&b), "invalid_song");
     }
 
+    fn range_of(b: &ChatBody, named: Option<u32>) -> ChatRange {
+        b.validate(&InstrumentRegistry::builtin(), 256)
+            .unwrap()
+            .range_for(named)
+    }
+
+    fn whole(end_measure: u32) -> ChatRange {
+        ChatRange::Range(MeasureRange {
+            start_measure: 1,
+            end_measure,
+        })
+    }
+
     #[test]
     fn a_short_song_is_generated_whole() {
         let b = body(32, user("a bass"), Some((2, 3)));
-        let valid = b.validate(&InstrumentRegistry::builtin(), 256).unwrap();
-        assert_eq!(
-            valid.range,
-            ChatRange::Range(MeasureRange {
-                start_measure: 1,
-                end_measure: 32
-            })
-        );
+        assert_eq!(range_of(&b, None), whole(32));
+    }
+
+    #[test]
+    fn a_named_length_wins_and_may_exceed_the_song() {
+        assert_eq!(range_of(&body(4, user("x"), None), Some(16)), whole(16));
+        assert_eq!(range_of(&body(48, user("x"), None), Some(4)), whole(4));
+    }
+
+    #[test]
+    fn a_song_without_clips_defaults_to_eight_measures() {
+        let mut b = body(4, user("x"), None);
+        b.song.tracks[0].clips.clear();
+        assert_eq!(range_of(&b, None), whole(8));
+        assert_eq!(range_of(&b, Some(3)), whole(3));
     }
 
     #[test]
     fn a_long_song_uses_the_supplied_loop_range_or_asks_for_one() {
-        let ranged = |range| {
-            body(48, user("a bass"), range)
-                .validate(&InstrumentRegistry::builtin(), 256)
-                .map(|v| v.range)
-        };
+        let long = |range| body(48, user("a bass"), range);
+        assert_eq!(range_of(&long(Some((9, 16))), None), whole_from(9, 16));
+        assert_eq!(range_of(&long(None), None), ChatRange::NeedsLoopRange);
         assert_eq!(
-            ranged(Some((9, 16))).unwrap(),
-            ChatRange::Range(MeasureRange {
-                start_measure: 9,
-                end_measure: 16
-            })
+            range_of(&long(Some((1, 40))), None),
+            ChatRange::NeedsLoopRange
         );
-        assert_eq!(ranged(None).unwrap(), ChatRange::NeedsLoopRange);
-        assert_eq!(ranged(Some((1, 40))).unwrap(), ChatRange::NeedsLoopRange);
-        assert_eq!(ranged(Some((40, 60))).unwrap_err().code(), "invalid_range");
+        assert_eq!(code(&long(Some((40, 60)))), "invalid_range");
+        assert_eq!(code(&long(Some((5, 4)))), "invalid_range");
+    }
+
+    fn whole_from(start_measure: u32, end_measure: u32) -> ChatRange {
+        ChatRange::Range(MeasureRange {
+            start_measure,
+            end_measure,
+        })
     }
 
     fn prompt_for(messages: Vec<ChatMessage>, budget: u32) -> String {
@@ -506,6 +551,7 @@ mod tests {
             instrument: instrument.into(),
             track_name: "T".into(),
             prompt: "p".into(),
+            measures: None,
         }
     }
 

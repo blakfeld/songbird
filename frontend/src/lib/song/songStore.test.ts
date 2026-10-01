@@ -475,6 +475,42 @@ describe("generation lock on clip operations", () => {
   });
 });
 
+describe("ranges past the song's end", () => {
+  const range = { start_measure: 1, end_measure: 16 };
+
+  it("grows a 1-measure song when a generated range covers 1-16, in one history entry", () => {
+    const store = setup();
+    expect(store.getState().song!.measures).toBe(1);
+    const id = store.getState().song!.tracks[1].id;
+    expect(store.getState().applyGeneratedRange(id, range, [note("c4", 0)])).toBeNull();
+    const s = store.getState();
+    expect(s.song!.measures).toBe(16);
+    expect(s.song!.tracks[1].clips).toMatchObject([{ start_measure: 1, measures: 16 }]);
+    expect(s.past).toHaveLength(1);
+    s.undo();
+    expect(store.getState().song!.measures).toBe(1);
+  });
+
+  it("grows a 1-measure song when a chat track covers 1-16", () => {
+    const store = setup();
+    const part = { name: "Piano", instrument: "piano", range, notes: [note("c4", 0)] };
+    expect(store.getState().applyChatResult("16 bars", { reply: "ok", track: part })).toBeNull();
+    const s = store.getState();
+    expect(s.song!.measures).toBe(16);
+    expect(s.song!.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 16 }]);
+    expect(s.past).toHaveLength(1);
+  });
+
+  it("refuses a range past the 128-measure cap", () => {
+    const store = setup();
+    const id = store.getState().song!.tracks[1].id;
+    expect(store.getState().applyGeneratedRange(id, { start_measure: 120, end_measure: 129 }, [])).not.toBeNull();
+    const part = { name: "Piano", instrument: "piano", range: { start_measure: 120, end_measure: 129 }, notes: [] };
+    expect(store.getState().applyChatResult("x", { reply: "ok", track: part })).toMatch(/128/);
+    expect(store.getState().past).toHaveLength(0);
+  });
+});
+
 describe("generation tokens", () => {
   it("ignores an endGenerating from a stale token and honours the current one", () => {
     const store = setup();

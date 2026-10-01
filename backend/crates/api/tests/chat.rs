@@ -96,6 +96,7 @@ impl PlanProvider for UnknownInstrument {
             instrument: "kazoo".into(),
             track_name: "Kazoo".into(),
             prompt: "hum".into(),
+            measures: None,
         })
     }
     async fn check(&self) -> Result<(), ProviderError> {
@@ -417,4 +418,71 @@ async fn hanging_generation_is_504_after_a_successful_plan() {
     .await;
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
     assert_eq!(response["error"]["code"], "generation_timeout");
+}
+
+fn one_measure_song(tracks: Vec<Value>) -> Value {
+    song(1, tracks)
+}
+
+fn drum_track_with_one_clip() -> Value {
+    track(
+        "t1",
+        "Drums",
+        "drums",
+        json!([{"id": "l1", "name": "Beat", "measures": 1, "notes": [
+            {"row_id": "kick", "step": 0, "length_steps": 1, "velocity": 100}]}]),
+        json!([{"id": "c1", "loop_id": "l1", "start_measure": 1, "measures": 1}]),
+    )
+}
+
+fn empty_track() -> Value {
+    track("t0", "Track 1", "drums", json!([]), json!([]))
+}
+
+#[tokio::test]
+async fn a_named_length_grows_a_one_measure_song() {
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]),
+        json!({"song": one_measure_song(vec![drum_track_with_one_clip()]),
+               "messages": [user("16 bars of slow jazzy piano")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"]["instrument"], "piano");
+    assert_eq!(
+        response["track"]["range"],
+        json!({"start_measure": 1, "end_measure": 16})
+    );
+    let notes = response["track"]["notes"].as_array().unwrap();
+    assert!(notes.iter().any(|n| n["step"].as_u64().unwrap() >= 16 * 15));
+}
+
+#[tokio::test]
+async fn an_empty_song_defaults_to_eight_measures() {
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]),
+        json!({"song": one_measure_song(vec![empty_track()]),
+               "messages": [user("give me a drum beat")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"]["instrument"], "drums");
+    assert_eq!(
+        response["track"]["range"],
+        json!({"start_measure": 1, "end_measure": 8})
+    );
+}
+
+#[tokio::test]
+async fn without_a_named_length_a_song_with_clips_uses_its_own_length() {
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]),
+        json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass please")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(
+        response["track"]["range"],
+        json!({"start_measure": 1, "end_measure": 4})
+    );
 }

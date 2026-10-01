@@ -4,6 +4,7 @@ import { type NoteGrid, mergeNotes, normalizeNotes } from "../patternOps";
 import { normalizeSong, timelineMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
+  MEASURE_RANGE,
   LOOP_NAME_MAX,
   MAX_CLIPS,
   MAX_LOOPS,
@@ -401,6 +402,8 @@ export function applyGeneratedRange(
 ): ClipOpResult {
   const clipId = newId();
   return editTrack(song, trackId, clipId, (track) => {
+    // The range may reach past the song's end, which grows the song, but never past the length cap.
+    if (range.end_measure > MEASURE_RANGE.max) return "no-room";
     const cleared = clearTrackRange(song, track, range.start_measure, range.end_measure);
     const measures = range.end_measure - range.start_measure + 1;
     const loop: Loop = { id: newId(), name: newLoopName(cleared), measures, notes };

@@ -13,7 +13,7 @@ import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as ops from "./songOps";
 import { songLoop, withLiveChat, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
-import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, type Song, type SongKey } from "./types";
+import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
@@ -348,6 +348,8 @@ export function createSongStore(initial: Song | null = null): SongStore {
         const current = get().song;
         if (!current) return "There is no song open.";
         const added = response.track ? ops.addChatTrack(current, response.track) : null;
+        if (response.track && response.track.range.end_measure > MEASURE_RANGE.max)
+          return `A song can be at most ${MEASURE_RANGE.max} measures long.`;
         if (response.track && !added)
           return `The song already has ${MAX_TRACKS} tracks, the most it can hold.`;
         const entries: ChatEntry[] = [

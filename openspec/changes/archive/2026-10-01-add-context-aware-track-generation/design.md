@@ -91,7 +91,7 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 
 ### D8. Planner call
 - **Provider kind:** `ai/plan.rs` adds `PlanProvider`, `SchemaPlanProvider<T: StructuredProvider>`, and `MockPlanProvider`, following #8's one-trait-per-artifact shape. They reuse the schema-generic transports unchanged. Claude's hard-coded "emit_pattern" error text becomes the request's `tool_name`.
-- **Schema:** `{action: "add_track" | "reply_only", reply, instrument, track_name, prompt}`. `instrument` is an enum of registry ids, built the same way the draft schema builds its lane enums.
+- **Schema:** `{action: "add_track" | "reply_only", reply, instrument, track_name, prompt, measures}`, where `measures` is the length the user named (1–32) or null. `instrument` is an enum of registry ids, built the same way the draft schema builds its lane enums.
 - **Rechecks after the call:** the server rechecks the instrument, because not every transport enforces enums. An unknown id is retried once as an unusable draft, and then fails with `generation_failed`. `track_name` is trimmed to 40 characters.
 - **Rewritten prompt:** the planner turns "now the bass" into a standalone description, for example "a bass line locking to the kick and following the piano's chords". This lets the generation call stay exactly as D1–D3 define it, with no knowledge of the chat.
 - **Timeouts:** the planner and the generation call each run under the existing 60 s timeout, because they are separate provider calls with separate failure modes.
@@ -106,7 +106,9 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 
 ### D10. Chat range
 - **Rule:**
-  - When the song has at most 32 measures, the range is the whole song.
+  - When the planner reports a length the user named (`measures`, 1–32), the range is measures 1 to that length, extending the song if needed.
+  - Otherwise, when no track has any clip, the range is measures 1–8, because an empty song is 1 measure long and "the whole song" would give a one-bar part.
+  - Otherwise, when the song has at most 32 measures, the range is the whole song.
   - When the song is longer, the range is the supplied `range` if it spans at most 32 measures. The browser supplies one only while looping is on and a region exists that is not the whole song (D6).
   - Otherwise the server returns a `reply_only` response asking the user to turn on looping and draw a loop region of at most 32 measures on the ruler, and it makes no generation call.
 - **Why:** this reuses the existing 32-measure span limit and does not quietly generate only part of a long song.
@@ -144,3 +146,8 @@ See proposal.md for motivation and `specs/songs/track-generation/spec.md` for be
 - [Summaries lose voicing detail] → Accepted. Per-beat pitch sets plus bass carry harmony and rhythm, and #8 adds explicit chords.
 - [The user edits the target track's range during a request] → Prevented, because the target track is locked while generating.
 - [Each regeneration adds a loop, so loops pile up] → Unplaced loops are listed with a "0 clips" count and can be deleted from the loop menu (add-arrangement-clips). Regenerating the same range removes the previous generated clip and leaves its loop unplaced, so the user can place it again or delete it.
+
+### D15. Ranges may extend past the song end
+- **Rule:** track generation and chat accept ranges up to measure 128, not only up to the song's current length. The song's length follows its clips, so placing the generated clip grows the song, as placing any clip past the end already does.
+- **Why:** a new song is 1 measure long, so bounding ranges by the current length made it impossible to generate a part longer than what already exists.
+- **Context:** measures past the end have no other-track context; only the header and the target's surroundings apply.

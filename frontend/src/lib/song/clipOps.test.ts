@@ -652,9 +652,9 @@ describe("applyGeneratedRange", () => {
 
     const manyClips = songWith(
       [loop("a", 1)],
-      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 1 }, (_, i) => clip(`d${i}`, "a", 20 + i, 1))],
+      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 1 }, (_, i) => clip(`d${i}`, "a", 2, 1))],
     );
-    const result = clips.applyGeneratedRange(manyClips, "t", { start_measure: 300, end_measure: 301 }, []);
+    const result = clips.applyGeneratedRange(manyClips, "t", { start_measure: 100, end_measure: 101 }, []);
     expect(reason(result)).toBe("clip-limit");
   });
 
@@ -669,9 +669,9 @@ describe("applyGeneratedRange", () => {
 
     const clipsAtLimit = songWith(
       [loop("a", 1)],
-      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 2 }, (_, i) => clip(`d${i}`, "a", 20 + i, 1))],
+      [clip("c", "a", 1, 1), ...Array.from({ length: MAX_CLIPS - 2 }, (_, i) => clip(`d${i}`, "a", 2, 1))],
     );
-    const result = ok(clips.applyGeneratedRange(clipsAtLimit, "t", { start_measure: 300, end_measure: 301 }, []));
+    const result = ok(clips.applyGeneratedRange(clipsAtLimit, "t", { start_measure: 100, end_measure: 101 }, []));
     expect(track(result.song).clips).toHaveLength(MAX_CLIPS);
   });
 });

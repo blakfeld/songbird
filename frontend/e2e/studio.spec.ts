@@ -388,6 +388,24 @@ test("build piano, drums and bass through the chat, then undo the bass", async (
   expect(problems).toEqual([]);
 });
 
+test("a named length in the chat grows a new song to that many measures", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await newSong(page, "Length Song");
+  await page.getByRole("textbox", { name: "Message the assistant" }).fill("16 bars of slow jazzy piano");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("log", { name: "Conversation" }).getByText("Added a Piano track.")).toBeVisible();
+
+  const added = page.getByRole("group", { name: /^Track 3: Piano/ });
+  await expect(added.getByRole("button", { name: /measures 1 to 16/ })).toBeVisible();
+  await expect(added.locator("[data-clip-id]")).toHaveCount(1);
+  await expect(added.getByTestId("clip-notes")).toHaveCount(1);
+
+  expect(problems).toEqual([]);
+});
+
 test("download a project, open it as a new song, and export a multitrack MIDI file", async ({ page }) => {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));

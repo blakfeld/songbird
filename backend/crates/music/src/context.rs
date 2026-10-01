@@ -101,7 +101,11 @@ fn render_header(song: &ValidSong, target: usize, range: MeasureRange) -> String
 }
 
 fn neighbour_measures(song: &ValidSong, range: MeasureRange) -> Vec<u32> {
-    let before = range.start_measure.checked_sub(1).filter(|&m| m >= 1);
+    // Ranges can lie past the song's end, where no measure has notes to show.
+    let before = range
+        .start_measure
+        .checked_sub(1)
+        .filter(|&m| m >= 1 && m <= song.song.measures);
     let after = Some(range.end_measure + 1).filter(|&m| m <= song.song.measures);
     before.into_iter().chain(after).collect()
 }
@@ -558,5 +562,17 @@ mod tests {
         let s = song(4, vec![piano, target]);
         let text = render(&s, 1, 1, 4, 4000);
         assert_eq!(bass_by_beat_at_range_start(&text)[0], Some(48));
+    }
+
+    #[test]
+    fn ranges_past_the_song_end_render_without_other_track_notes() {
+        let drums = placed("d", "Drums", "drums", 4, vec![note("kick", 0, 1)]);
+        let s = bass_over(vec![drums], 4);
+        let text = render(&s, 1, 6, 20, 4000);
+        assert!(text.contains("writing measures 6-20"), "{text}");
+        assert!(!text.contains("kick"), "{text}");
+        let straddling = render(&s, 1, 3, 12, 4000);
+        assert!(straddling.contains("m4 kick"), "{straddling}");
+        assert!(!straddling.contains("m5 kick"), "{straddling}");
     }
 }
