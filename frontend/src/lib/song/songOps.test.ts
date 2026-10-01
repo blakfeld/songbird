@@ -31,6 +31,15 @@ describe("tracks", () => {
     expect(ops.addTrack(s, { id: "piano", name: "Piano" })).toBe(s);
   });
 
+  it("shrinks the song length when the track that set it is deleted", () => {
+    const base = ops.addTrack(newSong(), { id: "piano", name: "Piano" });
+    const long = ops.normalizeSong(withClips(base, 1, [[1, 20]]));
+    expect(long.measures).toBe(20);
+    const after = ops.deleteTrack(long, long.tracks[1].id);
+    expect(after.measures).toBe(ops.derivedMeasures(after));
+    expect(after.measures).toBeLessThan(20);
+  });
+
   it("refuses to delete the last track", () => {
     let s = newSong();
     s = ops.deleteTrack(s, s.tracks[0].id);
@@ -47,27 +56,60 @@ describe("tracks", () => {
 });
 
 describe("song settings", () => {
-  it("lengthening appends silence and keeps existing clips", () => {
+  it("follows the clips: lengthening appends silence and keeps existing clips", () => {
     const s = withClips(newSong(), 0, [[1, 8]]);
-    const longer = ops.setSongLength(s, 12);
+    expect(ops.normalizeSong(s).measures).toBe(8);
+    const moved = withClips(s, 0, [[11, 2]]);
+    const longer = ops.normalizeSong(moved);
     expect(longer.measures).toBe(12);
-    expect(longer.tracks[0].clips).toBe(s.tracks[0].clips);
+    expect(longer.tracks[1].clips).toBe(s.tracks[1].clips);
   });
 
-  it("shortening trims and deletes clips on every track and keeps every loop whole", () => {
-    let s = ops.setSongLength(newSong(), 12);
-    s = withClips(s, 0, [[7, 4], [11, 2]]);
-    s = withClips(s, 1, [[1, 2]]);
-    const cut = ops.setSongLength(s, 8);
-    expect(cut.tracks[0].clips).toMatchObject([{ start_measure: 7, measures: 2 }]);
-    expect(cut.tracks[0].loops).toBe(s.tracks[0].loops);
-    expect(cut.tracks[1].clips).toBe(s.tracks[1].clips);
+  it("shortens to the end of the last remaining clip, or 1 with no clips", () => {
+    let s = withClips(newSong(), 0, [[1, 6], [9, 4]]);
+    expect(ops.normalizeSong(s).measures).toBe(12);
+    s = withClips(s, 0, [[1, 6]]);
+    expect(ops.normalizeSong(s).measures).toBe(6);
+    expect(ops.normalizeSong(withClips(s, 0, [])).measures).toBe(1);
   });
 
-  it("clamps length, tempo, swing and no-ops on equal values", () => {
+  it("returns the same song when the length is already right", () => {
+    const s = ops.normalizeSong(withClips(newSong(), 0, [[1, 4]]));
+    expect(ops.normalizeSong(s)).toBe(s);
+  });
+
+  it("keeps a loop region that lies past the song's end but inside the timeline", () => {
+    const s = ops.normalizeSong({
+      ...withClips(newSong(), 0, [[1, 4]]),
+      loop_region: { region: { start_measure: 3, end_measure: 12 }, enabled: true },
+    });
+    expect(s.loop_region?.region).toEqual({ start_measure: 3, end_measure: 12 });
+  });
+
+  it("clamps a loop region to the timeline when the song shrinks", () => {
+    const s = ops.normalizeSong({
+      ...withClips(newSong(), 0, [[1, 4]]),
+      loop_region: { region: { start_measure: 20, end_measure: 30 }, enabled: true },
+    });
+    expect(s.loop_region?.region).toEqual({ start_measure: 16, end_measure: 16 });
+  });
+
+  it("gives the timeline 8 spare measures, at least 16 in total, at most 128", () => {
+    expect(ops.timelineMeasures({ measures: 1 })).toBe(16);
+    expect(ops.timelineMeasures({ measures: 8 })).toBe(16);
+    expect(ops.timelineMeasures({ measures: 20 })).toBe(28);
+    expect(ops.timelineMeasures({ measures: 125 })).toBe(128);
+  });
+
+  it("has a default key of C major when the song has none", () => {
+    expect(newSong().key).toEqual({ tonic: "C", mode: "major" });
+    const { key: _key, ...old } = newSong();
+    void _key;
+    expect(ops.songKey(old)).toEqual({ tonic: "C", mode: "major" });
+  });
+
+  it("clamps tempo and swing and no-ops on equal values", () => {
     const s = newSong();
-    expect(ops.setSongLength(s, 500).measures).toBe(128);
-    expect(ops.setSongLength(s, 0).measures).toBe(1);
     expect(ops.setTempo(s, 1000).tempo_bpm).toBe(240);
     expect(ops.setTempo(s, 120)).toBe(s);
     expect(ops.setSwing(s, 2).swing).toBe(0.75);
@@ -147,7 +189,7 @@ describe("addTrackFromPattern", () => {
     expect(t).toMatchObject({ name: "Boom Bap", instrument: drums.id });
     expect(t.loops).toMatchObject([{ name: "Boom Bap", measures: 4, notes: pattern.notes }]);
     expect(t.clips).toMatchObject([{ loop_id: t.loops[0].id, start_measure: 1, measures: 4 }]);
-    expect(s.measures).toBe(8);
+    expect(s.measures).toBe(4);
   });
 
   it("lengthens the song when the pattern is longer, leaving other tracks empty there", () => {
@@ -161,7 +203,7 @@ describe("addTrackFromPattern", () => {
   });
 
   it("places a short pattern as a short clip in a longer song", () => {
-    const base = ops.setSongLength(newSong(), 16);
+    const base = withClips(newSong(), 0, [[1, 16]]);
     const s = ops.addTrackFromPattern(base, { ...pattern, measures: 4 });
     expect(s.measures).toBe(16);
     expect(s.tracks[2].clips).toMatchObject([{ start_measure: 1, measures: 4 }]);
@@ -173,5 +215,81 @@ describe("addTrackFromPattern", () => {
     expect(ops.addTrackFromPattern(s, pattern)).toBe(s);
     const waltz = newSong("3/4");
     expect(ops.addTrackFromPattern(waltz, pattern)).toBe(waltz);
+  });
+});
+
+describe("time signature", () => {
+  const loopSong = (notes: ReturnType<typeof note>[], spm = 16) => {
+    const s = withClips(newSong(spm === 16 ? "4/4" : "3/4"), 0, [[1, 2]]);
+    s.tracks[0].loops[0].notes = notes;
+    return s;
+  };
+
+  it("4/4 to 3/4 keeps beats in their bars and removes what no longer fits", () => {
+    const s = loopSong([note("kick", 16), note("kick", 20), note("kick", 28)]);
+    expect(ops.countTimeSignatureLosses(s, "3/4")).toBe(1);
+    const next = ops.setTimeSignature(s, "3/4");
+    expect(next.time_signature).toBe("3/4");
+    expect(next.steps_per_measure).toBe(12);
+    expect(next.tracks[0].loops[0].notes.map((n) => n.step)).toEqual([12, 16]);
+    expect(next.tempo_bpm).toBe(s.tempo_bpm);
+    expect(next.tracks[0].clips).toBe(s.tracks[0].clips);
+    expect(next.tracks[0].loops[0].measures).toBe(2);
+  });
+
+  it("keeps a sustain that crosses a barline", () => {
+    const s = loopSong([note("kick", 8, 8)]);
+    expect(ops.setTimeSignature(s, "3/4").tracks[0].loops[0].notes).toEqual([note("kick", 8, 8)]);
+  });
+
+  it("keeps a 2-bar note's length in 4/4, clamped only by the loop end", () => {
+    const s = loopSong([note("kick", 0, 24)], 12);
+    expect(ops.setTimeSignature(s, "4/4").tracks[0].loops[0].notes).toEqual([note("kick", 0, 24)]);
+    const long = loopSong([note("kick", 12, 24)], 12);
+    // The loop is 2 measures, so 4/4 ends at step 32 and the note starting at 16 can run 16 steps.
+    expect(ops.setTimeSignature(long, "4/4").tracks[0].loops[0].notes).toEqual([note("kick", 16, 16)]);
+  });
+
+  it("leaves a 3/4 note at offset 10 with length 4 unchanged in 6/8", () => {
+    const s = loopSong([note("kick", 10, 4)], 12);
+    expect(ops.setTimeSignature(s, "6/8").tracks[0].loops[0].notes).toEqual([note("kick", 10, 4)]);
+  });
+
+  it("clamps a long note to the next note in its row after conversion", () => {
+    const s = loopSong([note("kick", 8, 16), note("kick", 20), note("snare", 10, 4)]);
+    const notes = ops.setTimeSignature(s, "3/4").tracks[0].loops[0].notes;
+    expect(notes).toContainEqual(note("kick", 8, 8));
+    expect(notes).toContainEqual(note("snare", 10, 4));
+  });
+
+  it("lengthening the measure loses nothing and leaves the last beat empty", () => {
+    const s = loopSong([note("kick", 0), note("kick", 12), note("kick", 20)], 12);
+    expect(ops.countTimeSignatureLosses(s, "4/4")).toBe(0);
+    const next = ops.setTimeSignature(s, "4/4");
+    expect(next.tracks[0].loops[0].notes.map((n) => n.step)).toEqual([0, 16, 24]);
+  });
+
+  it("converts 3/4 and 6/8 losslessly", () => {
+    const s = loopSong([note("kick", 0), note("kick", 11), note("kick", 12, 12)], 12);
+    expect(ops.countTimeSignatureLosses(s, "6/8")).toBe(0);
+    const next = ops.setTimeSignature(s, "6/8");
+    expect(next.steps_per_measure).toBe(12);
+    expect(next.tracks[0].loops[0].notes).toEqual(s.tracks[0].loops[0].notes);
+    expect(ops.setTimeSignature(next, "3/4").tracks[0].loops[0].notes).toEqual(s.tracks[0].loops[0].notes);
+  });
+
+  it("is a no-op for the same signature", () => {
+    const s = newSong();
+    expect(ops.setTimeSignature(s, "4/4")).toBe(s);
+  });
+});
+
+describe("key", () => {
+  it("changes only the key", () => {
+    const s = withClips(newSong(), 0, [[1, 2]]);
+    const next = ops.setKey(s, { tonic: "E", mode: "minor" });
+    expect(next.key).toEqual({ tonic: "E", mode: "minor" });
+    expect(next.tracks).toBe(s.tracks);
+    expect(ops.setKey(next, { tonic: "E", mode: "minor" })).toBe(next);
   });
 });

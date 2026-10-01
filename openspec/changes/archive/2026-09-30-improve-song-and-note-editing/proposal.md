@@ -53,6 +53,7 @@ This change lets lengths follow the content, adds meter and key controls, and gi
   - Adds "Selecting notes", "Editing selected notes", "Copy, cut, and paste notes", and "Key highlighting".
 - `songs/multitrack`:
   - "Song document" gains a `key`, and `measures` now follows the clips.
+  - "Mixed song playback": the loop region is bounded by the visible timeline instead of the song's length.
   - "Song settings" drops Length, makes the time signature changeable with the measure-relative conversion, and adds the key.
 - `songs/clips`:
   - "Creating and placing clips": clips are 1 measure by default, and are limited by the timeline instead of the song's end.
@@ -67,10 +68,11 @@ This change lets lengths follow the content, adds meter and key controls, and gi
   - `lib/song/clipOps.ts`: `NEW_CLIP_MEASURES = 1`, the linked-aware resize, and timeline bounds.
   - `lib/patternOps.ts`: multi-note move, merge, paste, and bulk edit functions.
   - New `lib/music/key.ts`: scale membership by pitch class.
+  - `lib/song/songLoop.ts`, `songStore.ts`, and `lib/audio/songPlaybackModel.ts`: the loop region is bounded by `timelineMeasures`.
   - Components: `SongHeader` (time signature and key pickers, `LengthField` removed), `EditorDock` (`LengthField` removed), `Arrangement`/`ClipLane` (the timeline's visible length), `PianoRoll`/`NoteBar` (selection, marquee, 2-D drag, inspector, clipboard), and `RowLabels` (key tint).
 - **Data:** `Song.key` is optional. A song without it opens in C major, and `version` stays 2. `measures` is still stored so that downstream consumers (#5 export, generation) keep working.
 - **Downstream planning changes need an update** (via `/opsx:update`):
   - **`add-song-sections`:** its song length is the sum of its sections, which conflicts with a length that follows the clips. Decide which rule wins.
-  - **`add-timeline-loop-region`:** the loop region's bounds are the visible timeline, not `measures`.
+  - **`add-timeline-loop-region`:** the loop region's bounds are the visible timeline, not `measures`. This change implements that rule for the Studio.
   - **`add-midi-keyboard-input`:** recording past the last clip now naturally lengthens the song, so the "growing a song while recording" non-goal changes.
   - **`add-context-aware-track-generation`:** the key becomes useful context.

@@ -366,7 +366,8 @@ describe("pitch audition", () => {
     expect(trigger.mock.calls[0][0]).toEqual(piano.rows[0]);
     expect(trigger.mock.calls[0][3]).toBe(100);
 
-    await userEvent.click(cellButton);
+    cellButton.focus();
+    await userEvent.keyboard("{Delete}");
     expect(getPatternStore("piano").getState().pattern!.notes).toEqual([]);
     await new Promise((r) => setTimeout(r, 20));
     expect(trigger).toHaveBeenCalledTimes(1);
@@ -466,5 +467,32 @@ describe("vertical resize of the piano roll", () => {
 
     await userEvent.dblClick(separator());
     expect(localStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe("key highlighting", () => {
+  it("shows no key tint on a melodic single-instrument page", async () => {
+    const piano: InstrumentInfo = {
+      ...drums,
+      id: "piano",
+      name: "Piano",
+      kind: "melodic",
+      sustained: true,
+      midi_channel: 1,
+      midi_program: 0,
+      range: { low: 59, high: 60 },
+      rows: [
+        { id: "c4", name: "C4", midi_note: 60 },
+        { id: "b3", name: "B3", midi_note: 59 },
+      ],
+    };
+    vi.mocked(api.getInstruments).mockResolvedValue([piano]);
+    getPatternStore("piano").getState().setPattern(emptyPattern(piano, 4));
+
+    const { container } = render(<PatternEditorPage instrumentId="piano" title="Piano" />);
+    const key = await screen.findByRole("button", { name: "C4" });
+    expect(key).not.toHaveAccessibleDescription();
+    expect(container.querySelector("[data-tint]")).toBeNull();
+    expect(container.querySelector('[class*="bg-emerald"]')).toBeNull();
   });
 });

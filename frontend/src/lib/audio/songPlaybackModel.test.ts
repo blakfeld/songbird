@@ -12,10 +12,21 @@ describe("song playback model", () => {
     song.tempo_bpm = 90;
     song.tracks[1].pan = -1;
     const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
-    expect(model.getTiming()).toEqual({ tempo: 90, swing: 0, stepsPerMeasure: 16, measures: 8 });
+    expect(model.getTiming()).toEqual({ tempo: 90, swing: 0, stepsPerMeasure: 16, measures: 1 });
     const voices = model.getVoices();
     expect(voices.map((v) => v.key)).toEqual(song.tracks.map((t) => t.id));
     expect(voices[1]).toMatchObject({ instrument: "piano", pan: -1, audible: true });
+  });
+
+  it("widens the timing to a looping region past the song's end only", () => {
+    const song = { ...newSong(), loop_region: { region: { start_measure: 5, end_measure: 9 }, enabled: true } };
+    const store = createSongStore(song);
+    const model = createSongPlaybackModel(store, [drums, piano]);
+    expect(model.getTiming()?.measures).toBe(9);
+    store.getState().setLoop({ region: { start: 5, end: 9 }, enabled: false });
+    expect(model.getTiming()?.measures).toBe(1);
+    store.getState().setLoop({ region: null, enabled: true });
+    expect(model.getTiming()?.measures).toBe(1);
   });
 
   it("resolves solo and mute into audibility", () => {

@@ -386,3 +386,76 @@ describe("pattern store", () => {
     });
   });
 });
+
+describe("note gestures", () => {
+  const setNotes = (s: ReturnType<typeof fresh>, ...ns: Note[]) => {
+    s.getState().editNotes(() => ns);
+    return s;
+  };
+
+  it("records a whole drag of transient edits as one undo step", () => {
+    const s = setNotes(fresh(), note("kick", 0));
+    const before = s.getState().past.length;
+    s.getState().beginGesture();
+    for (let step = 1; step <= 4; step++) {
+      s.getState().editNotes(() => [note("kick", step)], { transient: true });
+    }
+    expect(s.getState().past).toHaveLength(before);
+    s.getState().commitGesture();
+    expect(s.getState().past).toHaveLength(before + 1);
+    s.getState().undo();
+    expect(notes(s)).toEqual([note("kick", 0)]);
+  });
+
+  it("records nothing when the drag returns to its start", () => {
+    const s = setNotes(fresh(), note("kick", 0));
+    const original = notes(s);
+    const before = s.getState().past.length;
+    s.getState().beginGesture();
+    s.getState().editNotes(() => [note("kick", 3)], { transient: true });
+    s.getState().editNotes(() => original, { transient: true });
+    s.getState().commitGesture();
+    expect(s.getState().past).toHaveLength(before);
+    expect(notes(s)).toBe(original);
+  });
+
+  it("restores the notes and keeps redo when a drag is cancelled", () => {
+    const s = setNotes(fresh(), note("kick", 0), note("snare", 2));
+    s.getState().undo();
+    s.getState().beginGesture();
+    s.getState().editNotes(() => [note("kick", 9)], { transient: true });
+    s.getState().cancelGesture();
+    expect(notes(s)).toEqual([]);
+    expect(s.getState().future).toHaveLength(1);
+    expect(s.getState().gestureBase).toBeNull();
+  });
+
+  it("commits an in-progress drag before undo, so undo reverts the drag rather than leaving a preview", () => {
+    const s = setNotes(fresh(), note("kick", 0));
+    s.getState().beginGesture();
+    s.getState().editNotes(() => [note("kick", 5)], { transient: true });
+    s.getState().undo();
+    expect(notes(s)).toEqual([note("kick", 0)]);
+    expect(s.getState().gestureBase).toBeNull();
+    s.getState().redo();
+    expect(notes(s)).toEqual([note("kick", 5)]);
+  });
+
+  it("records the pre-drag pattern, not a preview, when a non-transient edit lands mid-drag", () => {
+    const s = setNotes(fresh(), note("kick", 0));
+    s.getState().beginGesture();
+    s.getState().editNotes(() => [note("kick", 5)], { transient: true });
+    s.getState().setTempo(100);
+    expect(s.getState().gestureBase).toBeNull();
+    s.getState().undo();
+    expect(notes(s)).toEqual([note("kick", 0)]);
+  });
+
+  it("applies a non-transient editNotes as one undo step and ignores a no-op", () => {
+    const s = fresh();
+    s.getState().editNotes(() => [note("kick", 0)]);
+    expect(s.getState().past).toHaveLength(1);
+    s.getState().editNotes((g) => g.notes);
+    expect(s.getState().past).toHaveLength(1);
+  });
+});

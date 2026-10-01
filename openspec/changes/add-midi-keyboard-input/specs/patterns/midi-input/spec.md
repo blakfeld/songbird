@@ -63,7 +63,8 @@ The transport SHALL offer a Record toggle. The `R` key SHALL activate it when fo
 - **Wrapping at the end of the loop:** a note that ends past the end of the range being played SHALL be shortened to end there. A note-on that rounds to the step just after the end of the range SHALL be recorded on the region's first step while looping is on, and SHALL be discarded while looping is off.
 - **Merging:** recorded notes SHALL be merged with existing notes.
   - A recorded note that starts on the same row and step as an existing note SHALL replace it.
-  - Where notes on the same row would overlap, the earlier note SHALL be shortened to end where the later one starts.
+  - An existing note on the same row that a recorded note overlaps SHALL be shortened to end where the recorded note starts, and SHALL be removed if nothing of it would remain. This is the same rule as pasting notes (see `patterns/piano-roll-editor`).
+  - Recorded notes SHALL be merged in the order they start, so a later recorded note also shortens an earlier recorded one it overlaps.
 - **Cycling:** while looping is on, recording SHALL continue through every pass of the loop region. Notes recorded on one pass SHALL be heard on the next pass.
 - **Showing notes:** recorded notes SHALL appear in the piano roll, and in the Studio in the lane overview, no later than 100 ms after their note-off.
 - **Undo:** a take SHALL be recorded as one undo step.
@@ -89,6 +90,10 @@ The transport SHALL offer a Record toggle. The `R` key SHALL activate it when fo
 #### Scenario: Same step replaces
 - **WHEN** a `C4` note at step 0 has velocity 100 and the user records `C4` at step 0 with velocity 60
 - **THEN** there is exactly one `C4` note at step 0, and its velocity is 60
+
+#### Scenario: A recorded note shortens an overlapped note
+- **WHEN** a `C4` note starts at step 0 and lasts 8 steps, and the user records `C4` at step 4
+- **THEN** the existing note lasts 4 steps, and the recorded note starts at step 4
 
 #### Scenario: Punch in and out
 - **WHEN** playback is running in measure 3 and the user presses `R`, plays for two bars, and presses `R` again

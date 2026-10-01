@@ -20,7 +20,7 @@
 
 ## 3. Recording pipeline
 
-- [ ] 3.1 Implement the pure `mergeRecorded` and quantize helpers in `lib/recording/take.ts`. Verify Vitest cases for "Same step replaces", shortening an earlier overlapping note, one-shot length 1, and a minimum length of 1.
+- [ ] 3.1 Implement the pure quantize helpers in `lib/recording/take.ts`, and merge takes with the existing `mergeNotes` from `lib/patternOps.ts` rather than a new merge function. Verify Vitest cases for "Same step replaces" and "A recorded note shortens an overlapped note" through the take, one-shot length 1, and a minimum length of 1.
 - [ ] 3.2 Implement `InputRouter` in `lib/recording/router.ts` per design D4:
   - rows mapped by `midi_note`;
   - held-note and sustain state;
@@ -33,6 +33,7 @@
   - "Clip limit during a take", including the dropped count;
   - "Undo a take that created a clip";
   - a take that loops over empty space creates only one clip;
+  - "Recording past the song's end", including one undo restoring the song's length;
   - "Changing tracks mid-take", where the take stays on the original track.
 
 ## 4. Transport UI and shortcuts

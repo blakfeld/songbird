@@ -9,6 +9,7 @@ import type { ClipActions } from "./useClipActions";
 
 export function TrackLane({
   song,
+  timeline,
   track,
   number,
   selected,
@@ -22,6 +23,7 @@ export function TrackLane({
   onSeek,
 }: {
   song: Song;
+  timeline: number;
   track: Track;
   number: number;
   selected: boolean;
@@ -58,6 +60,7 @@ export function TrackLane({
       />
       <ClipLane
         song={song}
+        timeline={timeline}
         track={track}
         rows={info?.rows ?? null}
         melodic={info?.kind === "melodic"}

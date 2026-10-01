@@ -7,6 +7,7 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
 **Depends on:**
 - #4 add-multitrack-song and add-arrangement-clips (both archived).
 - add-timeline-loop-region, which provides looping on/off and play-once. Build and archive this change after it.
+- improve-song-and-note-editing, which makes the song's length follow its clips, adds the visible timeline past the song's end (`timelineMeasures`), and adds the shared `mergeNotes` in `lib/patternOps.ts`. Build this change after it.
 
 ## What Changes
 
@@ -25,7 +26,7 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
   - **Starting while playing:** Record punches in at once.
   - **Ending the take:** pressing Record again ends the take and playback continues. Stop ends both. With looping off, the take also ends when playback ends.
   - **Quantizing:** each note's start snaps to the nearest sixteenth step (swing-aware), and its length is rounded to at least one step.
-  - **Merging (overdub):** takes merge into what is there already. A recorded note on the same row and step replaces the old note, and overlapping notes are shortened rather than stacked.
+  - **Merging (overdub):** takes merge into what is there already, with the same rule as pasting notes (`mergeNotes`, from improve-song-and-note-editing). A recorded note on the same row and step replaces the old note, and an existing note that a recorded note overlaps is shortened rather than stacked.
   - **Looping on:** recording cycles through the loop region. Each pass merges, and notes from earlier passes are heard on the next pass.
   - **Undo:** a whole take is one undo step.
 - **Where recorded notes go:**
@@ -33,6 +34,7 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
   - **Studio:** onto the selected track at the song position where they were played.
     - A note that lands inside an existing clip goes into that clip's loop, at the matching position in the loop, so linked clips change too.
     - Notes played over empty lane space create a new loop and clip covering the measures played, with one clip per empty stretch.
+    - **Past the song's end:** the song's length follows its clips (improve-song-and-note-editing), so a take that creates a clip in the timeline's empty measures past the song's end lengthens the song. Playback reaches those measures through a loop region drawn over them (add-timeline-loop-region).
     - Clip and loop limits are enforced, and notes that cannot be placed are reported.
 - **Metronome and count-in.**
   - A Metronome toggle clicks on every beat, with the downbeat accented, whenever the transport runs.
@@ -44,7 +46,8 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
   - MIDI output, MIDI clock sync, and MIDI learn.
   - Recording on several tracks at once, and record-arm buttons.
   - Quantize settings other than sixteenths, and recording without quantizing.
-  - Growing a song or pattern while recording.
+  - Growing a pattern while recording. Its length is still set with the Measures selector.
+  - Playing on past a song's end while recording with looping off. Play-once stops at the song's end, so a take grows the song only through a loop region over the empty measures past it.
   - A computer-keyboard "musical typing" input.
   - Recording without a MIDI device.
 
@@ -62,7 +65,7 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
 - **Frontend only. No API or backend changes.**
 - New `lib/midi/` holds Web MIDI access, the device list, and message parsing, which covers note on/off, velocity, and the sustain pedal.
 - New `lib/recording/`:
-  - takes are buffered, quantized, and merged;
+  - takes are buffered, quantized, and merged with the existing `mergeNotes` from `lib/patternOps.ts`;
   - Studio takes are placed onto clips.
 - **Engine and sound sources** (`lib/audio/engine.ts`, `synthSource.ts`, `drumsSource.ts`):
   - held notes, through new `noteOn`/`noteOff` calls on `SoundSource`;
@@ -77,4 +80,4 @@ Today the only way to enter notes in Songbird is to click them into the piano ro
   - `useEditorShortcuts` gains `R`.
   - The piano roll and lanes show recorded notes during the take.
 - **Tests:** a fake `requestMIDIAccess` for Vitest and a Playwright init script, which is Chromium only.
-- **Downstream:** add-song-sections lists "Live recording" as a non-goal. That wording can be left as is, because sections don't change recording.
+- **Downstream:** add-song-sections lists "Live recording" as a non-goal. That wording can be left as is. A take that places a clip past a sectioned song's last section lengthens that section through `normalizeSong`, as any clip edit does there, so recording needs no section-specific code.

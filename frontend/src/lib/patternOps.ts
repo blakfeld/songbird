@@ -100,22 +100,141 @@ export function resizeGridNote(
   );
 }
 
-// Returns the same notes array when the note can't move, so a refused or same-row drag is not recorded in history.
-export function moveGridNote(
-  g: NoteGrid,
-  rowId: string,
-  step: number,
-  toRowId: string,
+// A row never holds two notes at one step, so row and step alone identify a note, which lets selection and clipboard share one key.
+export const noteKey = (n: Pick<Note, "row_id" | "step">) => `${n.row_id}:${n.step}`;
+
+const overlaps = (a: Note, b: Note) =>
+  a.row_id === b.row_id &&
+  a.step < b.step + b.length_steps &&
+  b.step < a.step + a.length_steps;
+
+export interface NotesResult {
+  notes: Note[];
+  keys: Set<string>;
+}
+
+// dRow indexes into `rows`, so callers decide which screen direction is positive.
+// Null (not a clamped result) lets a drag keep its last valid position instead of sliding along a wall.
+export function moveNotes(
+  notes: Note[],
+  keys: ReadonlySet<string>,
+  dStep: number,
+  dRow: number,
+  rows: Row[],
+  totalSteps: number,
+): NotesResult | null {
+  const rowIndex = new Map(rows.map((r, i) => [r.id, i]));
+  const moved: Note[] = [];
+  const unmoved: Note[] = [];
+  const next: Note[] = [];
+  for (const n of notes) {
+    if (!keys.has(noteKey(n))) {
+      unmoved.push(n);
+      next.push(n);
+      continue;
+    }
+    const from = rowIndex.get(n.row_id);
+    const target = from === undefined ? undefined : rows[from + dRow];
+    const step = n.step + dStep;
+    if (!target || step < 0 || step + n.length_steps > totalSteps) return null;
+    const m = { ...n, row_id: target.id, step };
+    moved.push(m);
+    next.push(m);
+  }
+  if (moved.some((m) => unmoved.some((u) => overlaps(m, u)))) return null;
+  return { notes: next, keys: new Set(moved.map(noteKey)) };
+}
+
+// Returns the same array on a no-op so the store skips an undo entry.
+export function setVelocities(
+  notes: Note[],
+  keys: ReadonlySet<string>,
+  velocity: number,
 ): Note[] {
-  if (rowId === toRowId || !g.rows.some((r) => r.id === toRowId)) return g.notes;
-  const target = g.notes.find((n) => n.row_id === rowId && n.step === step);
-  if (!target) return g.notes;
-  const end = target.step + target.length_steps;
-  const blocked = g.notes.some(
-    (n) => n.row_id === toRowId && n.step < end && n.step + n.length_steps > target.step,
+  const v = clamp(Math.round(velocity), 1, 127);
+  if (!notes.some((n) => keys.has(noteKey(n)) && n.velocity !== v)) return notes;
+  return notes.map((n) => (keys.has(noteKey(n)) ? { ...n, velocity: v } : n));
+}
+
+// Limits come from the original neighbours, so a selected run can't grow over notes that were moved nowhere.
+export function setLengths(
+  notes: Note[],
+  keys: ReadonlySet<string>,
+  length: number,
+  totalSteps: number,
+): Note[] {
+  const want = Math.max(1, Math.round(length));
+  let changed = false;
+  const out = notes.map((n) => {
+    if (!keys.has(noteKey(n))) return n;
+    const limit = notes
+      .filter((o) => o.row_id === n.row_id && o.step > n.step)
+      .reduce((min, o) => Math.min(min, o.step), totalSteps);
+    const next = clamp(want, 1, Math.max(1, limit - n.step));
+    if (next === n.length_steps) return n;
+    changed = true;
+    return { ...n, length_steps: next };
+  });
+  return changed ? out : notes;
+}
+
+// A relative change keeps spread between notes during a Shift-drag, which absolute `setVelocities` would flatten.
+export function shiftVelocities(
+  notes: Note[],
+  keys: ReadonlySet<string>,
+  delta: number,
+): Note[] {
+  if (delta === 0 || !notes.some((n) => keys.has(noteKey(n)))) return notes;
+  return notes.map((n) =>
+    keys.has(noteKey(n)) ? { ...n, velocity: clamp(n.velocity + delta, 1, 127) } : n,
   );
-  if (blocked) return g.notes;
-  return g.notes.map((n) => (n === target ? { ...n, row_id: toRowId } : n));
+}
+
+export function deleteNotes(notes: Note[], keys: ReadonlySet<string>): Note[] {
+  return keys.size === 0 || !notes.some((n) => keys.has(noteKey(n)))
+    ? notes
+    : notes.filter((n) => !keys.has(noteKey(n)));
+}
+
+// Incoming notes win collisions so a bulk add never leaves overlapping notes on a row.
+// They are applied in start order so an incoming note also shortens an earlier incoming one.
+export function mergeNotes(existing: Note[], incoming: Note[]): Note[] {
+  let out = existing;
+  for (const inc of [...incoming].sort((a, b) => a.step - b.step)) {
+    out = out.flatMap((n) => {
+      if (n.row_id !== inc.row_id || !overlaps(n, inc)) return [n];
+      const length = inc.step - n.step;
+      return length > 0 ? [{ ...n, length_steps: length }] : [];
+    });
+    out = [...out, inc];
+  }
+  return out;
+}
+
+export interface PasteResult extends NotesResult {
+  dropped: number;
+}
+
+// Clip steps are relative to its earliest note so a paste can anchor the block at any step.
+export function pasteNotes(
+  existing: Note[],
+  clip: Note[],
+  at: number,
+  rows: Row[],
+  totalSteps: number,
+): PasteResult {
+  const rowIds = new Set(rows.map((r) => r.id));
+  const placed: Note[] = [];
+  for (const n of clip) {
+    const step = n.step + at;
+    if (!rowIds.has(n.row_id) || step < 0 || step >= totalSteps) continue;
+    placed.push({ ...n, step, length_steps: Math.min(n.length_steps, totalSteps - step) });
+  }
+  return {
+    notes: placed.length === 0 ? existing : mergeNotes(existing, placed),
+    keys: new Set(placed.map(noteKey)),
+    dropped: clip.length - placed.length,
+  };
 }
 
 const withNotes = (p: Pattern, notes: Note[]): Pattern =>
@@ -141,13 +260,6 @@ export const resizeNote = (
   step: number,
   lengthSteps: number,
 ): Pattern => withNotes(p, resizeGridNote(gridOf(p), rowId, step, lengthSteps));
-
-export const moveNote = (
-  p: Pattern,
-  rowId: string,
-  step: number,
-  toRowId: string,
-): Pattern => withNotes(p, moveGridNote(gridOf(p), rowId, step, toRowId));
 
 // Repeating measures can push a crossing note over the next note or the end, so lengths are re-clamped.
 export function normalizeNotes(notes: Note[], total: number): Note[] {

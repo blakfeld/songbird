@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { MeasureCount } from "@/generated/MeasureCount";
+import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { clampLoop, defaultLoop, parseLoop, type LoopSetting } from "./loopRegion";
@@ -23,6 +24,9 @@ export interface PatternState {
   loop: LoopSetting;
   past: Pattern[];
   future: Pattern[];
+  // Set only while a drag is in flight, so the whole drag lands as one undo step.
+  gestureBase: Pattern | null;
+  gestureFuture: Pattern[] | null;
 
   setPattern: (pattern: Pattern) => void;
   newEmptyPattern: (
@@ -34,7 +38,14 @@ export interface PatternState {
   toggleNote: (rowId: string, step: number, defaultLength?: number) => void;
   setVelocity: (rowId: string, step: number, velocity: number) => void;
   resizeNote: (rowId: string, step: number, lengthSteps: number) => void;
-  moveNote: (rowId: string, step: number, toRowId: string) => void;
+  editNotes: (
+    fn: (grid: ops.NoteGrid) => Note[],
+    options?: { transient?: boolean },
+  ) => void;
+  beginGesture: () => void;
+  commitGesture: () => void;
+  // A cancelled drag must neither spend an undo step nor wipe redo, so it restores rather than commits.
+  cancelGesture: () => void;
   setMeasures: (measures: MeasureCount) => void;
   setTempo: (tempoBpm: number) => void;
   setSwing: (swing: number) => void;
@@ -54,7 +65,7 @@ const loopFor = (s: Pick<PatternState, "loop">, next: Pattern): LoopSetting =>
 export function createPatternStore(instrument: string): PatternStore {
   return createStore<PatternState>()(
     persist(
-      (set) => {
+      (set, get) => {
         const commit = (next: Pattern) =>
           set((s) =>
             next === s.pattern
@@ -67,6 +78,8 @@ export function createPatternStore(instrument: string): PatternStore {
                     ? [...s.past, s.pattern].slice(-HISTORY_LIMIT)
                     : s.past,
                   future: [],
+                  gestureBase: null,
+                  gestureFuture: null,
                 },
           );
         const edit = (fn: (p: Pattern) => Pattern) =>
@@ -77,8 +90,11 @@ export function createPatternStore(instrument: string): PatternStore {
             return {
               pattern: next,
               loop: loopFor(s, next),
-              past: [...s.past, s.pattern].slice(-HISTORY_LIMIT),
+              // An edit during a drag folds into it, so history gets the pre-drag pattern, not a mid-drag preview.
+              past: [...s.past, s.gestureBase ?? s.pattern].slice(-HISTORY_LIMIT),
               future: [],
+              gestureBase: null,
+              gestureFuture: null,
             };
           });
 
@@ -89,6 +105,8 @@ export function createPatternStore(instrument: string): PatternStore {
           loop: defaultLoop(),
           past: [],
           future: [],
+          gestureBase: null,
+          gestureFuture: null,
 
           setPattern: commit,
           newEmptyPattern: (info, measures, timeSignature, tempoBpm) =>
@@ -99,8 +117,56 @@ export function createPatternStore(instrument: string): PatternStore {
             edit((p) => ops.setVelocity(p, rowId, step, velocity)),
           resizeNote: (rowId, step, len) =>
             edit((p) => ops.resizeNote(p, rowId, step, len)),
-          moveNote: (rowId, step, toRowId) =>
-            edit((p) => ops.moveNote(p, rowId, step, toRowId)),
+          editNotes: (fn, options) => {
+            if (!options?.transient) {
+              return edit((p) => {
+                const notes = fn(ops.gridOf(p));
+                return notes === p.notes ? p : { ...p, notes };
+              });
+            }
+            set((s) => {
+              if (!s.pattern) return s;
+              // Replaying on the pre-gesture pattern lets a drag that returns to its start restore the original,
+              // which is what keeps a no-op drag out of history.
+              const base = s.gestureBase ?? s.pattern;
+              const notes = fn(ops.gridOf(base));
+              const next = notes === base.notes ? base : { ...base, notes };
+              if (next === s.pattern) return s;
+              return {
+                pattern: next,
+                gestureBase: base,
+                gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
+                future: [],
+              };
+            });
+          },
+          beginGesture: () =>
+            set((s) =>
+              s.pattern && !s.gestureBase
+                ? { gestureBase: s.pattern, gestureFuture: s.future }
+                : s,
+            ),
+          commitGesture: () =>
+            set((s) => {
+              if (!s.gestureBase) return s;
+              if (s.gestureBase === s.pattern) return { gestureBase: null, gestureFuture: null };
+              return {
+                past: [...s.past, s.gestureBase].slice(-HISTORY_LIMIT),
+                gestureBase: null,
+                gestureFuture: null,
+              };
+            }),
+          cancelGesture: () =>
+            set((s) =>
+              s.gestureBase
+                ? {
+                    pattern: s.gestureBase,
+                    future: s.gestureFuture ?? s.future,
+                    gestureBase: null,
+                    gestureFuture: null,
+                  }
+                : s,
+            ),
           setMeasures: (measures) => edit((p) => ops.setMeasures(p, measures)),
           setTempo: (tempo) => edit((p) => ops.setTempo(p, tempo)),
           setSwing: (swing) => edit((p) => ops.setSwing(p, swing)),
@@ -111,7 +177,8 @@ export function createPatternStore(instrument: string): PatternStore {
               const m = s.pattern?.measures;
               return { loop: m === undefined ? loop : clampLoop(loop, m) };
             }),
-          undo: () =>
+          undo: () => {
+            get().commitGesture();
             set((s) => {
               const previous = s.past[s.past.length - 1];
               if (!previous || !s.pattern) return s;
@@ -121,8 +188,10 @@ export function createPatternStore(instrument: string): PatternStore {
                 past: s.past.slice(0, -1),
                 future: [s.pattern, ...s.future],
               };
-            }),
-          redo: () =>
+            });
+          },
+          redo: () => {
+            get().commitGesture();
             set((s) => {
               const [next, ...rest] = s.future;
               if (!next || !s.pattern) return s;
@@ -132,7 +201,8 @@ export function createPatternStore(instrument: string): PatternStore {
                 past: [...s.past, s.pattern],
                 future: rest,
               };
-            }),
+            });
+          },
         };
       },
       {

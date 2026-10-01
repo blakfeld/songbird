@@ -20,6 +20,14 @@ beforeEach(async () => {
 });
 afterEach(() => vi.useRealTimers());
 
+// Regions clamp to the timeline derived from the song's clips, so a song with real clips keeps the round trip honest.
+const eightMeasureSong = () => {
+  const song = newSong();
+  song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], 8);
+  song.measures = 8;
+  return song;
+};
+
 describe("songLibrary", () => {
   it("restores a saved song on reload and remembers it as last opened", async () => {
     const lib = createSongLibrary();
@@ -73,7 +81,7 @@ describe("songLibrary", () => {
 
   it("autosaves a loop region change", async () => {
     const lib = createSongLibrary();
-    const song = await lib.create(newSong());
+    const song = await lib.create(eightMeasureSong());
     const store = createSongStore(song);
     lib.autosave(store);
     store.getState().setLoop({ region: { start: 2, end: 3 }, enabled: false });
@@ -84,7 +92,7 @@ describe("songLibrary", () => {
 
   it("duplicates the loop region", async () => {
     const lib = createSongLibrary();
-    const demo = { ...newSong(), loop_region: { region: { start_measure: 3, end_measure: 5 }, enabled: false } };
+    const demo = { ...eightMeasureSong(), loop_region: { region: { start_measure: 3, end_measure: 5 }, enabled: false } };
     await lib.create(demo);
     const copy = (await lib.duplicate(demo.id))!;
     expect(copy.loop_region).toEqual(demo.loop_region);
@@ -246,6 +254,7 @@ describe("songLibrary", () => {
       }
       return {
         ...song,
+        measures: 8,
         version: 1,
         sections: [{ name: "Verse" }],
         tracks: [

@@ -2,7 +2,16 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { SongStore } from "@/lib/song/songStore";
 import { resolveTrackNotes } from "@/lib/song/clipOps";
 import { audibleTracks } from "@/lib/song/songOps";
+import { songLoop } from "@/lib/song/songLoop";
+import type { Song } from "@/lib/song/types";
 import type { PlaybackModel, Voice } from "./types";
+
+// The engine clamps loop ranges to the timing length, so a region past the song's end needs it
+// widened; play-once and whole-song looping must keep stopping at the song's real end.
+function loopingMeasures(song: Song): number {
+  const loop = songLoop(song);
+  return loop.enabled && loop.region ? Math.max(song.measures, loop.region.end) : song.measures;
+}
 
 // The song is read on every call rather than captured, so live edits and mixer
 // changes reach the scheduler.
@@ -23,7 +32,7 @@ export function createSongPlaybackModel(
         tempo: song.tempo_bpm,
         swing: song.swing,
         stepsPerMeasure: song.steps_per_measure,
-        measures: song.measures,
+        measures: loopingMeasures(song),
       };
     },
     getVoices() {

@@ -1,14 +1,19 @@
 import type { Note } from "@/generated/Note";
 import { normalizeNotes } from "../patternOps";
 import { normalizeLoopRegion } from "./songLoop";
+import { derivedMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
+  DEFAULT_KEY,
   LOOP_NAME_MAX,
   MAX_CLIPS,
+  MEASURE_RANGE,
+  TONICS,
   MAX_LOOPS,
   newId,
   type Clip,
   type Song,
+  type SongKey,
 } from "./types";
 
 type Raw = Record<string, unknown>;
@@ -40,6 +45,7 @@ function validateLoopNotes(notes: unknown, totalSteps: number): boolean {
 export function validateClips(song: unknown): string | null {
   if (!isObject(song)) return "song";
   const { measures, steps_per_measure: spm, tracks } = song;
+  // The stored length is only a cache of the clips, so it is checked for shape and corrected on load.
   if (!isInt(measures) || measures < 1) return "song length";
   if (!isInt(spm) || spm < 1) return "steps per measure";
   if (!Array.isArray(tracks)) return "tracks";
@@ -89,7 +95,7 @@ export function validateClips(song: unknown): string | null {
       const start = clip.start_measure as number;
       if (start < previousEnd) return "overlapping clips";
       previousEnd = start + (clip.measures as number);
-      if (previousEnd > measures + 1) return "clip beyond song end";
+      if (previousEnd > MEASURE_RANGE.max + 1) return "clip beyond song end";
     }
   }
   return null;
@@ -136,7 +142,21 @@ function fromV1(raw: Raw): Song | null {
   });
   if (converted.some((t) => t === null)) return null;
   const song = { ...raw, version: 2, tracks: converted } as unknown as Song;
-  return validateClips(song) === null ? normalizeLoopRegion(song) : null;
+  return validateClips(song) === null ? finish(song) : null;
+}
+
+const isKey = (v: unknown): v is SongKey =>
+  isObject(v) &&
+  (TONICS as readonly unknown[]).includes(v.tonic) &&
+  (v.mode === "major" || v.mode === "minor");
+
+// Correcting here rather than rejecting keeps songs saved before keys or derived lengths openable.
+// Length is fixed before the loop region is clamped so a stale short length cannot truncate the region.
+function finish(song: Song): Song {
+  const measures = derivedMeasures(song);
+  const sized = measures === song.measures ? song : { ...song, measures };
+  const keyed = isKey(sized.key) ? sized : { ...sized, key: { ...DEFAULT_KEY } };
+  return normalizeLoopRegion(keyed);
 }
 
 function migrate(raw: unknown): Song | null {
@@ -148,7 +168,7 @@ function migrate(raw: unknown): Song | null {
     const clips = sortedByStart(t.clips);
     return clips === t.clips ? t : { ...t, clips };
   });
-  return normalizeLoopRegion(
+  return finish(
     tracks.every((t, i) => t === song.tracks[i]) ? song : { ...song, tracks },
   );
 }

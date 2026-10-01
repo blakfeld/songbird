@@ -33,6 +33,17 @@ export interface Track {
   clips: Clip[];
 }
 
+export const TONICS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
+export type Tonic = (typeof TONICS)[number];
+export type KeyMode = "major" | "minor";
+
+export interface SongKey {
+  tonic: Tonic;
+  mode: KeyMode;
+}
+
+export const DEFAULT_KEY: SongKey = { tonic: "C", mode: "major" };
+
 export interface Song {
   version: 2;
   id: string;
@@ -41,6 +52,9 @@ export interface Song {
   time_signature: TimeSignature;
   steps_per_measure: number;
   swing: number;
+  // Optional in storage so songs saved before keys existed stay valid; readers fall back to C major.
+  key?: SongKey;
+  // Derived from the clips by normalizeSong and stored only so consumers read one number.
   measures: number;
   // Optional so songs saved before loop regions existed stay valid; absent or null means no region and looping off.
   loop_region?: LoopRegion | null;
@@ -93,7 +107,8 @@ export function newSong(
     time_signature: timeSignature,
     steps_per_measure: STEPS_PER_MEASURE[timeSignature],
     swing: 0,
-    measures: 8,
+    key: { ...DEFAULT_KEY },
+    measures: 1,
     tracks: [newTrack("drums", "Drums"), newTrack("piano", "Piano")],
   };
 }

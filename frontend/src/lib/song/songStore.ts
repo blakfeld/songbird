@@ -4,13 +4,14 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { Row } from "@/generated/Row";
+import type { TimeSignature } from "@/generated/TimeSignature";
 import type { NoteGrid } from "../patternOps";
 import { clampLoop, type LoopSetting } from "../loopRegion";
 import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as ops from "./songOps";
-import { withLiveLoop, withSongLoop } from "./songLoop";
-import type { Song } from "./types";
+import { songLoop, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
+import type { Song, SongKey } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
@@ -27,6 +28,8 @@ export interface SongState {
   gestureBase: Song | null;
   // Kept with the base because starting an edit clears redo, and a cancelled drag must give it back.
   gestureFuture: Song[] | null;
+  // The live region as it was when the drag began; previews clamp from it so a transient shrink is never permanent.
+  gestureLoop: LoopSetting | null;
 
   loadSong: (song: Song) => void;
   selectTrack: (trackId: string) => void;
@@ -39,6 +42,7 @@ export interface SongState {
     loopId: string,
     rows: Row[],
     edit: (grid: NoteGrid) => Note[],
+    options?: { transient?: boolean },
   ) => void;
   // Clip and loop actions return the reason an op was refused, or null on success, so the UI can say why.
   newClip: (trackId: string, measure: number) => ClipFailure | null;
@@ -65,11 +69,6 @@ export interface SongState {
   makeUnique: (trackId: string, clipId: string) => ClipFailure | null;
   renameLoop: (trackId: string, loopId: string, name: string) => ClipFailure | null;
   deleteLoop: (trackId: string, loopId: string) => ClipFailure | null;
-  setLoopLength: (
-    trackId: string,
-    loopId: string,
-    measures: number,
-  ) => ClipFailure | null;
   setMixer: (
     trackId: string,
     patch: ops.MixerPatch,
@@ -79,12 +78,14 @@ export interface SongState {
   endGesture: () => void;
   // A cancelled drag must neither spend an undo step nor wipe redo, so it restores rather than commits.
   cancelGesture: () => void;
-  setSongLength: (measures: number) => void;
   // Not an undo step: the region is a view setting, so undoing an edit must never move it.
   setLoop: (loop: LoopSetting) => void;
   setTempo: (tempoBpm: number) => void;
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
+  // Both are one undo step each; the UI asks for confirmation first when a meter change would drop notes.
+  setTimeSignature: (ts: TimeSignature) => void;
+  setKey: (key: SongKey) => void;
   addTrackFromPattern: (pattern: Pattern) => void;
   undo: () => void;
   redo: () => void;
@@ -122,8 +123,10 @@ export function createSongStore(initial: Song | null = null): SongStore {
     const edit = (fn: (s: Song) => Song) =>
       set((s) => {
         if (!s.song) return s;
-        const next = fn(s.song);
-        if (next === s.song) return s;
+        const changed = fn(s.song);
+        if (changed === s.song) return s;
+        // Backstop for ops that forget to keep the stored length and region in step with the clips.
+        const next = ops.normalizeSong(changed);
         return {
           song: next,
           ...validSelection(next, s.selectedTrackId, s.selectedClipId),
@@ -131,6 +134,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           future: [],
           gestureBase: null,
           gestureFuture: null,
+          gestureLoop: null,
         };
       });
 
@@ -140,11 +144,16 @@ export function createSongStore(initial: Song | null = null): SongStore {
       trackId: string,
       options: { transient?: boolean; select?: boolean } = {},
     ): ClipFailure | null => {
-      const song = get().song;
-      if (!song) return "not-found";
+      const current = get().song;
+      if (!current) return "not-found";
+      // Transient ops are absolute targets, so replaying them on the pre-gesture song lets a
+      // shrink-then-regrow drag bring back notes the shrink dropped.
+      const base = options.transient ? get().gestureBase : null;
+      const song = base ?? current;
       const result = fn(song);
       if (result.song === null) return result.reason;
-      const next = result.song;
+      const gestureLoop = base ? get().gestureLoop : null;
+      const next = base ? withLoopSetting(result.song, gestureLoop ?? songLoop(current)) : result.song;
       if (options.transient) {
         set((s) => {
           if (!s.song || next === s.song) return s;
@@ -152,6 +161,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
             song: next,
             gestureBase: s.gestureBase ?? s.song,
             gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
+            gestureLoop: s.gestureBase ? s.gestureLoop : songLoop(s.song),
             future: [],
           };
         });
@@ -170,6 +180,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
       future: [],
       gestureBase: null,
       gestureFuture: null,
+      gestureLoop: null,
 
       loadSong: (song) =>
         set({
@@ -179,6 +190,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           future: [],
           gestureBase: null,
           gestureFuture: null,
+          gestureLoop: null,
         }),
       selectTrack: (trackId) =>
         set((s) => {
@@ -213,8 +225,8 @@ export function createSongStore(initial: Song | null = null): SongStore {
       deleteTrack: (trackId) => edit((s) => ops.deleteTrack(s, trackId)),
       renameTrack: (trackId, name) =>
         edit((s) => ops.renameTrack(s, trackId, name)),
-      editLoopNotes: (trackId, loopId, rows, fn) =>
-        edit((s) => {
+      editLoopNotes: (trackId, loopId, rows, fn, options) => {
+        const apply = (s: Song) => {
           const loop = s.tracks
             .find((t) => t.id === trackId)
             ?.loops.find((l) => l.id === loopId);
@@ -225,7 +237,25 @@ export function createSongStore(initial: Song | null = null): SongStore {
             loopId,
             fn(clipOps.loopGrid(loop, rows, s.steps_per_measure)),
           );
-        }),
+        };
+        if (!options?.transient) return edit(apply);
+        set((s) => {
+          if (!s.song) return s;
+          // Replaying on the pre-gesture song lets a drag that returns to its start restore the original song,
+          // which is what keeps a no-op drag out of history.
+          const base = s.gestureBase;
+          const applied = apply(base ?? s.song);
+          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          if (next === s.song) return s;
+          return {
+            song: next,
+            gestureBase: base ?? s.song,
+            gestureFuture: base ? s.gestureFuture : s.future,
+            gestureLoop: base ? s.gestureLoop : songLoop(s.song),
+            future: [],
+          };
+        });
+      },
       newClip: (trackId, measure) =>
         run((s) => clipOps.newClip(s, trackId, measure), trackId, { select: true }),
       placeLoop: (trackId, loopId, measure, measures) =>
@@ -248,8 +278,6 @@ export function createSongStore(initial: Song | null = null): SongStore {
         run((s) => clipOps.renameLoop(s, trackId, loopId, name), trackId),
       deleteLoop: (trackId, loopId) =>
         run((s) => clipOps.deleteLoop(s, trackId, loopId), trackId),
-      setLoopLength: (trackId, loopId, measures) =>
-        run((s) => clipOps.setLoopLength(s, trackId, loopId, measures), trackId),
       setMixer: (trackId, patch, options) => {
         if (!options?.transient) return edit((s) => ops.setMixer(s, trackId, patch));
         set((s) => {
@@ -260,42 +288,52 @@ export function createSongStore(initial: Song | null = null): SongStore {
             song: next,
             gestureBase: s.gestureBase ?? s.song,
             gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
+            gestureLoop: s.gestureBase ? s.gestureLoop : songLoop(s.song),
             future: [],
           };
         });
       },
       beginGesture: () =>
         set((s) =>
-          s.song && !s.gestureBase ? { gestureBase: s.song, gestureFuture: s.future } : s,
+          s.song && !s.gestureBase
+            ? { gestureBase: s.song, gestureFuture: s.future, gestureLoop: songLoop(s.song) }
+            : s,
         ),
       endGesture: () =>
         set((s) => {
           if (!s.gestureBase) return s;
-          if (s.gestureBase === s.song) return { gestureBase: null, gestureFuture: null };
-          return { past: push(s.past, s.gestureBase), gestureBase: null, gestureFuture: null };
+          if (s.gestureBase === s.song)
+            return { gestureBase: null, gestureFuture: null, gestureLoop: null };
+          return { past: push(s.past, s.gestureBase), gestureBase: null, gestureFuture: null, gestureLoop: null };
         }),
       cancelGesture: () =>
         set((s) =>
           s.gestureBase
             ? {
-                song: withLiveLoop(s.gestureBase, s.song!),
+                song: withLoopSetting(s.gestureBase, s.gestureLoop ?? songLoop(s.song!)),
                 ...validSelection(s.gestureBase, s.selectedTrackId, s.selectedClipId),
                 future: s.gestureFuture ?? s.future,
                 gestureBase: null,
                 gestureFuture: null,
+                gestureLoop: null,
               }
             : s,
         ),
-      setSongLength: (m) => edit((s) => ops.setSongLength(s, m)),
       setLoop: (loop) =>
         set((s) => {
           if (!s.song) return s;
-          const next = withSongLoop(s.song, clampLoop(loop, s.song.measures));
-          return next === s.song ? s : { song: next };
+          const next = withSongLoop(s.song, clampLoop(loop, ops.timelineMeasures(s.song)));
+          // A region set mid-drag is the user's newest intent, so later previews must clamp from it.
+          const gestureLoop = s.gestureBase
+            ? clampLoop(loop, ops.timelineMeasures(s.gestureBase))
+            : s.gestureLoop;
+          return next === s.song && gestureLoop === s.gestureLoop ? s : { song: next, gestureLoop };
         }),
       setTempo: (t) => edit((s) => ops.setTempo(s, t)),
       setSwing: (w) => edit((s) => ops.setSwing(s, w)),
       renameSong: (name) => edit((s) => ops.renameSong(s, name)),
+      setTimeSignature: (ts) => edit((s) => ops.setTimeSignature(s, ts)),
+      setKey: (key) => edit((s) => ops.setKey(s, key)),
       addTrackFromPattern: (p) => edit((s) => ops.addTrackFromPattern(s, p)),
       undo: () => {
         get().endGesture();

@@ -1,6 +1,7 @@
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 import { type NoteGrid, normalizeNotes } from "../patternOps";
+import { normalizeSong, timelineMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
   LOOP_NAME_MAX,
@@ -13,8 +14,8 @@ import {
   type Track,
 } from "./types";
 
-// A new clip is deliberately short so an empty loop is quick to fill and easy to stretch.
-export const NEW_CLIP_MEASURES = 4;
+// One measure is the smallest thing worth drawing, and the user stretches the clip (and its loop) from there.
+export const NEW_CLIP_MEASURES = 1;
 
 export type ClipFailure =
   | "not-found"
@@ -53,10 +54,12 @@ const withTrack = (
   const result = fn(track);
   if ("song" in result) return result;
   if (result === track) return ok(song);
-  return ok({
-    ...song,
-    tracks: song.tracks.map((t) => (t === track ? result : t)),
-  });
+  return ok(
+    normalizeSong({
+      ...song,
+      tracks: song.tracks.map((t) => (t === track ? result : t)),
+    }),
+  );
 };
 
 // Ops that produce a track need the new clip id too, so they return a pair through this wrapper.
@@ -72,7 +75,10 @@ const editTrack = (
   if (typeof next === "string") return fail(next);
   if (next === track) return ok(song, clipId);
   return ok(
-    { ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) },
+    normalizeSong({
+      ...song,
+      tracks: song.tracks.map((t) => (t === track ? next : t)),
+    }),
     clipId,
   );
 };
@@ -85,8 +91,9 @@ export const loopUseCount = (track: Track, loopId: string) =>
 
 // Returns a length rather than a yes/no so a placement can be shortened to fit instead of refused.
 export function freeSpanAt(track: Track, measure: number, song: Song): number {
-  if (measure < 1 || measure > song.measures) return 0;
-  let limit = song.measures + 1;
+  const bound = timelineMeasures(song);
+  if (measure < 1 || measure > bound) return 0;
+  let limit = bound + 1;
   for (const c of track.clips) {
     if (measure >= c.start_measure && measure < clipEnd(c)) return 0;
     if (c.start_measure > measure) limit = Math.min(limit, c.start_measure);
@@ -96,7 +103,7 @@ export function freeSpanAt(track: Track, measure: number, song: Song): number {
 
 // Lets the UI offer "the next place a clip fits" without duplicating the occupancy rules.
 export function nextFreeMeasure(track: Track, song: Song, from = 1): number | null {
-  for (let m = Math.max(1, from); m <= song.measures; m++) {
+  for (let m = Math.max(1, from); m <= timelineMeasures(song); m++) {
     const free = freeSpanAt(track, m, song);
     if (free > 0) return m;
     const covering = track.clips.find((c) => m >= c.start_measure && m < clipEnd(c));
@@ -107,8 +114,9 @@ export function nextFreeMeasure(track: Track, song: Song, from = 1): number | nu
 
 // Snapping rather than refusing keeps a copy dropped onto a neighbour from feeling like a failed drag.
 export function nearestFreeMeasure(track: Track, song: Song, desired: number): number | null {
-  const at = clamp(Math.round(desired), 1, song.measures);
-  for (let d = 0; d < song.measures; d++) {
+  const bound = timelineMeasures(song);
+  const at = clamp(Math.round(desired), 1, bound);
+  for (let d = 0; d < bound; d++) {
     for (const m of d === 0 ? [at] : [at - d, at + d]) {
       if (freeSpanAt(track, m, song) > 0) return m;
     }
@@ -119,7 +127,7 @@ export function nearestFreeMeasure(track: Track, song: Song, desired: number): n
 // Clamping to the neighbours here (not in callers) means pointer drags and keyboard nudges share one rule.
 function neighbours(track: Track, clip: Clip, song: Song) {
   let prevEnd = 1;
-  let nextStart = song.measures + 1;
+  let nextStart = timelineMeasures(song) + 1;
   for (const c of track.clips) {
     if (c === clip) continue;
     if (clipEnd(c) <= clip.start_measure) prevEnd = Math.max(prevEnd, clipEnd(c));
@@ -256,8 +264,18 @@ export function resizeClip(
       Math.max(1, nextStart - clip.start_measure),
     );
     if (next === clip.measures) return track;
+    const loop = track.loops.find((l) => l.id === clip.loop_id);
+    // Only a clip that shows its loop exactly has no other length to honour. One that repeats or cuts its loop
+    // keeps it, since growing the loop would silence the repeats and following a shorter clip would drop notes.
+    const followLoop =
+      loop && loopUseCount(track, loop.id) === 1 && loop.measures === clip.measures;
     return {
       ...track,
+      loops: followLoop
+        ? track.loops.map((l) =>
+            l === loop ? withLoopLength(l, next, song.steps_per_measure) : l,
+          )
+        : track.loops,
       clips: track.clips.map((c) => (c === clip ? { ...c, measures: next } : c)),
     };
   });
@@ -348,30 +366,22 @@ export function deleteLoop(
   );
 }
 
-// Clips are untouched on purpose: a clip longer than its loop simply repeats it, a shorter one cuts it.
-export function setLoopLength(
-  song: Song,
-  trackId: string,
-  loopId: string,
-  measures: number,
-): ClipOpResult {
+// Shortening drops and truncates notes with the same rule a pattern uses; lengthening never touches them.
+function withLoopLength(loop: Loop, measures: number, stepsPerMeasure: number): Loop {
   const next = clamp(
     Math.round(measures),
     LOOP_MEASURE_RANGE.min,
     LOOP_MEASURE_RANGE.max,
   );
-  return mapLoop(song, trackId, loopId, (l) =>
-    next === l.measures
-      ? l
-      : {
-          ...l,
-          measures: next,
-          notes:
-            next < l.measures
-              ? normalizeNotes(l.notes, next * song.steps_per_measure)
-              : l.notes,
-        },
-  );
+  if (next === loop.measures) return loop;
+  return {
+    ...loop,
+    measures: next,
+    notes:
+      next < loop.measures
+        ? normalizeNotes(loop.notes, next * stepsPerMeasure)
+        : loop.notes,
+  };
 }
 
 export function editLoopNotes(
@@ -396,18 +406,6 @@ export const loopGrid = (
   rows,
   totalSteps: loop.measures * stepsPerMeasure,
 });
-
-// Shortening the song must never leave a clip past the end; loops are deliberately kept whole.
-export function trimClips(clips: Clip[], songMeasures: number): Clip[] {
-  if (clips.every((c) => clipEnd(c) <= songMeasures + 1)) return clips;
-  return clips
-    .filter((c) => c.start_measure <= songMeasures)
-    .map((c) =>
-      clipEnd(c) > songMeasures + 1
-        ? { ...c, measures: songMeasures + 1 - c.start_measure }
-        : c,
-    );
-}
 
 const resolved = new WeakMap<
   Loop[],
