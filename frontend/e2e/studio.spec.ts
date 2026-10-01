@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Midi } from "@tonejs/midi";
-import { expect, test, type Page } from "@playwright/test";
-import { addTrack } from "./studioHelpers";
+import { expect, test } from "@playwright/test";
+import { addTrack, newSong } from "./studioHelpers";
 
 test("build a song across tracks, mix it, reload and find it unchanged", async ({ page }) => {
   // Hydration mismatches surface only as console errors, so any error fails the run.
@@ -12,13 +12,7 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   await page.goto("/studio");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Songs" }).click();
-  const library = page.getByRole("dialog", { name: "Songs" });
-  await library.getByRole("button", { name: "New song…" }).click();
-  const create = page.getByRole("dialog", { name: "New song" });
-  await create.getByRole("textbox", { name: "Name" }).fill("E2E Song");
-  await create.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("button", { name: "Rename song E2E Song" })).toBeVisible();
+  await newSong(page, "E2E Song");
 
   await addTrack(page, "Drums");
   await addTrack(page, "Piano");
@@ -118,12 +112,7 @@ test("draw and toggle a song loop region, keep it across a reload, and play once
   page.on("pageerror", (e) => problems.push(e.message));
 
   await page.goto("/studio");
-  await page.getByRole("button", { name: "Songs" }).click();
-  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "New song…" }).click();
-  const create = page.getByRole("dialog", { name: "New song" });
-  await create.getByRole("textbox", { name: "Name" }).fill("Loop Song");
-  await create.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("button", { name: "Rename song Loop Song" })).toBeVisible();
+  await newSong(page, "Loop Song");
 
   await addTrack(page, "Drums");
   // A four-measure drum clip makes the song four measures long, which keeps the play-once run short.
@@ -179,21 +168,12 @@ test("draw and toggle a song loop region, keep it across a reload, and play once
   expect(problems).toEqual([]);
 });
 
-async function newSong(page: Page, name: string) {
-  await page.goto("/studio");
-  await page.getByRole("button", { name: "Songs" }).click();
-  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "New song…" }).click();
-  const create = page.getByRole("dialog", { name: "New song" });
-  await create.getByRole("textbox", { name: "Name" }).fill(name);
-  await create.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("button", { name: `Rename song ${name}` })).toBeVisible();
-}
-
 test("edit a song's length, meter and key, then select, move, copy and undo notes in the dock", async ({ page }) => {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Edit Song");
   await addTrack(page, "Drums");
   await addTrack(page, "Piano");
@@ -306,6 +286,7 @@ test("generate the bass for measures 1 to 4 from the drums, then undo", async ({
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Generate Song");
 
   await addTrack(page, "Drums");
@@ -357,6 +338,7 @@ test("build piano, drums and bass through the chat, then undo the bass", async (
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Chat Song");
   const input = page.getByRole("textbox", { name: "Message the assistant" });
   const send = async (text: string, reply: string) => {
@@ -393,6 +375,7 @@ test("a named length in the chat grows a new song to that many measures", async 
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Length Song");
   await page.getByRole("textbox", { name: "Message the assistant" }).fill("16 bars of slow jazzy piano");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -482,6 +465,7 @@ test("close the piano roll, reopen it by double-clicking a clip, and find it clo
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Dock Song");
   await addTrack(page, "Piano");
   const track = page.getByRole("group", { name: "Track 1: Piano" });
@@ -530,6 +514,7 @@ test("a sent chat message shows at once and the input stays typeable while the r
     await route.continue();
   });
 
+  await page.goto("/studio");
   await newSong(page, "Pending Song");
   const input = page.getByRole("textbox", { name: "Message the assistant" });
   const send = page.getByRole("button", { name: "Send message" });
@@ -561,6 +546,7 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
+  await page.goto("/studio");
   await newSong(page, "Sound Song");
   await addTrack(page, "Piano");
   const openPanel = async () => {
@@ -609,6 +595,7 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
 });
 
 test("drag the third track above the second, then undo it", async ({ page }) => {
+  await page.goto("/studio");
   await newSong(page, "Order Song");
   await addTrack(page, "Drums");
   await addTrack(page, "Piano");
