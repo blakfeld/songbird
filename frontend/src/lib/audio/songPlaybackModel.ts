@@ -6,6 +6,7 @@ import { audibleTracks } from "@/lib/song/songOps";
 import { songLoop } from "@/lib/song/songLoop";
 import type { Song } from "@/lib/song/types";
 import type { PlaybackModel, Voice } from "./types";
+import { resolveSound } from "./voiceSound";
 
 // The engine clamps loop ranges to the timing length, so a region past the song's end needs it
 // widened; play-once and whole-song looping must keep stopping at the song's real end.
@@ -55,6 +56,7 @@ export function createSongPlaybackModel(
             volumeDb: t.volume_db,
             pan: t.pan,
             audible: audible.has(t.id),
+            sound: resolveSound(t.sound),
           },
         ];
       });

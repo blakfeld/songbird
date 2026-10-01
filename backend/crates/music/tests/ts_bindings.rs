@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 
 use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
 use music::instruments::{InstrumentKind, PitchRange};
-use music::song::{ChatEntry, ChatRole, KeyMode, LoopRegion, MeasureRegion, SongKey, Tonic};
+use music::song::{
+    ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect, KeyMode,
+    LoopRegion, MeasureRegion, ReverbEffect, SongKey, Tone, Tonic, TrackSound,
+};
 use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
     Clip, GenerateRequestBody, GenerationLimits, InstrumentInfo, InstrumentRegistry, Loop, Pattern,
@@ -47,6 +50,14 @@ fn export_into(dir: &Path) {
     ChatTrack::export_all(&cfg).unwrap();
     ChatRole::export_all(&cfg).unwrap();
     ChatEntry::export_all(&cfg).unwrap();
+    TrackSound::export_all(&cfg).unwrap();
+    Tone::export_all(&cfg).unwrap();
+    Effects::export_all(&cfg).unwrap();
+    EqEffect::export_all(&cfg).unwrap();
+    DistortionEffect::export_all(&cfg).unwrap();
+    ChorusEffect::export_all(&cfg).unwrap();
+    DelayEffect::export_all(&cfg).unwrap();
+    ReverbEffect::export_all(&cfg).unwrap();
 }
 
 fn read_ts_files(dir: &Path) -> BTreeMap<String, String> {

@@ -61,6 +61,19 @@ describe("parseProjectFile", () => {
     expect(doc.song).toEqual(base);
   });
 
+  it("keeps unknown fields inside sound", () => {
+    const sound = { tone: { filter_cutoff_hz: 800, future_knob: 1 }, future_group: true };
+    const song = { ...base, tracks: [{ ...base.tracks[0], sound }, ...base.tracks.slice(1)] };
+    const r = parseProjectFile(file(song), instruments);
+    expect("ok" in r && r.ok.tracks[0].sound).toEqual(sound);
+  });
+
+  it("rejects a bad sound with the track and setting named", () => {
+    const sound = { effects: { delay: { feedback: 1.5 } } };
+    const song = { ...base, tracks: [{ ...base.tracks[0], sound }, ...base.tracks.slice(1)] };
+    expect(error(file(song))).toMatch(/Track 1 "Drums": feedback must be 0-0.9, got 1.5/);
+  });
+
   it("rejects a newer project version", () => {
     expect(error(file(base, { version: 2 }))).toMatch(/newer version of Songbird/);
   });

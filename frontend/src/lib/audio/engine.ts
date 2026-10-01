@@ -3,6 +3,8 @@ import { stepToSeconds } from "@/lib/timing";
 import { createMetronomeSource, type MetronomeSource } from "./metronomeSource";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { getSoundSourceFactory } from "./registry";
+import { createInsertChain, type InsertChain } from "./insertChain";
+import { DEFAULT_VOICE_SOUND, type VoiceSound } from "./voiceSound";
 import type {
   LoopRange,
   NoteHandle,
@@ -46,7 +48,36 @@ interface VoiceChannel {
   channel: InstanceType<ToneModule["Channel"]>;
   volumeDb: number;
   pan: number;
+  // Shared by playback and previews so a track has one set of effects, not one per way of playing it.
+  chain: InsertChain;
+  sound: VoiceSound;
 }
+
+// A preview is routed through its track's chain, so it only owns the source and the mixer-faithful channel.
+interface PreviewChannel {
+  instrument: string;
+  source: SoundSource;
+  channel: InstanceType<ToneModule["Channel"]>;
+  // The way out for previews of an inaudible track, whose own channel is silent. It is gated shut
+  // except while a preview sounds, so the track's scheduled notes still fade on mute.
+  tap: InstanceType<ToneModule["Gain"]>;
+  tapOpen: boolean;
+  audible: boolean;
+  held: number;
+  lingering: boolean;
+  closeTimer: ReturnType<typeof setTimeout> | null;
+  track: VoiceChannel;
+  volumeDb: number;
+  pan: number;
+  sound: VoiceSound;
+}
+
+const DEFAULT_TEMPO = 120;
+
+// Covers a preview's release and its effect tails; the tap closes after this so a muted track goes quiet again.
+const TAP_TAIL_SECONDS = 3;
+
+const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 export interface AuditionOptions {
   // Routes through that voice's channel so its volume and pan apply.
@@ -62,6 +93,8 @@ export interface LiveNoteOptions {
 export interface LiveNote {
   source: SoundSource;
   handle: NoteHandle;
+  // Lets the engine keep a muted track's preview path open for as long as the key is down.
+  released?: () => void;
 }
 
 export interface PlayOptions {
@@ -123,6 +156,8 @@ export interface PlaybackEngine extends Playback {
   subscribeCountIn(cb: (beatsLeft: number | null) => void): () => void;
   // Fires from the transport, not from frames, so a take can start recording even when frames are throttled.
   subscribeCountInEnd(cb: () => void): () => void;
+  // Applies the model's current sound to live tracks, so held notes follow edits while playback is stopped.
+  syncSound(): void;
   dispose(): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(cb: () => void): () => void;
@@ -160,7 +195,7 @@ export function createPlaybackEngine(
   let tone: ToneModule | null = null;
   const channels = new Map<string, VoiceChannel>();
   // Separate from `channels` because the scheduler's mute floor would otherwise fade a preview out mid-note.
-  const previews = new Map<string, VoiceChannel>();
+  const previews = new Map<string, PreviewChannel>();
   const auditionSources = new Map<string, SoundSource>();
   let bars: ScheduledBar[] = [];
   let nextBarStart = 0;
@@ -297,44 +332,109 @@ export function createPlaybackEngine(
       ? Math.min(Math.max(jumpTo, 1), timing.measures)
       : nextMeasure(timing, null);
 
+  const tempoOf = () => model.getTiming()?.tempo ?? DEFAULT_TEMPO;
+
   // Fading first, then disposing later, avoids a click from cutting a channel that is still sounding.
   const disposeVoice = (entry: VoiceChannel, immediate = false) => {
     if (entry.source.dispose) entry.source.dispose();
     else entry.source.stopAll();
     if (immediate) {
       entry.channel.dispose();
+      entry.chain.dispose();
       return;
     }
     entry.channel.volume.rampTo(SILENT_DB, MIXER_RAMP_SECONDS);
-    setTimeout(() => entry.channel.dispose(), DISPOSE_DELAY_MS);
+    setTimeout(() => {
+      entry.channel.dispose();
+      entry.chain.dispose();
+    }, DISPOSE_DELAY_MS);
   };
 
-  const applyMixer = (entry: VoiceChannel, voice: Voice) => {
+  const disposePreview = (entry: PreviewChannel, immediate = false) => {
+    if (entry.closeTimer) clearTimeout(entry.closeTimer);
+    if (entry.source.dispose) entry.source.dispose();
+    else entry.source.stopAll();
+    if (immediate) {
+      entry.tap.dispose();
+      entry.channel.dispose();
+      return;
+    }
+    entry.tap.gain.rampTo(0, MIXER_RAMP_SECONDS);
+    setTimeout(() => {
+      entry.tap.dispose();
+      entry.channel.dispose();
+    }, DISPOSE_DELAY_MS);
+  };
+
+  // Ramped only on a change: this runs every tick, and a ramp per tick is wasted work that Tone
+  // also warns about when it is issued inside a scheduled callback without the scheduling time.
+  const updateTap = (entry: PreviewChannel, at?: number) => {
+    const open = !entry.audible && (entry.held > 0 || entry.lingering);
+    if (open === entry.tapOpen) return;
+    entry.tapOpen = open;
+    entry.tap.gain.rampTo(open ? 1 : 0, MIXER_RAMP_SECONDS, at);
+  };
+
+  const keepTapOpen = (entry: PreviewChannel, seconds: number) => {
+    entry.lingering = true;
+    if (entry.closeTimer) clearTimeout(entry.closeTimer);
+    entry.closeTimer = setTimeout(() => {
+      entry.lingering = false;
+      entry.closeTimer = null;
+      updateTap(entry);
+    }, seconds * 1000);
+    updateTap(entry);
+  };
+
+  const applyMixer = (entry: VoiceChannel, voice: Voice, at?: number) => {
     const db = targetDb(voice);
     if (entry.volumeDb !== db) {
-      entry.channel.volume.rampTo(db, MIXER_RAMP_SECONDS);
+      entry.channel.volume.rampTo(db, MIXER_RAMP_SECONDS, at);
       entry.volumeDb = db;
     }
     if (entry.pan !== voice.pan) {
-      entry.channel.pan.rampTo(voice.pan, MIXER_RAMP_SECONDS);
+      entry.channel.pan.rampTo(voice.pan, MIXER_RAMP_SECONDS, at);
       entry.pan = voice.pan;
     }
+    const preview = previews.get(voice.key);
+    if (preview) {
+      preview.audible = voice.audible;
+      updateTap(preview, at);
+    }
+  };
+
+  // Diffed by value because the model resolves a fresh object on every read.
+  const applySound = (entry: VoiceChannel, voice: Voice, tempo: number, at?: number) => {
+    const next = voice.sound ?? DEFAULT_VOICE_SOUND;
+    if (!sameJson(entry.sound.tone, next.tone)) entry.source.setTone?.(next.tone);
+    entry.sound = next;
+    entry.chain.apply(next.effects, tempo, at);
+    // Held live notes sound on the preview source, which a track-only update would leave on stale tone.
+    const preview = previews.get(voice.key);
+    if (preview && !sameJson(preview.sound.tone, next.tone)) preview.source.setTone?.(next.tone);
+    if (preview) preview.sound = next;
   };
 
   const makeEntry = (t: ToneModule, voice: Voice, db: number): VoiceChannel => {
     const channel = new t.Channel({ volume: db, pan: voice.pan }).toDestination();
+    const chain = createInsertChain(t);
+    chain.output.connect(channel);
+    const sound = voice.sound ?? DEFAULT_VOICE_SOUND;
+    chain.apply(sound.effects, tempoOf());
     return {
       instrument: voice.instrument,
-      source: getSoundSourceFactory(voice.instrument)(t, channel),
+      source: getSoundSourceFactory(voice.instrument)(t, chain.input, sound.tone),
       channel,
       volumeDb: db,
       pan: voice.pan,
+      chain,
+      sound,
     };
   };
 
   // Created lazily and per key so a voice added mid-play needs no restart, and
   // rebuilt when its instrument changes because the source is instrument-bound.
-  const ensureVoice = (t: ToneModule, voice: Voice): VoiceChannel => {
+  const ensureVoice = (t: ToneModule, voice: Voice, tempo: number, at?: number): VoiceChannel => {
     let entry = channels.get(voice.key);
     if (entry && entry.instrument !== voice.instrument) {
       disposeVoice(entry);
@@ -348,25 +448,51 @@ export function createPlaybackEngine(
       // arrive, and Play is where load failures are surfaced.
       void entry.source.load(voice.rows).catch(() => {});
     } else {
-      applyMixer(entry, voice);
+      applyMixer(entry, voice, at);
+      applySound(entry, voice, tempo, at);
     }
     return entry;
   };
 
   // A preview must be heard even on a muted or soloed-out track, but still through its volume and pan.
-  const previewVoice = (t: ToneModule, voice: Voice): VoiceChannel => {
+  const previewVoice = (t: ToneModule, voice: Voice): PreviewChannel => {
+    const track = ensureVoice(t, voice, tempoOf());
     let entry = previews.get(voice.key);
-    if (entry && entry.instrument !== voice.instrument) {
-      disposeVoice(entry);
+    // Both checks matter: a rebuilt track has a new chain, and the old preview would feed a disposed one.
+    if (entry && (entry.instrument !== voice.instrument || entry.track !== track)) {
+      disposePreview(entry);
       previews.delete(voice.key);
       entry = undefined;
     }
     if (!entry) {
-      entry = makeEntry(t, voice, voice.volumeDb);
+      const channel = new t.Channel({ volume: voice.volumeDb, pan: voice.pan }).toDestination();
+      const tap = new t.Gain(0);
+      track.chain.output.connect(tap);
+      tap.connect(channel);
+      const sound = voice.sound ?? DEFAULT_VOICE_SOUND;
+      entry = {
+        instrument: voice.instrument,
+        // Its own source so held preview notes and the track's pooled voices never steal from each other,
+        // but the same effect chain so there is one reverb per track.
+        source: getSoundSourceFactory(voice.instrument)(t, track.chain.input, sound.tone),
+        channel,
+        tap,
+        tapOpen: false,
+        audible: voice.audible,
+        held: 0,
+        lingering: false,
+        closeTimer: null,
+        track,
+        volumeDb: voice.volumeDb,
+        pan: voice.pan,
+        sound,
+      };
       previews.set(voice.key, entry);
     } else {
       entry.channel.volume.rampTo(voice.volumeDb, MIXER_RAMP_SECONDS);
       entry.channel.pan.rampTo(voice.pan, MIXER_RAMP_SECONDS);
+      entry.audible = voice.audible;
+      updateTap(entry);
       entry.volumeDb = voice.volumeDb;
       entry.pan = voice.pan;
     }
@@ -375,11 +501,17 @@ export function createPlaybackEngine(
 
   // A voice key routes through that voice's preview channel; without one the single-instrument
   // path plays straight out, as it has no mixer.
-  const resolveLiveSource = (t: ToneModule, voiceKey?: string): SoundSource | null => {
+  const resolveLiveTarget = (
+    t: ToneModule,
+    voiceKey?: string,
+  ): { source: SoundSource; preview?: PreviewChannel } | null => {
     const voice = voiceKey
       ? model.getVoices().find((v) => v.key === voiceKey)
       : undefined;
-    if (voice) return previewVoice(t, voice).source;
+    if (voice) {
+      const preview = previewVoice(t, voice);
+      return { source: preview.source, preview };
+    }
     const instrument = model.instrument;
     if (!instrument) return null;
     let standalone = auditionSources.get(instrument);
@@ -387,17 +519,23 @@ export function createPlaybackEngine(
       standalone = getSoundSourceFactory(instrument)(t);
       auditionSources.set(instrument, standalone);
     }
-    return standalone;
+    return { source: standalone };
   };
 
-  const syncVoices = (t: ToneModule, voices: Voice[]) => {
+  const syncVoices = (t: ToneModule, voices: Voice[], at?: number) => {
     const keys = new Set(voices.map((v) => v.key));
     for (const [key, entry] of channels) {
       if (keys.has(key)) continue;
       disposeVoice(entry);
       channels.delete(key);
+      const preview = previews.get(key);
+      if (preview) {
+        disposePreview(preview);
+        previews.delete(key);
+      }
     }
-    return voices.map((voice) => ({ voice, entry: ensureVoice(t, voice) }));
+    const tempo = tempoOf();
+    return voices.map((voice) => ({ voice, entry: ensureVoice(t, voice, tempo, at) }));
   };
 
   const scheduleStep = (
@@ -452,7 +590,7 @@ export function createPlaybackEngine(
     const t = tone;
     // Applied every tick, not only when a step is due, so a mixer change lands
     // within one tick even between steps.
-    syncVoices(t, model.getVoices());
+    syncVoices(t, model.getVoices(), audioNow);
     const horizon = tickTime + LOOKAHEAD_SECONDS;
     for (;;) {
       const bar = bars.at(-1);
@@ -474,7 +612,7 @@ export function createPlaybackEngine(
       if (atBoundary) startBar(timing);
       const current = bars.at(-1)!;
       scheduleStep(
-        syncVoices(t, model.getVoices()),
+        syncVoices(t, model.getVoices(), audioNow),
         current,
         audioNow + (stepTime - tickTime),
       );
@@ -598,8 +736,9 @@ export function createPlaybackEngine(
       try {
         const t = (tone ??= await loadTone());
         await (alreadyStarted ?? t.start());
-        const active = resolveLiveSource(t, options.voiceKey);
-        if (!active) return;
+        const target = resolveLiveTarget(t, options.voiceKey);
+        if (!target) return;
+        const active = target.source;
         await active.load([row]);
         const start = t.getContext().currentTime + AUDITION_DELAY_SECONDS;
         active.trigger(
@@ -608,6 +747,9 @@ export function createPlaybackEngine(
           start + AUDITION_SECONDS,
           options.velocity ?? AUDITION_VELOCITY,
         );
+        if (target.preview) {
+          keepTapOpen(target.preview, AUDITION_DELAY_SECONDS + AUDITION_SECONDS + TAP_TAIL_SECONDS);
+        }
       } catch {
         // Best-effort: Play is where audio failures are surfaced to the user.
       }
@@ -617,7 +759,7 @@ export function createPlaybackEngine(
       try {
         const t = (tone ??= await loadTone());
         await (alreadyStarted ?? t.start());
-        const source = resolveLiveSource(t, voiceKey);
+        const source = resolveLiveTarget(t, voiceKey)?.source;
         const wanted =
           rows ?? model.getVoices().find((v) => v.key === voiceKey)?.rows ?? [];
         await source?.load(wanted);
@@ -627,18 +769,33 @@ export function createPlaybackEngine(
     },
     liveNoteOn(row, options = {}) {
       if (!tone || tone.getContext().state !== "running") return null;
-      const source = resolveLiveSource(tone, options.voiceKey);
-      if (!source) return null;
+      const target = resolveLiveTarget(tone, options.voiceKey);
+      if (!target) return null;
+      const { source, preview } = target;
       const handle = source.noteOn(
         row,
         tone.getContext().currentTime,
         options.velocity ?? AUDITION_VELOCITY,
       );
-      return { source, handle };
+      if (preview) {
+        preview.held += 1;
+        updateTap(preview);
+      }
+      return {
+        source,
+        handle,
+        released: preview
+          ? () => {
+              preview.held = Math.max(0, preview.held - 1);
+              keepTapOpen(preview, TAP_TAIL_SECONDS);
+            }
+          : undefined,
+      };
     },
     liveNoteOff(note) {
       if (!tone) return;
       note.source.noteOff(note.handle, tone.getContext().currentTime);
+      note.released?.();
     },
     liveBlocked() {
       // Not-yet-loaded audio is a loading state, not the autoplay block a click would fix.
@@ -728,11 +885,19 @@ export function createPlaybackEngine(
       positionListeners.add(cb);
       return () => positionListeners.delete(cb);
     },
+    syncSound() {
+      if (!tone) return;
+      const tempo = tempoOf();
+      for (const voice of model.getVoices()) {
+        const entry = channels.get(voice.key);
+        if (entry) applySound(entry, voice, tempo);
+      }
+    },
     dispose() {
       stop();
       for (const entry of channels.values()) disposeVoice(entry, true);
       channels.clear();
-      for (const entry of previews.values()) disposeVoice(entry, true);
+      for (const entry of previews.values()) disposePreview(entry, true);
       previews.clear();
       for (const src of auditionSources.values()) src.dispose?.();
       auditionSources.clear();

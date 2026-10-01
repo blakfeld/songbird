@@ -247,3 +247,34 @@ async fn one_mebibyte_to_a_pattern_route_is_still_rejected() {
     let res = app().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn midi_export_ignores_track_sound() {
+    let plain = two_track_song();
+    let mut shaped = two_track_song();
+    shaped["tracks"][1]["sound"] = json!({
+        "tone": {"filter_cutoff_hz": 400},
+        "effects": {
+            "distortion": {"enabled": true, "drive": 0.9},
+            "reverb": {"enabled": true, "mix": 0.8},
+        },
+    });
+    let (plain_status, _, plain_bytes) = export(&plain).await;
+    let (shaped_status, _, shaped_bytes) = export(&shaped).await;
+    assert_eq!(plain_status, StatusCode::OK);
+    assert_eq!(shaped_status, StatusCode::OK);
+    assert_eq!(plain_bytes, shaped_bytes);
+}
+
+#[tokio::test]
+async fn out_of_range_sound_setting_names_the_track_and_setting() {
+    let mut s = two_track_song();
+    s["tracks"][1]["sound"] = json!({"effects": {"delay": {"feedback": 1.5}}});
+    let (status, _, bytes) = export(&s).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let error = error_of(&bytes);
+    assert_eq!(error["code"], "invalid_song");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains("\"Bass\""), "{message}");
+    assert!(message.contains("feedback"), "{message}");
+}

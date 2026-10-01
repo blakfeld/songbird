@@ -238,6 +238,7 @@ pub fn song_with_planned_track(song: &Song, name: &str, instrument_id: &str) -> 
         soloed: false,
         loops: vec![],
         clips: vec![],
+        sound: None,
     });
     extended
 }

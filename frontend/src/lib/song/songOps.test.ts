@@ -295,3 +295,82 @@ describe("key", () => {
     expect(ops.setKey(next, { tonic: "E", mode: "minor" })).toBe(next);
   });
 });
+
+describe("track sound", () => {
+  const song = () => newSongWithTracks();
+  const id = (s: Song) => s.tracks[1].id;
+
+  it("merges nested patches and keeps untouched and unknown fields", () => {
+    const s0 = song();
+    const seeded = {
+      ...s0,
+      tracks: s0.tracks.map((t, i) =>
+        i === 1 ? { ...t, sound: { tone: { filter_cutoff_hz: 400, future: 1 } } as never } : t,
+      ),
+    };
+    const s1 = ops.setSound(seeded, id(seeded), {
+      tone: { filter_resonance: 0.5 },
+      effects: { delay: { enabled: true, time: "1/4" } },
+    });
+    expect(s1.tracks[1].sound).toEqual({
+      tone: { filter_cutoff_hz: 400, filter_resonance: 0.5, future: 1 },
+      effects: { delay: { enabled: true, time: "1/4" } },
+    });
+    const s2 = ops.setSound(s1, id(s1), { effects: { delay: { feedback: 0.5 } } });
+    expect(s2.tracks[1].sound?.effects?.delay).toEqual({ enabled: true, time: "1/4", feedback: 0.5 });
+  });
+
+  it("deletes a field with null and prunes the empty objects left behind", () => {
+    const s0 = song();
+    const s1 = ops.setSound(s0, id(s0), { tone: { filter_cutoff_hz: 300 } });
+    expect(s1.tracks[1].sound).toBeDefined();
+    const t = s1.tracks[1];
+    const s2 = ops.setSound(s1, t.id, { tone: { filter_cutoff_hz: null } });
+    expect("sound" in s2.tracks[1]).toBe(false);
+    const s3 = ops.setSound(s1, t.id, { tone: null });
+    expect("sound" in s3.tracks[1]).toBe(false);
+  });
+
+  it("keeps sibling fields when one is deleted", () => {
+    const s0 = song();
+    const s1 = ops.setSound(s0, id(s0), { tone: { filter_cutoff_hz: 300, sustain: 0.5 } });
+    const s2 = ops.setSound(s1, s1.tracks[1].id, { tone: { sustain: null } });
+    expect(s2.tracks[1].sound).toEqual({ tone: { filter_cutoff_hz: 300 } });
+  });
+
+  it("returns the same song when nothing changes", () => {
+    const s0 = song();
+    expect(ops.setSound(s0, id(s0), {})).toBe(s0);
+    expect(ops.setSound(s0, id(s0), { tone: { filter_cutoff_hz: null } })).toBe(s0);
+    expect(ops.setSound(s0, "missing", { tone: { sustain: 1 } })).toBe(s0);
+    const s1 = ops.setSound(s0, id(s0), { effects: { reverb: { mix: 0.4 } } });
+    expect(ops.setSound(s1, id(s1), { effects: { reverb: { mix: 0.4 } } })).toBe(s1);
+  });
+
+  it("resets by deleting the sound, and is a no-op when there is none", () => {
+    const s0 = song();
+    expect(ops.resetSound(s0, id(s0))).toBe(s0);
+    const s1 = ops.setSound(s0, id(s0), { effects: { reverb: { enabled: true } } });
+    const s2 = ops.resetSound(s1, id(s1));
+    expect("sound" in s2.tracks[1]).toBe(false);
+  });
+
+  it("ignores tone fields that do not apply to the track's instrument", () => {
+    const s0 = song();
+    const [drumsTrack, piano] = s0.tracks;
+    expect(ops.setSound(s0, drumsTrack.id, { tone: { attack_s: 0.5, sustain: 0.2 } })).toBe(s0);
+    expect(ops.setSound(s0, piano.id, { tone: { pitch_semitones: 3 } })).toBe(s0);
+    const mixed = ops.setSound(s0, drumsTrack.id, { tone: { attack_s: 0.5, pitch_semitones: 3 } });
+    expect(mixed.tracks[0].sound).toEqual({ tone: { pitch_semitones: 3 } });
+  });
+
+  it("treats a stored null sound as absent and keeps the same song on a no-op", () => {
+    const s0 = song();
+    const nulled = { ...s0, tracks: s0.tracks.map((t, i) => (i === 1 ? { ...t, sound: null as never } : t)) };
+    expect(ops.setSound(nulled, id(nulled), {})).toBe(nulled);
+    expect(ops.setSound(nulled, id(nulled), { tone: { filter_cutoff_hz: null } })).toBe(nulled);
+    expect(ops.setSound(nulled, id(nulled), { tone: { filter_cutoff_hz: 300 } }).tracks[1].sound).toEqual({
+      tone: { filter_cutoff_hz: 300 },
+    });
+  });
+});

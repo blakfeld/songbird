@@ -39,6 +39,9 @@ export function useSongPlayback(
 
   useEffect(() => () => engine.dispose(), [engine]);
 
+  // The scheduler only reads the song while playing, so without this a knob turned during a held live note would not be heard.
+  useEffect(() => store.subscribe(() => engine.syncSound()), [engine, store]);
+
   // Tone and the samples are fetched ahead of Play so its first press stays inside the user gesture.
   const instrumentKey = useSyncExternalStore(
     store.subscribe,

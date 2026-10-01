@@ -2,6 +2,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { slugify } from "../midiFilename";
 import { migrateSong, validateClips } from "./migrate";
+import { soundProblem } from "./trackSound";
 import {
   MAX_TRACKS,
   MEASURE_RANGE,
@@ -39,6 +40,7 @@ export type ProjectErrorKind =
   | "track_name"
   | "volume"
   | "pan"
+  | "sound"
   | "unknown_instrument"
   | "loop_count"
   | "clip_count"
@@ -176,6 +178,11 @@ function checkTracks(raw: Raw, instruments: InstrumentInfo[]): Problem | null {
         "unknown_instrument",
         `${label(t, i)} uses the instrument "${t.instrument}", which Songbird does not offer`,
       );
+    if (t.sound !== undefined) {
+      const drums = instruments.find((inst) => inst.id === t.instrument)?.kind === "drums";
+      const reason = soundProblem(t.sound, drums);
+      if (reason) return problem("sound", `${label(t, i)}: ${reason}`);
+    }
     // Relabelled documents carry loops already; version 1 conversion would silently discard them.
     if (raw.version === 1 && ("loops" in t || "clips" in t))
       return problem("version", `${label(t, i)} has loops or clips but the song says version 1`);

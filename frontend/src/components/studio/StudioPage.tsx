@@ -274,6 +274,11 @@ export function StudioPage({
   const { open: openGenerate } = generation;
   const chat = useChat(store, setStatus);
 
+  // UI state rather than song state, so opening a panel is never an undo step or a saved change.
+  const [soundTrackId, setSoundTrackId] = useState<string | null>(null);
+  if (soundTrackId !== null && song && !song.tracks.some((t) => t.id === soundTrackId))
+    setSoundTrackId(null);
+
   const trackActions = useMemo<TrackActions>(
     () => ({
       select: (id) => store.getState().selectTrack(id),
@@ -281,9 +286,12 @@ export function StudioPage({
       remove: (id) => {
         const name = store.getState().song?.tracks.find((t) => t.id === id)?.name;
         store.getState().deleteTrack(id);
+        setSoundTrackId((open) => (open === id ? null : open));
         if (name) setStatus(`Deleted the ${name} track. Undo to restore.`);
       },
       mixer: (id, patch, options) => store.getState().setMixer(id, patch, options),
+      sound: (id, patch, options) => store.getState().setSound(id, patch, options),
+      resetSound: (id) => store.getState().resetSound(id),
       generate: openGenerate,
       beginGesture: () => guardEdit(() => store.getState().beginGesture()),
       endGesture: () => store.getState().endGesture(),
@@ -424,6 +432,8 @@ export function StudioPage({
             onLoopChange={setLoop}
             subscribePosition={playback.subscribePosition}
             actions={trackActions}
+            soundTrackId={soundTrackId}
+            onSoundTrack={setSoundTrackId}
             clipActions={clipActions}
             generatingTrackId={generatingTrackId}
             onAddTrack={addTrack}

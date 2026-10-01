@@ -1,5 +1,6 @@
 import type { Row } from "@/generated/Row";
-import type { SoundSource } from "./types";
+import { createToneFilter, OPEN_CUTOFF_HZ, rampToneFilter, wantsFilter } from "./toneFilter";
+import type { SoundSource, ToneControls } from "./types";
 import { velocityToGain } from "./velocity";
 
 type ToneModule = typeof import("tone");
@@ -9,7 +10,24 @@ export const DRUM_KIT_BASE_URL = "/kits/drums/";
 export function createDrumsSource(
   tone: ToneModule,
   output?: import("tone").InputNode,
+  initialTone?: ToneControls,
 ): SoundSource {
+  let filter: ReturnType<typeof createToneFilter> | null = null;
+  // Built on first need so an untouched kit keeps its original graph; hits already ringing finish on the old route.
+  const ensureFilter = (controls: ToneControls | undefined, sweep: boolean) => {
+    if (filter || !wantsFilter(controls)) return;
+    // Created open and ramped when added mid-use, because starting at the target would make the first edit jump.
+    filter = sweep
+      ? createToneFilter(tone, OPEN_CUTOFF_HZ, undefined)
+      : createToneFilter(tone, controls?.filterCutoffHz ?? OPEN_CUTOFF_HZ, controls?.filterResonance);
+    if (output) filter.connect(output);
+    else filter.toDestination();
+    if (sweep && controls) rampToneFilter(filter, controls, OPEN_CUTOFF_HZ);
+  };
+  ensureFilter(initialTone, false);
+  // Read per hit rather than baked in, because a sample's pitch is fixed once it starts.
+  let playbackRate = 2 ** ((initialTone?.pitchSemitones ?? 0) / 12);
+
   let buffers: InstanceType<ToneModule["ToneAudioBuffers"]> | null = null;
   // Includes notes still being fetched so a play racing a preload reuses it.
   const loadedNotes = new Set<number>();
@@ -24,10 +42,12 @@ export function createDrumsSource(
     if (!buffers?.has(key)) return;
     // Own gain per hit so a soft hit cannot change a still-ringing loud one.
     const gain = new tone.Gain(velocityToGain(velocity));
-    if (output) gain.connect(output);
+    if (filter) gain.connect(filter);
+    else if (output) gain.connect(output);
     else gain.toDestination();
     const src = new tone.ToneBufferSource({
       url: buffers.get(key),
+      playbackRate,
       onended: () => {
         active.delete(src);
         src.dispose();
@@ -69,6 +89,12 @@ export function createDrumsSource(
       return attempt;
     },
 
+    setTone(controls) {
+      playbackRate = 2 ** ((controls.pitchSemitones ?? 0) / 12);
+      if (filter) rampToneFilter(filter, controls, OPEN_CUTOFF_HZ);
+      else ensureFilter(controls, true);
+    },
+
     // endSeconds is unused: a drum hit always rings out fully.
     trigger(row, startSeconds, _endSeconds, velocity) {
       hit(row, startSeconds, velocity);
@@ -88,6 +114,7 @@ export function createDrumsSource(
 
     dispose() {
       for (const src of active) src.stop();
+      filter?.dispose();
     },
   };
 }

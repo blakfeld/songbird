@@ -263,6 +263,19 @@ describe("tracks", () => {
     expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
   });
 
+  it("closes a track's Sound panel when the track is deleted, and undo does not reopen it", async () => {
+    await renderStudio();
+    await userEvent.click(screen.getByRole("button", { name: "Sound for Piano" }));
+    expect(await screen.findByRole("dialog", { name: "Piano sound" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Track options for Piano" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete track" }));
+    expect(screen.queryByRole("dialog", { name: "Piano sound" })).not.toBeInTheDocument();
+
+    await userEvent.keyboard("{Meta>}z{/Meta}");
+    expect(lane("Piano")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("marks tracks silenced by another track's solo", async () => {
     await renderStudio();
     await userEvent.click(screen.getByRole("button", { name: "Solo Piano" }));

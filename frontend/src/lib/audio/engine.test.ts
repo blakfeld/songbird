@@ -11,8 +11,20 @@ import { createPlaybackEngine } from "./engine";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { createSongPlaybackModel } from "./songPlaybackModel";
 import { registerSoundSource } from "./registry";
+import { EFFECT_DEFAULTS, type ResolvedEffects, type VoiceSound } from "./voiceSound";
 
-type MockParam = { ramps: [number, number][]; rampTo(v: number, t: number): void };
+type MockParam = {
+  ramps: [number, number][];
+  rampTo(v: number, t: number): void;
+  exponentialRampTo(v: number, t: number): void;
+};
+type MockNode = {
+  type: string;
+  opts: Record<string, unknown>;
+  params: Record<string, MockParam>;
+  connections: unknown[];
+  disposed: boolean;
+};
 type MockChannel = {
   opts: { volume: number; pan: number };
   volume: MockParam;
@@ -39,6 +51,8 @@ const h = vi.hoisted(() => {
     baseLatency: 0,
     clicks: [] as { time: number; hz: number }[],
     contextState: "suspended",
+    // Every Tone node a chain or source builds, so tests can assert what was created, ramped, and wired.
+    nodes: [] as MockNode[],
   };
   return { state };
 });
@@ -80,29 +94,102 @@ vi.mock("tone", () => {
       return { name: k };
     }
   }
-  class Gain {
-    node: { value: number };
-    constructor(value: number) {
-      this.node = { value };
-      state.gains.push(this.node);
-    }
-    toDestination() {
-      return this;
-    }
-    connect() {
-      return this;
-    }
-    dispose() {}
-  }
   const param = (): MockParam => {
     const p: MockParam = {
       ramps: [],
       rampTo(v, t) {
         p.ramps.push([v, t]);
       },
+      exponentialRampTo(v, t) {
+        p.ramps.push([v, t]);
+      },
     };
     return p;
   };
+  class MockToneNode implements MockNode {
+    type = "";
+    params: Record<string, MockParam> = {};
+    connections: unknown[] = [];
+    disposed = false;
+    constructor(public opts: Record<string, unknown> = {}) {
+      this.type = this.constructor.name;
+      state.nodes.push(this);
+    }
+    connect(node: unknown) {
+      this.connections.push(node);
+      return this;
+    }
+    disconnect() {
+      this.connections = [];
+      return this;
+    }
+    dispose() {
+      this.disposed = true;
+    }
+    protected addParams(...names: string[]) {
+      for (const n of names) {
+        const p = param();
+        this.params[n] = p;
+        (this as Record<string, unknown>)[n] = p;
+      }
+    }
+  }
+  class Gain extends MockToneNode {
+    node: { value: number };
+    gain!: MockParam;
+    constructor(value: number) {
+      super({ value });
+      this.addParams("gain");
+      this.node = { value };
+      state.gains.push(this.node);
+    }
+    toDestination() {
+      return this;
+    }
+  }
+  class EQ3 extends MockToneNode {
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("low", "mid", "high");
+    }
+  }
+  class Distortion extends MockToneNode {
+    distortion = 0;
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("wet");
+    }
+  }
+  class Chorus extends MockToneNode {
+    depth = 0;
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("frequency", "wet");
+    }
+    start() {
+      return this;
+    }
+  }
+  class FeedbackDelay extends MockToneNode {
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("delayTime", "feedback", "wet");
+    }
+  }
+  class Reverb extends MockToneNode {
+    ready = Promise.resolve();
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("wet");
+    }
+  }
+  class Filter extends MockToneNode {
+    constructor(opts: Record<string, unknown>) {
+      super(opts);
+      this.addParams("frequency", "Q", "gain");
+    }
+  }
+
   class Channel implements MockChannel {
     volume = param();
     pan = param();
@@ -165,10 +252,25 @@ vi.mock("tone", () => {
     getTransport: () => transport,
     ToneAudioBuffers,
     Gain,
+    EQ3,
+    Distortion,
+    Chorus,
+    FeedbackDelay,
+    Reverb,
+    Filter,
     Channel,
     ToneBufferSource,
   };
 });
+
+// Follows connect() calls, so a test can assert a source ends up at a channel without naming the chain's internals.
+function reaches(from: unknown, to: unknown, seen = new Set<unknown>()): boolean {
+  if (from === to) return true;
+  if (seen.has(from)) return false;
+  seen.add(from);
+  const next = (from as { connections?: unknown[] }).connections ?? [];
+  return next.some((n) => reaches(n, to, seen));
+}
 
 // Audio time is offset from transport time so the tests prove the engine
 // forwards the callback's audio time rather than its own transport time.
@@ -241,6 +343,7 @@ beforeEach(() => {
     baseLatency: 0,
     clicks: [],
     contextState: "suspended",
+    nodes: [],
   });
 });
 
@@ -545,8 +648,9 @@ describe("multi-voice playback", () => {
     ]);
     expect(h.state.channels).toHaveLength(2);
     expect(h.state.channels.every((c) => c.toDestinationCalls === 1)).toBe(true);
-    expect(outputs["mv-a"]).toBe(h.state.channels[0]);
-    expect(outputs["mv-b"]).toBe(h.state.channels[1]);
+    expect(reaches(outputs["mv-a"], h.state.channels[0])).toBe(true);
+    expect(reaches(outputs["mv-b"], h.state.channels[1])).toBe(true);
+    expect(reaches(outputs["mv-a"], h.state.channels[1])).toBe(false);
   });
 
   it("silences the other voices when the audible set changes to a solo", async () => {
@@ -635,7 +739,7 @@ describe("multi-voice playback", () => {
     await engine.audition(ROWS[0], { voiceKey: "mv-a", velocity: 90 });
 
     expect(hits).toEqual([{ id: "mv-a", time: expect.closeTo(0.01), velocity: 90 }]);
-    expect(h.state.channels[0].opts).toEqual({ volume: -6, pan: -1 });
+    expect(h.state.channels[1].opts).toEqual({ volume: -6, pan: -1 });
   });
 
   it("keeps a preview at its own volume while the scheduler holds the muted voice silent", async () => {
@@ -655,8 +759,9 @@ describe("multi-voice playback", () => {
     await engine.audition(ROWS[0], { voiceKey: "mv-b", velocity: 42 });
 
     expect(hits).toEqual([{ id: "mv-b", time: expect.closeTo(0.01), velocity: 42 }]);
-    expect(h.state.channels).toHaveLength(1);
-    expect(outputs["mv-b"]).toBe(h.state.channels[0]);
+    // A preview needs the track's chain and therefore its channel; the second channel exists for previews of muted tracks.
+    expect(h.state.channels).toHaveLength(2);
+    expect(reaches(outputs["mv-b"], h.state.channels[0])).toBe(true);
     expect(outputs["mv-a"]).toBeUndefined();
   });
 });
@@ -992,8 +1097,8 @@ describe("live notes", () => {
 
     expect(note).not.toBeNull();
     expect(events).toEqual([{ kind: "on", time: 3, velocity: 90, handle: expect.any(Object) }]);
-    expect(h.state.channels).toHaveLength(1);
-    expect(h.state.channels[0].opts).toEqual({ volume: -6, pan: -1 });
+    expect(h.state.channels).toHaveLength(2);
+    expect(h.state.channels[1].opts).toEqual({ volume: -6, pan: -1 });
   });
 
   it("releases the same note handle on note-off", async () => {
@@ -1035,7 +1140,7 @@ describe("live notes", () => {
     const engine = setupLive(voice());
     await engine.prepareLive("live-a");
     engine.liveNoteOn(ROWS[0], { voiceKey: "live-a" });
-    expect(h.state.channels.map((c) => c.opts.volume)).toEqual([-6]);
+    expect(h.state.channels.map((c) => c.opts.volume)).toEqual([-100, -6]);
   });
 });
 
@@ -1332,5 +1437,232 @@ describe("metronome and count-in", () => {
     advanceTo(1);
     expect(engine.stepAt(1000)).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe("track sound", () => {
+  const tones: unknown[] = [];
+  const outputs: unknown[] = [];
+  let factoryCalls = 0;
+  registerSoundSource("snd", (_tone, output, initial) => {
+    factoryCalls += 1;
+    outputs.push(output);
+    tones.push(initial);
+    return {
+      load: async () => {},
+      trigger: () => {},
+      noteOn: () => ({}),
+      noteOff: () => {},
+      stopAll: () => {},
+      setTone: (controls) => tones.push(controls),
+    };
+  });
+
+  const baseVoice = (sound?: Voice["sound"]): Voice => ({
+    key: "snd",
+    instrument: "snd",
+    rows: ROWS,
+    notes: [],
+    volumeDb: 0,
+    pan: 0,
+    audible: true,
+    sound,
+  });
+  const sound = (over: Partial<ResolvedEffects> = {}, tone = {}): VoiceSound => ({
+    tone,
+    effects: { ...EFFECT_DEFAULTS, ...over },
+  });
+  const nodesOf = (type: string) => h.state.nodes.filter((n) => n.type === type);
+
+  function setup(initial: Voice, tempo = 120) {
+    let voice = initial;
+    let bpm = tempo;
+    const model: PlaybackModel = {
+      getTiming: () => ({ tempo: bpm, swing: 0, stepsPerMeasure: 16, measures: 1 }),
+      getVoices: () => [voice],
+    };
+    const engine = createPlaybackEngine(model, { requestFrame: () => 0, cancelFrame: () => {} });
+    return {
+      engine,
+      setVoice: (v: Voice) => (voice = v),
+      setTempo: (t: number) => (bpm = t),
+    };
+  }
+
+  beforeEach(() => {
+    tones.length = 0;
+    outputs.length = 0;
+    factoryCalls = 0;
+  });
+
+  it("builds no effect nodes for an absent sound", async () => {
+    const { engine } = setup(baseVoice());
+    await start(engine);
+    advanceTo(0.2);
+    for (const type of ["EQ3", "Distortion", "Chorus", "FeedbackDelay", "Reverb"]) {
+      expect(nodesOf(type)).toHaveLength(0);
+    }
+    expect(tones).toEqual([{}]);
+  });
+
+  it("builds no effect nodes while every effect is off, however its knobs are set", async () => {
+    const { engine } = setup(baseVoice(sound({ reverb: { ...EFFECT_DEFAULTS.reverb, mix: 1 } })));
+    await start(engine);
+    expect(nodesOf("Reverb")).toHaveLength(0);
+  });
+
+  it("ramps an enabled effect's wet level up and back down over 20 ms on the same node", async () => {
+    const { engine, setVoice } = setup(baseVoice());
+    await start(engine);
+    setVoice(baseVoice(sound({ delay: { ...EFFECT_DEFAULTS.delay, enabled: true, mix: 0.4 } })));
+    advanceTo(0.1);
+    const [delay] = nodesOf("FeedbackDelay");
+    expect(delay.params.wet.ramps.at(-1)).toEqual([0.4, 0.02]);
+
+    setVoice(baseVoice(sound({ delay: { ...EFFECT_DEFAULTS.delay, enabled: false, mix: 0.4 } })));
+    advanceTo(0.2);
+    expect(delay.params.wet.ramps.at(-1)).toEqual([0, 0.02]);
+    expect(nodesOf("FeedbackDelay")).toHaveLength(1);
+    expect(delay.disposed).toBe(false);
+  });
+
+  it("builds the EQ from biquad shelves and a peak, which are flat at 0 dB, and zeroes them when disabled", async () => {
+    const eq = { enabled: true, lowDb: 6, midDb: -3, highDb: 2 };
+    const { engine, setVoice } = setup(baseVoice(sound({ eq })));
+    await start(engine);
+    expect(nodesOf("EQ3")).toHaveLength(0);
+    const bands = nodesOf("Filter");
+    expect(bands.map((n) => n.opts.type)).toEqual(["lowshelf", "peaking", "highshelf"]);
+    expect(bands.map((n) => n.params.gain.ramps.at(-1))).toEqual([
+      [6, 0.02],
+      [-3, 0.02],
+      [2, 0.02],
+    ]);
+    setVoice(baseVoice(sound({ eq: { ...eq, enabled: false } })));
+    advanceTo(0.1);
+    expect(bands.map((n) => n.params.gain.ramps.at(-1))).toEqual([
+      [0, 0.02],
+      [0, 0.02],
+      [0, 0.02],
+    ]);
+  });
+
+  it("follows the tempo for delay time, including a change during playback", async () => {
+    const delay = { ...EFFECT_DEFAULTS.delay, enabled: true, time: "1/4" as const };
+    const { engine, setTempo } = setup(baseVoice(sound({ delay })), 120);
+    await start(engine);
+    const [node] = nodesOf("FeedbackDelay");
+    expect(node.params.delayTime.ramps.at(-1)?.[0]).toBeCloseTo(0.5);
+
+    setTempo(60);
+    advanceTo(0.2);
+    expect(node.params.delayTime.ramps.at(-1)?.[0]).toBeCloseTo(1);
+  });
+
+  it("applies live changes without restarting playback or rebuilding the track", async () => {
+    const { engine, setVoice } = setup(baseVoice());
+    await start(engine);
+    const startsBefore = h.state.started;
+    const channelsBefore = h.state.channels.length;
+
+    setVoice(baseVoice(sound({}, { filterCutoffHz: 500 })));
+    advanceTo(0.2);
+
+    expect(tones.at(-1)).toEqual({ filterCutoffHz: 500 });
+    expect(factoryCalls).toBe(1);
+    expect(h.state.started).toBe(startsBefore);
+    expect(h.state.channels).toHaveLength(channelsBefore);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("does not call setTone again while the tone is unchanged", async () => {
+    const { engine } = setup(baseVoice(sound({}, { filterCutoffHz: 500 })));
+    await start(engine);
+    advanceTo(0.5);
+    expect(tones).toEqual([{ filterCutoffHz: 500 }]);
+  });
+
+  it("routes a preview into the track's reverb and on to the track channel", async () => {
+    const reverb = { ...EFFECT_DEFAULTS.reverb, enabled: true };
+    const { engine } = setup(baseVoice(sound({ reverb })));
+    await engine.audition(ROWS[0], { voiceKey: "snd" });
+
+    const [reverbNode] = nodesOf("Reverb");
+    expect(nodesOf("Reverb")).toHaveLength(1);
+    // A separate source keeps held preview notes from stealing the track's pooled voices, while one shared chain gives one reverb per track.
+    expect(factoryCalls).toBe(2);
+    expect(outputs[1]).toBe(outputs[0]);
+    expect(reaches(outputs[1], reverbNode)).toBe(true);
+    expect(reaches(outputs[1], h.state.channels[0])).toBe(true);
+  });
+
+  it("keeps a muted track's preview audible through the tap rather than the muted channel", async () => {
+    const { engine } = setup({ ...baseVoice(), audible: false });
+    await engine.audition(ROWS[0], { voiceKey: "snd" });
+    const [trackChannel, previewChannel] = h.state.channels;
+    expect(trackChannel.opts.volume).toBe(-100);
+    expect(previewChannel.opts.volume).toBe(0);
+    expect(reaches(outputs[1], previewChannel)).toBe(true);
+  });
+
+  describe("preview tap on an inaudible track", () => {
+    const mutedVoice = (over: Partial<Voice> = {}): Voice => ({ ...baseVoice(), audible: false, ...over });
+    const tapOf = () => {
+      const previewChannel = h.state.channels[1];
+      const tap = h.state.nodes.find((n) => n.type === "Gain" && n.connections.includes(previewChannel));
+      return tap!.params.gain;
+    };
+
+    beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
+    afterEach(() => vi.useRealTimers());
+
+    it("opens only while the preview sounds, then closes after its tail", async () => {
+      const { engine } = setup(mutedVoice());
+      await engine.audition(ROWS[0], { voiceKey: "snd" });
+      expect(tapOf().ramps).toEqual([[1, 0.02]]);
+      vi.advanceTimersByTime(10_000);
+      expect(tapOf().ramps).toEqual([[1, 0.02], [0, 0.02]]);
+    });
+
+    it("stays shut for a muted track's scheduled notes, so they fade with the channel", async () => {
+      const { engine, setVoice } = setup(baseVoice());
+      await engine.audition(ROWS[0], { voiceKey: "snd" });
+      vi.advanceTimersByTime(10_000);
+      setVoice(mutedVoice());
+      await start(engine);
+      advanceTo(0.5);
+      expect(tapOf().ramps).toEqual([]);
+      expect(h.state.channels[0].volume.ramps.at(-1)).toEqual([-100, 0.02]);
+    });
+
+    it("holds the tap open for a live note until it is released, plus its tail", async () => {
+      const { engine } = setup(mutedVoice());
+      await engine.prepareLive("snd");
+      const note = engine.liveNoteOn(ROWS[0], { voiceKey: "snd" });
+      expect(tapOf().ramps).toEqual([[1, 0.02]]);
+      vi.advanceTimersByTime(60_000);
+      expect(tapOf().ramps).toEqual([[1, 0.02]]);
+      engine.liveNoteOff(note!);
+      vi.advanceTimersByTime(10_000);
+      expect(tapOf().ramps).toEqual([[1, 0.02], [0, 0.02]]);
+    });
+
+    it("does not ramp the tap on every tick while playing", async () => {
+      const { engine } = setup(mutedVoice());
+      await engine.audition(ROWS[0], { voiceKey: "snd" });
+      await start(engine);
+      const before = tapOf().ramps.length;
+      advanceTo(1);
+      expect(tapOf().ramps).toHaveLength(before);
+    });
+  });
+
+  it("applies sound edits to live tracks while stopped", async () => {
+    const { engine, setVoice } = setup(baseVoice());
+    await engine.prepareLive("snd");
+    engine.liveNoteOn(ROWS[0], { voiceKey: "snd" });
+    setVoice(baseVoice(sound({}, { filterCutoffHz: 700 })));
+    engine.syncSound();
+    expect(tones.at(-1)).toEqual({ filterCutoffHz: 700 });
   });
 });

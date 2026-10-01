@@ -1,4 +1,12 @@
-import type { NoteHandle, SoundSource } from "./types";
+import {
+  createToneFilter,
+  type FilterRolloff,
+  OPEN_CUTOFF_HZ,
+  rampToneFilter,
+  wantsFilter,
+  type ToneFilter,
+} from "./toneFilter";
+import type { NoteHandle, SoundSource, ToneControls, ToneEnvelope } from "./types";
 import { velocityToGain } from "./velocity";
 
 type ToneModule = typeof import("tone");
@@ -7,7 +15,9 @@ type Voice = InstanceType<ToneModule["Synth"]>;
 export interface SynthPreset {
   voice: "Synth" | "FMSynth" | "AMSynth";
   options: Record<string, unknown>;
-  // Built from the injected Tone module so importing presets never touches Tone.
+  // What "no user override" means for this instrument; the sound controls fall back to it.
+  defaults: { filterCutoffHz?: number; filterRolloff?: FilterRolloff; envelope: ToneEnvelope };
+  // Fixed voice character (reverb, chorus) that user settings must not replace. Built from the injected Tone module so importing presets never touches Tone.
   effects?: (tone: ToneModule) => Array<InstanceType<ToneModule["ToneAudioNode"]>>;
 }
 
@@ -34,10 +44,45 @@ interface PooledVoice {
 // when stealing is needed, and it defers scheduled events to timeouts that
 // cannot be cancelled on stop.
 export function createSynthSource(preset: SynthPreset) {
-  return (tone: ToneModule, output?: import("tone").InputNode): SoundSource => {
+  // `initialTone` is optional so callers that do not shape the sound (editor pages) get exactly the
+  // preset's own graph; a filter is only added once a cutoff or resonance override appears.
+  return (
+    tone: ToneModule,
+    output?: import("tone").InputNode,
+    initialTone?: ToneControls,
+  ): SoundSource => {
     const master = new tone.Gain(1);
     const effects = preset.effects?.(tone) ?? [];
-    master.chain(...effects, output ?? tone.getDestination());
+    const target = output ?? tone.getDestination();
+    const defaultCutoff = preset.defaults.filterCutoffHz ?? OPEN_CUTOFF_HZ;
+    const rolloff = preset.defaults.filterRolloff;
+    const makeFilter = (controls?: ToneControls) =>
+      createToneFilter(
+        tone,
+        controls?.filterCutoffHz ?? defaultCutoff,
+        controls?.filterResonance,
+        rolloff,
+      );
+    let filter: ToneFilter | null =
+      preset.defaults.filterCutoffHz !== undefined || wantsFilter(initialTone)
+        ? makeFilter(initialTone)
+        : null;
+    master.chain(...effects, ...(filter ? [filter] : []), target);
+
+    // Spliced in after the fact because the preset graph must not gain a node until something needs it.
+    const insertFilter = (controls: ToneControls) => {
+      const tail = effects.at(-1) ?? master;
+      // Created open and ramped to the target, because a filter that starts at the target would make
+      // the first edit jump instead of sweep.
+      const created = makeFilter();
+      tail.disconnect(target as never);
+      tail.connect(created);
+      created.connect(target);
+      filter = created;
+      rampToneFilter(created, controls, defaultCutoff, rolloff);
+    };
+
+    let envelope: ToneEnvelope = { ...preset.defaults.envelope, ...initialTone?.envelope };
 
     const makePool = () => {
       const bus = new tone.Gain(1).connect(master);
@@ -49,7 +94,11 @@ export function createSynthSource(preset: SynthPreset) {
       const free = pool.voices.find((v) => v.freeAt <= startSeconds);
       if (free) return free;
       if (pool.voices.length < MAX_POLYPHONY) {
-        const synth = new tone[preset.voice](preset.options as never) as Voice;
+        const synth = new tone[preset.voice]({
+          ...preset.options,
+          // Pooled voices are created lazily, so a voice made after an edit must start with the edited envelope.
+          envelope: { ...(preset.options.envelope as object | undefined), ...envelope },
+        } as never) as Voice;
         synth.connect(pool.bus);
         const created = { synth, freeAt: 0, startedAt: -Infinity, held: null };
         pool.voices.push(created);
@@ -84,6 +133,14 @@ export function createSynthSource(preset: SynthPreset) {
 
     return {
       load: () => Promise.resolve(),
+
+      setTone(controls) {
+        envelope = { ...preset.defaults.envelope, ...controls.envelope };
+        // Sounding notes are left alone apart from the envelope params Tone reads at trigger and release.
+        for (const v of pool.voices) v.synth.set({ envelope } as never);
+        if (filter) rampToneFilter(filter, controls, defaultCutoff, rolloff);
+        else if (wantsFilter(controls)) insertFilter(controls);
+      },
 
       trigger(row, startSeconds, endSeconds, velocity) {
         const voice = acquire(startSeconds);
@@ -137,6 +194,7 @@ export function createSynthSource(preset: SynthPreset) {
         setTimeout(() => {
           master.dispose();
           effects.forEach((e) => e.dispose());
+          filter?.dispose();
         }, DISPOSE_DELAY_MS);
       },
     };
