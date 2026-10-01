@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { note } from "@/test/fixtures";
 import { createSongStore } from "../song/songStore";
 import { normalizeSong } from "../song/songOps";
-import { MAX_CLIPS, newSong, type Clip } from "../song/types";
+import { MAX_CLIPS, type Clip } from "../song/types";
 import { createSongTake } from "./songTake";
 
 const SPM = 16;
 
 function setup(clipList: Clip[] = [], measures = 8, loopNotes = [note("kick", 0)]) {
-  const base = newSong();
+  const base = newSongWithTracks();
   const store = createSongStore(
     normalizeSong({
       ...base,

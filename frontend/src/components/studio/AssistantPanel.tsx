@@ -31,19 +31,25 @@ export function AssistantPanel({
   const titleId = useId();
   const noteId = useId();
   const [draft, setDraft] = useState("");
-  const log = useRef<HTMLOListElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const messages = song?.chat ?? [];
 
   useEffect(() => {
-    log.current?.scrollTo?.({ top: log.current.scrollHeight });
-  }, [messages.length, chat.sending]);
+    scroller.current?.scrollTo?.({ top: scroller.current.scrollHeight });
+  }, [messages.length, chat.pending, chat.sending]);
 
   const submit = async () => {
     const text = draft;
-    // The draft stays until the reply is recorded, so a failed request can be retried without retyping.
-    if (await chat.send(text)) setDraft("");
+    setDraft("");
+    // A click on Send would otherwise leave focus on the button that just became disabled.
+    input.current?.focus();
+    const outcome = await chat.send(text);
+    // Text typed while waiting is newer than the failed message, so it is never overwritten.
+    if (outcome === "failed") setDraft((current) => (current === "" ? text : current));
   };
-  const disabled = !song || chat.sending;
+  const blocked = !song || chat.sending;
+  const showLog = messages.length > 0 || chat.pending !== null;
 
   return (
     <aside
@@ -55,8 +61,8 @@ export function AssistantPanel({
           Assistant
         </h2>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-        {messages.length === 0 ? (
+      <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+        {!showLog ? (
           <div className="m-auto max-w-60 text-center">
             <p className="text-sm font-medium">Your song assistant</p>
             <p id={noteId} className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
@@ -65,7 +71,7 @@ export function AssistantPanel({
             </p>
           </div>
         ) : (
-          <ol ref={log} role="log" aria-label="Conversation" className="flex flex-col gap-3">
+          <ol role="log" aria-label="Conversation" className="flex flex-col gap-3">
             {messages.map((m, i) => {
               const track = m.track_id ? song?.tracks.find((t) => t.id === m.track_id) : undefined;
               return (
@@ -87,6 +93,12 @@ export function AssistantPanel({
                 </li>
               );
             })}
+            {chat.pending !== null && (
+              <li className="flex max-w-[90%] flex-col gap-1 self-end rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white dark:bg-indigo-400 dark:text-zinc-950">
+                <span className="sr-only">You:</span>
+                <span className="whitespace-pre-wrap break-words">{chat.pending}</span>
+              </li>
+            )}
           </ol>
         )}
         {chat.sending && (
@@ -104,31 +116,32 @@ export function AssistantPanel({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!disabled && draft.trim()) void submit();
+          if (!blocked && draft.trim()) void submit();
         }}
         aria-busy={chat.sending}
         className="flex gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800"
       >
         <textarea
+          ref={input}
           rows={2}
           value={draft}
-          disabled={disabled}
+          disabled={!song}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              e.currentTarget.form?.requestSubmit();
+              if (!chat.sending) e.currentTarget.form?.requestSubmit();
             }
           }}
           aria-label="Message the assistant"
-          aria-describedby={messages.length === 0 ? noteId : undefined}
+          aria-describedby={!showLog ? noteId : undefined}
           placeholder="Describe a part to add"
           className={`${inputClass} h-auto flex-1 resize-none py-2`}
         />
         <Button
           type="submit"
           variant="primary"
-          disabled={disabled || draft.trim() === ""}
+          disabled={blocked || draft.trim() === ""}
           aria-label="Send message"
           className="self-end"
         >

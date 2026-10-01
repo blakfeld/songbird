@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { newSongWithTracks } from "./testFixtures";
 import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { note, trackWithNotes } from "@/test/fixtures";
@@ -12,7 +13,6 @@ import {
 } from "./songLibrary";
 import { resolveTrackNotes } from "./clipOps";
 import { createSongStore } from "./songStore";
-import { newSong } from "./types";
 
 beforeEach(async () => {
   localStorage.clear();
@@ -22,7 +22,7 @@ afterEach(() => vi.useRealTimers());
 
 // Regions clamp to the timeline derived from the song's clips, so a song with real clips keeps the round trip honest.
 const eightMeasureSong = () => {
-  const song = newSong();
+  const song = newSongWithTracks();
   song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], 8);
   song.measures = 8;
   return song;
@@ -31,7 +31,7 @@ const eightMeasureSong = () => {
 describe("songLibrary", () => {
   it("restores a saved song on reload and remembers it as last opened", async () => {
     const lib = createSongLibrary();
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], song.measures);
     song.tracks[0].volume_db = -6;
     await lib.create(song);
@@ -43,8 +43,8 @@ describe("songLibrary", () => {
 
   it("indexes name, time signature and updated_at, most recent first", async () => {
     const lib = createSongLibrary();
-    const a = { ...newSong("3/4"), name: "A" };
-    const b = { ...newSong(), name: "B" };
+    const a = { ...newSongWithTracks("3/4"), name: "A" };
+    const b = { ...newSongWithTracks(), name: "B" };
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1000);
     await lib.create(a);
@@ -59,7 +59,7 @@ describe("songLibrary", () => {
   it("debounces saves by 300 ms", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const lib = createSongLibrary();
-    const song = newSong();
+    const song = newSongWithTracks();
     lib.save(song);
     lib.save({ ...song, name: "Later" });
     await vi.advanceTimersByTimeAsync(299);
@@ -72,7 +72,7 @@ describe("songLibrary", () => {
 
   it("autosaves store edits", async () => {
     const lib = createSongLibrary();
-    const store = createSongStore(newSong());
+    const store = createSongStore(newSongWithTracks());
     lib.autosave(store);
     store.getState().renameSong("Auto");
     await lib.flush();
@@ -100,7 +100,7 @@ describe("songLibrary", () => {
 
   it("lists legacy index entries without track_count and fills it on save", async () => {
     const kv = idbKeyValueStore();
-    const song = newSong();
+    const song = newSongWithTracks();
     await kv.set(songKey(song.id), song);
     await kv.set(INDEX_KEY, [{ id: song.id, name: song.name, time_signature: "4/4", updated_at: 1 }]);
     const lib = createSongLibrary();
@@ -114,7 +114,7 @@ describe("songLibrary", () => {
 
   it("renames", async () => {
     const lib = createSongLibrary();
-    const song = await lib.create(newSong());
+    const song = await lib.create(newSongWithTracks());
     await lib.rename(song.id, "Renamed");
     expect((await lib.list())[0].name).toBe("Renamed");
     expect((await lib.open(song.id))!.name).toBe("Renamed");
@@ -122,7 +122,7 @@ describe("songLibrary", () => {
 
   it("duplicates independently", async () => {
     const lib = createSongLibrary();
-    const demo = { ...newSong(), name: "Demo" };
+    const demo = { ...newSongWithTracks(), name: "Demo" };
     demo.tracks[0] = trackWithNotes(demo.tracks[0], [note("kick", 0)], demo.measures);
     await lib.create(demo);
     const copy = (await lib.duplicate(demo.id))!;
@@ -139,7 +139,7 @@ describe("songLibrary", () => {
 
   it("deletes the body, index entry and last-opened pointer", async () => {
     const lib = createSongLibrary();
-    const song = await lib.create(newSong());
+    const song = await lib.create(newSongWithTracks());
     await lib.remove(song.id);
     expect(await lib.list()).toEqual([]);
     expect(await lib.open(song.id)).toBeNull();
@@ -148,7 +148,7 @@ describe("songLibrary", () => {
 
   it("writes unrecognised fields back unchanged", async () => {
     const kv = idbKeyValueStore();
-    const song = { ...newSong(), sections: [{ name: "Verse" }] } as ReturnType<typeof newSong>;
+    const song = { ...newSongWithTracks(), sections: [{ name: "Verse" }] } as ReturnType<typeof newSongWithTracks>;
     (song.tracks[0] as unknown as Record<string, unknown>).future_flag = 7;
     await kv.set(songKey(song.id), song);
     await kv.set(INDEX_KEY, [
@@ -172,7 +172,7 @@ describe("songLibrary", () => {
       del: () => Promise.reject(new Error("nope")),
     };
     const lib = createSongLibrary(failing);
-    const store = createSongStore(newSong());
+    const store = createSongStore(newSongWithTracks());
     lib.autosave(store);
     store.getState().renameSong("Still editable");
     await lib.flush();
@@ -189,16 +189,16 @@ describe("songLibrary", () => {
       set: (k, v) => (fail ? Promise.reject(new Error("quota")) : kv.set(k, v)),
     };
     const lib = createSongLibrary(flaky);
-    await lib.create(newSong());
+    await lib.create(newSongWithTracks());
     expect(lib.status.getState().ok).toBe(false);
     fail = false;
-    await lib.create(newSong());
+    await lib.create(newSongWithTracks());
     expect(lib.status.getState().ok).toBe(true);
   });
 
   it("reports saving from an edit until its debounced write lands", async () => {
     const lib = createSongLibrary();
-    const song = newSong();
+    const song = newSongWithTracks();
     await lib.create(song);
     expect(lib.status.getState().saving).toBe(false);
     lib.save({ ...song, name: "Changed" });
@@ -209,8 +209,8 @@ describe("songLibrary", () => {
 
   it("peeks and puts without changing the last-opened song", async () => {
     const lib = createSongLibrary();
-    const current = newSong();
-    const other = { ...newSong(), name: "Other" };
+    const current = newSongWithTracks();
+    const other = { ...newSongWithTracks(), name: "Other" };
     await lib.create(current);
     await lib.put(other);
     expect(lib.getLastSongId()).toBe(current.id);
@@ -229,7 +229,7 @@ describe("songLibrary", () => {
       get: (k) => (failReads ? Promise.reject(new Error("read")) : kv.get(k)),
     };
     const lib = createSongLibrary(flaky);
-    await lib.create(newSong());
+    await lib.create(newSongWithTracks());
     expect(lib.status.getState().ok).toBe(false);
 
     await lib.list();
@@ -245,7 +245,7 @@ describe("songLibrary", () => {
 
   describe("opening songs saved before clips", () => {
     const v1Song = () => {
-      const song = newSong();
+      const song = newSongWithTracks();
       const drumsTrack: Record<string, unknown> = { ...song.tracks[0] };
       const pianoTrack: Record<string, unknown> = { ...song.tracks[1] };
       for (const t of [drumsTrack, pianoTrack]) {
@@ -296,7 +296,7 @@ describe("songLibrary", () => {
 
     it("reports a malformed stored song as invalid, not as a failed read", async () => {
       const kv = idbKeyValueStore();
-      const song = newSong();
+      const song = newSongWithTracks();
       await kv.set(songKey(song.id), { ...song, tracks: [{ ...song.tracks[0], loops: [null] }] });
       const lib = createSongLibrary();
       expect(await lib.open(song.id)).toBeNull();
@@ -307,7 +307,7 @@ describe("songLibrary", () => {
 
     it("refuses a clip that references another track's loop", async () => {
       const kv = idbKeyValueStore();
-      const song = newSong();
+      const song = newSongWithTracks();
       song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0)], song.measures);
       song.tracks[1] = {
         ...song.tracks[1],

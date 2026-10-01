@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import type { Pattern } from "@/generated/Pattern";
 import type { PlaybackModel, Voice } from "./types";
 import { createPatternStore } from "@/lib/patternStore";
 import { createSongStore } from "@/lib/song/songStore";
-import { newSong, newTrack } from "@/lib/song/types";
+import { newTrack } from "@/lib/song/types";
 import { drums } from "@/test/fixtures";
 import { stepToSeconds } from "@/lib/timing";
 import { createPlaybackEngine } from "./engine";
@@ -671,7 +672,7 @@ describe("clip playback", () => {
   }));
 
   function setupClips() {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.measures = 8;
     song.tracks = [
       {
@@ -730,7 +731,7 @@ describe("clip playback", () => {
   });
 
   it("plays 16 tracks across 128 measures on the grid without drift or piling up events", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.measures = 128;
     song.tracks = Array.from({ length: 16 }, (_, i) => ({
       ...newTrack("clip-test", `T${i}`),

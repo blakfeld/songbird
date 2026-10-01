@@ -121,7 +121,6 @@ export function addChatTrack(
 }
 
 export function deleteTrack(song: Song, trackId: string): Song {
-  if (song.tracks.length <= 1) return song;
   if (!song.tracks.some((t) => t.id === trackId)) return song;
   return normalizeSong({ ...song, tracks: song.tracks.filter((t) => t.id !== trackId) });
 }

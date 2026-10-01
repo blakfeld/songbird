@@ -214,6 +214,16 @@ async fn a_request_for_a_part_adds_a_track() {
 }
 
 #[tokio::test]
+async fn an_empty_song_is_not_rejected_for_its_track_count() {
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]),
+        json!({"song": song(4, vec![]), "messages": [user("give me the drums")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+}
+
+#[tokio::test]
 async fn a_question_gets_a_reply_and_no_generation() {
     let patterns = RecordingPatterns::default();
     let seen = patterns.seen.clone();

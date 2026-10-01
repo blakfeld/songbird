@@ -333,11 +333,11 @@ impl Song {
     /// document with several problems reports the same one on both sides.
     pub fn validate(&self, registry: &InstrumentRegistry) -> Result<ValidSong<'_>, SongError> {
         self.validate_header()?;
-        if self.tracks.is_empty() || self.tracks.len() > MAX_TRACKS {
+        if self.tracks.len() > MAX_TRACKS {
             return Err(invalid(
                 SongErrorKind::TrackCount,
                 format!(
-                    "a song needs 1-{MAX_TRACKS} tracks, got {}",
+                    "a song has at most {MAX_TRACKS} tracks, got {}",
                     self.tracks.len()
                 ),
             ));
@@ -783,7 +783,6 @@ pub(crate) mod tests {
                     })
                 }),
             ),
-            ("track_count", Box::new(|s| s.tracks.clear())),
             (
                 "track_count",
                 Box::new(|s| {
@@ -887,6 +886,12 @@ pub(crate) mod tests {
         assert!(matches!(error, SongError::UnknownInstrument { .. }));
         assert!(error.to_string().contains("\"Piano\""));
         assert!(error.to_string().contains("kazoo"));
+    }
+
+    #[test]
+    fn a_song_with_no_tracks_is_valid() {
+        let empty = song(4, vec![]);
+        assert!(empty.validate(&InstrumentRegistry::builtin()).is_ok());
     }
 
     #[test]

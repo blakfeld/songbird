@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { newSongWithTracks } from "./testFixtures";
 import { drums, note } from "@/test/fixtures";
 import { createTakeState } from "./clipOps";
 import { createSongStore } from "./songStore";
 import { normalizeSong } from "./songOps";
-import { newSong } from "./types";
 
-const setup = () => createSongStore(newSong());
+const setup = () => createSongStore(newSongWithTracks());
 
 // A stored length only exists because clips cover it, so region tests need a real clip to stand on.
 const setupWithClip = (measures: number) => {
-  const base = newSong();
+  const base = newSongWithTracks();
   const [track, ...rest] = base.tracks;
   return createSongStore(
     normalizeSong({
@@ -44,6 +44,22 @@ describe("songStore history", () => {
     expect(before.loops[0].notes).toHaveLength(1);
     store.getState().redo();
     expect(store.getState().song!.tracks).toHaveLength(2);
+  });
+
+  it("deletes the only track, leaves nothing selected, and undo restores it", () => {
+    const store = setup();
+    const [first, second] = store.getState().song!.tracks;
+    store.getState().newClip(second.id, 1);
+    store.getState().setMixer(second.id, { volume_db: -6, pan: 0.5 });
+    const before = store.getState().song!.tracks[1];
+    store.getState().deleteTrack(first.id);
+    store.getState().deleteTrack(second.id);
+    expect(store.getState().song!.tracks).toEqual([]);
+    expect(store.getState().selectedTrackId).toBeNull();
+    expect(store.getState().selectedClipId).toBeNull();
+    store.getState().undo();
+    expect(store.getState().song!.tracks).toHaveLength(1);
+    expect(store.getState().song!.tracks[0]).toEqual(before);
   });
 
   it("records one undo step for a whole drag", () => {
@@ -401,7 +417,7 @@ describe("songStore clip resize gestures", () => {
 describe("generated ranges", () => {
   const range = { start_measure: 5, end_measure: 8 };
   const setupKeys = () => {
-    const base = newSong();
+    const base = newSongWithTracks();
     const keys = {
       ...base.tracks[1],
       id: "keys",
@@ -456,7 +472,7 @@ describe("generated ranges", () => {
 
 describe("generation lock on clip operations", () => {
   it("refuses clip and loop ops on the locked track and allows other tracks", () => {
-    const base = newSong();
+    const base = newSongWithTracks();
     const keys = {
       ...base.tracks[1],
       id: "keys",
@@ -517,7 +533,7 @@ describe("generation tokens", () => {
     const id = store.getState().song!.tracks[0].id;
     store.getState().beginGenerating(id);
     const stale = store.getState().generationToken;
-    store.getState().loadSong(newSong());
+    store.getState().loadSong(newSongWithTracks());
     const next = store.getState().song!.tracks[0].id;
     store.getState().beginGenerating(next);
     store.getState().endGenerating(stale);
@@ -529,7 +545,7 @@ describe("generation tokens", () => {
   it("clears the lock on load", () => {
     const store = setup();
     store.getState().beginGenerating(store.getState().song!.tracks[0].id);
-    store.getState().loadSong(newSong());
+    store.getState().loadSong(newSongWithTracks());
     expect(store.getState().generatingTrackId).toBeNull();
   });
 });
@@ -593,7 +609,7 @@ describe("chat results", () => {
   });
 
   it("refuses a track at the 16-track limit and records nothing", () => {
-    const base = newSong();
+    const base = newSongWithTracks();
     const store = createSongStore({
       ...base,
       tracks: Array.from({ length: 16 }, (_, i) => ({ ...base.tracks[0], id: `t${i}`, name: `T${i}` })),
@@ -603,7 +619,7 @@ describe("chat results", () => {
   });
 
   it("keeps unrecognised song fields through a chat turn", () => {
-    const store = createSongStore({ ...newSong(), future_field: { a: 1 } } as never);
+    const store = createSongStore({ ...newSongWithTracks(), future_field: { a: 1 } } as never);
     store.getState().applyChatResult("add bass", { reply: "ok", track: part });
     expect((store.getState().song as unknown as Record<string, unknown>).future_field).toEqual({ a: 1 });
   });

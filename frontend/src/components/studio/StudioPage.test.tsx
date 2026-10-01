@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,8 +12,9 @@ import { cellLabel } from "@/lib/pianoRoll";
 import { createFakeMidi } from "@/test/fakeMidi";
 import { createSongLibrary, idbKeyValueStore, songKey, type SongLibrary } from "@/lib/song/songLibrary";
 import { normalizeSong } from "@/lib/song/songOps";
-import { newSong, newTrack, type Clip, type Loop, type Song } from "@/lib/song/types";
+import { newTrack, type Clip, type Loop, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
+import { clearStoredValueCache } from "@/lib/useStoredValue";
 import { StudioPage } from "./StudioPage";
 
 vi.mock("@/lib/api", async (orig) => ({
@@ -92,7 +94,7 @@ let library: SongLibrary;
 
 // The dock edits a clip's loop, so the default song needs one on each track to have anything to click.
 function songWithDrumLoop(): Song {
-  const song = newSong();
+  const song = newSongWithTracks();
   song.measures = 8;
   song.tracks = song.tracks.map((t) => trackWithNotes(t, [], song.measures));
   return song;
@@ -111,6 +113,7 @@ const selectTrack = (name: RegExp) => userEvent.click(screen.getByRole("button",
 beforeEach(async () => {
   onPlaybackTeardown = null;
   localStorage.clear();
+  clearStoredValueCache();
   await clear();
   library = createSongLibrary();
   audition.mockClear();
@@ -128,18 +131,19 @@ afterEach(() => vi.resetAllMocks());
 
 describe("loading", () => {
   it("shows a loading state while the song opens, then the studio", async () => {
-    await library.create(newSong());
+    await library.create(newSongWithTracks());
     render(<StudioPage library={library} />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading song…");
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Arrangement" })).toBeInTheDocument();
   });
 
-  it("creates a default song on first visit", async () => {
+  it("creates a default song with no tracks on first visit and shows the studio, not the skeleton", async () => {
     render(<StudioPage library={library} />);
     expect(await screen.findByRole("button", { name: "Rename song Untitled song" })).toBeInTheDocument();
-    expect(lane("Drums")).toBeInTheDocument();
-    expect(lane("Piano")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Arrangement" })).toBeInTheDocument();
+    expect(screen.queryByText("Loading song…")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(0);
   });
 });
 
@@ -210,7 +214,7 @@ describe("song settings", () => {
 
 describe("tracks", () => {
   it("disables Add track at 16 tracks", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks = Array.from({ length: 16 }, (_, i) => newTrack("piano", `Piano ${i + 1}`));
     await renderStudio(song);
     expect(screen.getByRole("button", { name: "Add track" })).toBeDisabled();
@@ -225,19 +229,26 @@ describe("tracks", () => {
     expect(screen.getByText("3/16")).toBeInTheDocument();
   });
 
-  it("disables Delete when only one track is left", async () => {
-    const song = newSong();
-    song.tracks = [song.tracks[0]];
+  it("deletes the last track, shows the empty arrangement, and undo restores it", async () => {
+    const song = newSongWithTracks();
+    song.tracks = [trackWithNotes(song.tracks[0], [note("kick", 0)], song.measures)];
+    song.tracks[0].volume_db = -6;
     await renderStudio(song);
     await userEvent.click(screen.getByRole("button", { name: "Track options for Drums" }));
     const del = screen.getByRole("menuitem", { name: "Delete track" });
-    expect(del).toHaveAttribute("aria-disabled", "true");
+    expect(del).not.toHaveAttribute("aria-disabled");
     await userEvent.click(del);
+    expect(screen.queryAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(0);
+    expect(screen.getByRole("region", { name: "Arrangement" })).toHaveTextContent("This song has no tracks yet");
+
+    await userEvent.keyboard("{Meta>}z{/Meta}");
     expect(lane("Drums")).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Volume Drums" })).toHaveValue("-6");
+    expect(within(lane("Drums")).getByTestId("clip-notes")).toBeInTheDocument();
   });
 
   it("deletes a track and restores it, notes and mixer included, with undo", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 0)], song.measures);
     song.tracks[1].volume_db = -6;
     await renderStudio(song);
@@ -313,7 +324,7 @@ describe("editing the selected track", () => {
   });
 
   it("stays silent when a note is removed, resized or changed in velocity", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 0, 2), note("b3", 4)], song.measures);
     await renderStudio(song);
     await selectTrack(/^Select Piano track/);
@@ -436,7 +447,7 @@ describe("resizing the dock", () => {
 
 describe("moving a note between rows", () => {
   it("previews each new row through the selected track and records one undo step", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 8, 2, 80)], song.measures);
     song.tracks[1].muted = true;
     await renderStudio(song);
@@ -465,7 +476,7 @@ describe("selecting, inspecting and pasting notes in the dock", () => {
   const dockOf = () => screen.getByRole("region", { name: /^Editor:/ });
 
   it("shows the note inspector in the dock header and edits the selection as one undo step", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[1] = trackWithNotes(song.tracks[1], [note("c4", 0, 2, 60), note("b3", 4, 2, 120)], song.measures);
     await renderStudio(song);
     await selectTrack(/^Select Piano track/);
@@ -494,7 +505,7 @@ describe("selecting, inspecting and pasting notes in the dock", () => {
   });
 
   it("pastes into another track and says how many notes were left out", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[0] = trackWithNotes(song.tracks[0], [note("kick", 0), note("kick", 4)], song.measures);
     song.tracks[1] = trackWithNotes(song.tracks[1], [], song.measures);
     await renderStudio(song);
@@ -510,7 +521,7 @@ describe("selecting, inspecting and pasting notes in the dock", () => {
 
 describe("opening by URL", () => {
   it("clears ?song= after reading it, and names the branch that was taken", async () => {
-    const other = { ...newSong(), name: "Other" };
+    const other = { ...newSongWithTracks(), name: "Other" };
     await library.create(other);
     window.history.pushState(null, "", "/studio?song=missing");
     render(<StudioPage library={library} />);
@@ -529,14 +540,14 @@ describe("opening by URL", () => {
 
 describe("songs that cannot be opened", () => {
   const broken = () => {
-    const song = { ...newSong(), name: "Broken" };
+    const song = { ...newSongWithTracks(), name: "Broken" };
     return { ...song, tracks: [{ ...song.tracks[0], loops: [null] }, song.tracks[1]] };
   };
 
   it("says a requested song could not be opened, not that it was missing", async () => {
     const bad = broken();
     await idbKeyValueStore().set(songKey(bad.id), bad);
-    await library.create({ ...newSong(), name: "Fine" });
+    await library.create({ ...newSongWithTracks(), name: "Fine" });
     window.history.pushState(null, "", `/studio?song=${bad.id}`);
     render(<StudioPage library={library} />);
     await screen.findByRole("region", { name: "Arrangement" });
@@ -555,7 +566,7 @@ describe("songs that cannot be opened", () => {
 
 describe("read failures", () => {
   it("shows a message and creates nothing when the saved songs cannot be read", async () => {
-    const existing = { ...newSong(), name: "Precious" };
+    const existing = { ...newSongWithTracks(), name: "Precious" };
     await library.create(existing);
     const kv = idbKeyValueStore();
     const broken = createSongLibrary({ ...kv, get: () => Promise.reject(new Error("blocked")) });
@@ -604,7 +615,7 @@ const C = (id: string, loop_id: string, start_measure: number, measures: number)
 });
 
 function clipSong(drumsLoops: Loop[], drumsClips: Clip[]): Song {
-  const song = newSong();
+  const song = newSongWithTracks();
   song.tracks[0] = { ...song.tracks[0], loops: drumsLoops, clips: drumsClips };
   return normalizeSong(song);
 }
@@ -1142,7 +1153,7 @@ describe("key highlighting", () => {
     within(dockRegion()).getByRole("button", { name: cellLabel(name, 0, 16) });
 
   function pianoSong(): Song {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.tracks[1] = { ...song.tracks[1], loops: [L("p", "Riff", 1)], clips: [C("pc", "p", 1, 1)] };
     return normalizeSong(song);
   }
@@ -1242,7 +1253,7 @@ describe("MIDI keyboard", () => {
   });
 
   it("shows a recorded take in the lane right after note-off and puts it on the selected track", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.measures = 8;
     song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
     const fake = await renderWithMidi(normalizeSong(song));
@@ -1270,7 +1281,7 @@ describe("MIDI keyboard", () => {
   });
 
   async function recordPianoNote() {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.measures = 8;
     song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
     const fake = await renderWithMidi(normalizeSong(song));
@@ -1310,7 +1321,7 @@ describe("MIDI keyboard", () => {
   });
 
   it("commits and saves a held note at its real length when the page unmounts after playback is torn down", async () => {
-    const song = newSong();
+    const song = newSongWithTracks();
     song.measures = 8;
     song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
     const fake = await renderWithMidi(normalizeSong(song));
@@ -1361,5 +1372,167 @@ describe("MIDI keyboard", () => {
     expect(fakeEngine.stop).toHaveBeenCalled();
     expect(status()).toHaveTextContent("Count-in cancelled. Nothing was recorded.");
     expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("an empty song", () => {
+  const emptySong = () => ({ ...newSongWithTracks(), tracks: [] });
+
+  it("shows the ruler, Add track, the message, no lanes, and an empty dock", async () => {
+    await renderStudio(emptySong());
+    const arrangement = screen.getByRole("region", { name: "Arrangement" });
+    expect(within(arrangement).getByRole("button", { name: "Add track" })).toBeEnabled();
+    expect(arrangement).toHaveTextContent("Add a track, or describe a part in the chat.");
+    expect(screen.queryAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(0);
+    expect(screen.getByRole("region", { name: "Editor" })).toHaveTextContent("No track to edit");
+    expect(screen.getByRole("button", { name: "Close piano roll" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download project" })).toBeEnabled();
+  });
+
+  it("adds the first track and selects it", async () => {
+    await renderStudio(emptySong());
+    await userEvent.click(screen.getByRole("button", { name: "Add track" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Drums" }));
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(1);
+    expect(lane("Drums")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Editor: Drums" })).toBeInTheDocument();
+    expect(screen.queryByText("This song has no tracks yet")).not.toBeInTheDocument();
+  });
+});
+
+describe("recording in an empty song", () => {
+  it("explains why Record is unavailable instead of doing nothing", async () => {
+    await renderStudio({ ...newSongWithTracks(), tracks: [] });
+    const record = screen.getByRole("button", { name: "Record" });
+    expect(record).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(record);
+    expect(status()).toHaveTextContent("Add a track to record onto.");
+    expect(record).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("closing the dock", () => {
+  const OPEN_KEY = "songbird.studio.dockOpen";
+  const HEIGHT_KEY = "songbird.studio.dockHeight";
+  const separator = () => screen.getByRole("separator", { name: "Resize piano roll" });
+  const grooveSong = () => clipSong([L("a", "Groove A", 2, [note("kick", 0)])], [C("c1", "a", 1, 2)]);
+  const close = () => userEvent.click(screen.getByRole("button", { name: "Close piano roll" }));
+
+  beforeEach(() => {
+    stubLaneRects();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: () => void) {}
+        observe() {
+          this.cb();
+        }
+        disconnect() {}
+      },
+    );
+    originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 900 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (originalClientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", originalClientHeight);
+    else Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+  });
+
+  it("hides the dock, handle and skip link but keeps the selection and the song", async () => {
+    await renderStudio(grooveSong());
+    await userEvent.click(clipButton(/^Groove A/));
+    expect(screen.getByRole("link", { name: "Skip to piano roll" })).toBeInTheDocument();
+    await close();
+    expect(screen.queryByRole("region", { name: /^Editor/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator", { name: "Resize piano roll" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Skip to piano roll" })).not.toBeInTheDocument();
+    expect(clipButton(/^Groove A/)).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(localStorage.getItem(OPEN_KEY)).toBe("false");
+  });
+
+  it("stays closed after a single click on a clip", async () => {
+    await renderStudio(grooveSong());
+    await close();
+    await userEvent.click(clipButton(/^Groove A/));
+    expect(clipButton(/^Groove A/)).toHaveAttribute("aria-current", "true");
+    expect(screen.queryByRole("region", { name: /^Editor/ })).not.toBeInTheDocument();
+  });
+
+  it("reopens on the clip at its prior height when a clip is double-clicked", async () => {
+    localStorage.setItem(HEIGHT_KEY, "320");
+    await renderStudio(grooveSong());
+    expect(separator()).toHaveAttribute("aria-valuenow", "320");
+    await close();
+    await userEvent.dblClick(clipButton(/^Groove A/));
+    expect(await screen.findByRole("region", { name: "Editor: Groove A on Drums" })).toBeInTheDocument();
+    expect(separator()).toHaveAttribute("aria-valuenow", "320");
+  });
+
+  it("reopens on Enter without also firing the native click", async () => {
+    await renderStudio(grooveSong());
+    await close();
+    const el = clipButton(/^Groove A/);
+    const click = vi.fn();
+    el.addEventListener("click", click);
+    el.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByRole("region", { name: "Editor: Groove A on Drums" })).toBeInTheDocument();
+    expect(el).toHaveAttribute("aria-current", "true");
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it("only selects on Enter while the dock is open, leaving focus on the clip", async () => {
+    await renderStudio(grooveSong());
+    const el = clipButton(/^Groove A/);
+    el.focus();
+    await userEvent.keyboard("{Enter}");
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(el).toHaveAttribute("aria-current", "true");
+    expect(el).toHaveFocus();
+  });
+
+  it("moves focus to the selected clip when the dock closes", async () => {
+    await renderStudio(grooveSong());
+    await userEvent.click(clipButton(/^Groove A/));
+    await close();
+    await waitFor(() => expect(clipButton(/^Groove A/)).toHaveFocus());
+  });
+
+  it("moves focus to the arrangement when the dock closes with no clip selected", async () => {
+    await renderStudio(clipSong([], []));
+    await close();
+    await waitFor(() => expect(screen.getByRole("region", { name: "Arrangement" })).toHaveFocus());
+  });
+
+  it("reopens when a clip is created by double-clicking an empty lane", async () => {
+    await renderStudio(clipSong([], []));
+    await close();
+    fireEvent.doubleClick(laneOf("Drums"), { clientX: px(5) });
+    expect(await screen.findByRole("region", { name: "Editor: Drums 1 on Drums" })).toBeInTheDocument();
+  });
+
+  it("stays closed across a remount", async () => {
+    await renderStudio(grooveSong());
+    await close();
+    cleanup();
+    // The in-memory copy would answer without reading storage, hiding a failure to persist.
+    clearStoredValueCache();
+    render(<StudioPage library={library} />);
+    await screen.findByRole("region", { name: "Arrangement" });
+    expect(screen.queryByRole("region", { name: /^Editor/ })).not.toBeInTheDocument();
+  });
+
+  it("is not undone by Cmd+Z, which undoes the last song edit instead", async () => {
+    await renderStudio(grooveSong());
+    await userEvent.click(screen.getByRole("button", { name: "Add track" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Piano" }));
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(3);
+    await close();
+    await userEvent.keyboard("{Meta>}z{/Meta}");
+    expect(screen.getAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(2);
+    expect(screen.queryByRole("region", { name: /^Editor/ })).not.toBeInTheDocument();
   });
 });

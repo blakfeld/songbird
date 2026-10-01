@@ -55,6 +55,7 @@ interface Props {
   onAnnounce?: (msg: string) => void;
   // Injectable so tests can drive a fake; defaults to the shared browser singleton.
   midi?: MidiAccess;
+  recordBlockedReason?: string | null;
 }
 
 function PositionReadout({
@@ -107,6 +108,7 @@ export function Transport({
   subscribeCountIn,
   onAnnounce,
   midi,
+  recordBlockedReason,
 }: Props) {
   const id = useId();
   const loading = playback.status === "loading";
@@ -117,6 +119,7 @@ export function Transport({
     onRecordToggle,
     onAnnounce,
     midi,
+    blockedReason: recordBlockedReason,
   });
   const counting = recording === "counting-in";
   const armed = recording !== "idle";

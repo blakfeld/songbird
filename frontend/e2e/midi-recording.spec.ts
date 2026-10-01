@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { InstrumentInfo } from "../src/generated/InstrumentInfo";
 import { installFakeMidi, sendNote } from "./fakeMidi";
+import { addTrack } from "./studioHelpers";
 
 async function connectMidi(page: Page) {
   await page.getByRole("button", { name: "Connect MIDI" }).click();
@@ -79,8 +80,8 @@ test("record over empty studio lane space, then undo the take", async ({ page })
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("button", { name: "Rename song MIDI Take Song" })).toBeVisible();
 
-  await page.getByRole("button", { name: /^Select Piano track/ }).click();
-  const track = page.getByRole("group", { name: /^Track 2: Piano/ });
+  await addTrack(page, "Piano");
+  const track = page.getByRole("group", { name: /^Track 1: Piano/ });
   const clips = track.getByRole("button", { name: /^Piano 1, measures? \d+/ });
   await expect(clips).toHaveCount(0);
 
