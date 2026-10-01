@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { MeasureCount } from "@/generated/MeasureCount";
 import type { TimeSignature } from "@/generated/TimeSignature";
@@ -10,6 +10,8 @@ import { getPlaybackEngine } from "@/lib/audio/engine";
 import { usePlayback } from "@/lib/audio/usePlayback";
 import { beatSteps } from "@/lib/pianoRoll";
 import { getInstruments, getLimits } from "@/lib/api";
+import type { MidiAccess } from "@/lib/midi/access";
+import { createPatternTake } from "@/lib/recording/patternTake";
 import { gridOf } from "@/lib/patternOps";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { useApiResource } from "@/lib/useApiResource";
@@ -19,6 +21,7 @@ import { ResizablePianoRoll } from "./ResizablePianoRoll";
 import { PromptForm } from "./PromptForm";
 import { Transport } from "./Transport";
 import { useEditorShortcuts } from "./useEditorShortcuts";
+import { useRecordingSession, useTakeFinalizer } from "./useRecordingSession";
 
 const card =
   "rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 dark:border-zinc-800 dark:bg-zinc-950";
@@ -29,11 +32,14 @@ export function PatternEditorPage({
   instrumentId,
   title,
   instrument: provided,
+  midi,
 }: {
   instrumentId: string;
   title: string;
   // Lets a parent that already fetched the instrument avoid a first paint styled as drums.
   instrument?: InstrumentInfo;
+  // Injectable so tests can drive a fake; defaults to the shared browser singleton.
+  midi?: MidiAccess;
 }) {
   // localStorage only exists on the client, so server markup and first paint must not depend on it.
   const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
@@ -46,17 +52,44 @@ export function PatternEditorPage({
   const [follow, setFollow] = useState(true);
   const [inspectorSlot, setInspectorSlot] = useState<HTMLDivElement | null>(null);
   const loop = usePatternStore(instrumentId, (s) => s.loop);
+  const finalizer = useTakeFinalizer();
   const playback = usePlayback(instrumentId, loop);
+
+  const engine = getPlaybackEngine(instrumentId);
+  const instrument = provided ?? instruments.data?.find((i) => i.id === instrumentId) ?? null;
+  const liveRows = instrument?.rows ?? pattern?.rows;
+  const oneShot = instrument?.kind === "drums";
+  const liveTarget = useMemo(
+    () => (liveRows ? { rows: liveRows, oneShot } : null),
+    [liveRows, oneShot],
+  );
+  const createTarget = useCallback(
+    () => (getPatternStore(instrumentId).getState().pattern ? createPatternTake(getPatternStore(instrumentId)) : null),
+    [instrumentId],
+  );
+  const session = useRecordingSession({
+    engine,
+    playback,
+    loop,
+    measures: pattern?.measures ?? 0,
+    stepsPerMeasure: pattern?.steps_per_measure ?? 0,
+    liveTarget,
+    createTarget,
+    onAnnounce: setStatus,
+    midi,
+    finalizer,
+  });
 
   const togglePlayback = () => {
     if (!pattern) return;
-    if (!playback.isPlaying) setFollow(true);
-    playback.toggle();
+    session.guardToggle(() => {
+      if (!playback.isPlaying) setFollow(true);
+      playback.toggle();
+    });
   };
-  useEditorShortcuts(instrumentId, togglePlayback);
+  useEditorShortcuts(instrumentId, togglePlayback, session.toggleRecord, session.guardEdit);
 
   const loadId = usePatternStore(instrumentId, (s) => s.loadId);
-  const instrument = provided ?? instruments.data?.find((i) => i.id === instrumentId) ?? null;
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl min-w-0 flex-1 flex-col gap-6 bg-zinc-50 px-4 py-6 text-zinc-900 sm:px-6 sm:py-8 dark:bg-black dark:text-zinc-50">
@@ -139,6 +172,11 @@ export function PatternEditorPage({
               onLoopChange={(l) => getPatternStore(instrumentId).getState().setLoop(l)}
               follow={follow}
               onFollowChange={setFollow}
+              recording={session.recording}
+              onRecordToggle={session.onRecordToggle}
+              subscribeCountIn={session.subscribeCountIn}
+              onAnnounce={setStatus}
+              midi={midi}
             />
             <EditorToolbar
               instrumentId={instrumentId}
@@ -146,6 +184,7 @@ export function PatternEditorPage({
               pattern={pattern}
               measureOptions={limits.data?.measure_options ?? null}
               onStatus={setStatus}
+              guardEdit={session.guardEdit}
             />
             <div ref={setInspectorSlot} />
             <ResizablePianoRoll
@@ -162,7 +201,7 @@ export function PatternEditorPage({
               onSetVelocity={(rowId, step, v) => getPatternStore(instrumentId).getState().setVelocity(rowId, step, v)}
               onResizeNote={(rowId, step, len) => getPatternStore(instrumentId).getState().resizeNote(rowId, step, len)}
               onEditNotes={(fn, options) => getPatternStore(instrumentId).getState().editNotes(fn, options)}
-              onBeginGesture={() => getPatternStore(instrumentId).getState().beginGesture()}
+              onBeginGesture={() => session.guardEdit(() => getPatternStore(instrumentId).getState().beginGesture())}
               onEndGesture={() => getPatternStore(instrumentId).getState().commitGesture()}
               onCancelGesture={() => getPatternStore(instrumentId).getState().cancelGesture()}
               inspectorTarget={inspectorSlot}

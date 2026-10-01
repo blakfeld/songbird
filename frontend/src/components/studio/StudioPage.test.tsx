@@ -1,11 +1,14 @@
 import "fake-indexeddb/auto";
+import { useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import * as api from "@/lib/api";
+import { createMidiAccess } from "@/lib/midi/access";
 import { cellLabel } from "@/lib/pianoRoll";
+import { createFakeMidi } from "@/test/fakeMidi";
 import { createSongLibrary, idbKeyValueStore, songKey, type SongLibrary } from "@/lib/song/songLibrary";
 import { normalizeSong } from "@/lib/song/songOps";
 import { newSong, newTrack, type Clip, type Loop, type Song } from "@/lib/song/types";
@@ -21,11 +24,36 @@ const audition = vi.fn(async () => {});
 const seekTo = vi.fn();
 const positionListeners = new Set<(position: number | null) => void>();
 const toggle = vi.fn();
+const countInListeners = new Set<(beatsLeft: number | null) => void>();
+const countInEndListeners = new Set<() => void>();
+// Stands in for the real playback hook's teardown, which stops the engine on unmount.
+let onPlaybackTeardown: (() => void) | null = null;
+// Recording drives the engine directly; it is faked here for the same reason as the playback hook.
+const fakeEngine = {
+  prepareLive: vi.fn(async () => {}),
+  liveNoteOn: vi.fn((): object | null => ({})),
+  liveNoteOff: vi.fn(),
+  liveBlocked: vi.fn(() => false),
+  startMeasure: vi.fn(() => 1),
+  stepAt: vi.fn((): { step: number; frac: number; seconds: number; stepSeconds: number } | null => null),
+  play: vi.fn(async () => {}),
+  stop: vi.fn(),
+  setMetronome: vi.fn(),
+  subscribeCountIn: (cb: (beatsLeft: number | null) => void) => {
+    countInListeners.add(cb);
+    return () => countInListeners.delete(cb);
+  },
+  subscribeCountInEnd: (cb: () => void) => {
+    countInEndListeners.add(cb);
+    return () => countInEndListeners.delete(cb);
+  },
+};
 // The engine has its own tests; here it would only pull Tone.js into every page render.
 type LoopArg = { region: { start: number; end: number } | null; enabled: boolean };
 const loops: LoopArg[] = [];
 vi.mock("@/lib/audio/useSongPlayback", () => ({
   useSongPlayback: (_store: unknown, _instruments: unknown, loop: LoopArg) => {
+    useEffect(() => () => onPlaybackTeardown?.(), []);
     loops.push(loop);
     return {
     isPlaying: false,
@@ -40,6 +68,7 @@ vi.mock("@/lib/audio/useSongPlayback", () => ({
       return () => positionListeners.delete(cb);
     },
     audition,
+    engine: fakeEngine,
     };
   },
 }));
@@ -80,12 +109,19 @@ const lane = (name: string) => screen.getByRole("group", { name: new RegExp(`^Tr
 const selectTrack = (name: RegExp) => userEvent.click(screen.getByRole("button", { name }));
 
 beforeEach(async () => {
+  onPlaybackTeardown = null;
   localStorage.clear();
   await clear();
   library = createSongLibrary();
   audition.mockClear();
   toggle.mockClear();
   loops.length = 0;
+  fakeEngine.prepareLive.mockResolvedValue(undefined);
+  fakeEngine.liveNoteOn.mockReturnValue({});
+  fakeEngine.stepAt.mockReturnValue(null);
+  fakeEngine.liveBlocked.mockReturnValue(false);
+  fakeEngine.startMeasure.mockReturnValue(1);
+  fakeEngine.play.mockResolvedValue(undefined);
   vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
 });
 afterEach(() => vi.resetAllMocks());
@@ -1141,5 +1177,174 @@ describe("key highlighting", () => {
     await renderStudio(clipSong([L("a", "Groove A", 1)], [C("c1", "a", 1, 1)]));
     expect(dockRegion().querySelector("[data-tint]")).toBeNull();
     expect(dockRegion().querySelector('[class*="bg-emerald"]')).toBeNull();
+  });
+});
+
+describe("MIDI keyboard", () => {
+  const midiFake = () => createFakeMidi({ inputs: [{ id: "k", name: "KeyStep" }] });
+  async function grantedMidi() {
+    const fake = midiFake();
+    const access = createMidiAccess({ requestMIDIAccess: fake.requestMIDIAccess, storage: null });
+    await access.request();
+    return { fake, access };
+  }
+  const noteOn = (fake: ReturnType<typeof midiFake>, key: number) =>
+    act(() => fake.send("k", [0x90, key, 90], performance.now()));
+  const noteOff = (fake: ReturnType<typeof midiFake>, key: number) =>
+    act(() => fake.send("k", [0x80, key, 0], performance.now()));
+
+  async function renderWithMidi(song: Song) {
+    const { fake, access } = await grantedMidi();
+    await library.create(song);
+    const view = render(<StudioPage library={library} midi={access} />);
+    await screen.findByRole("region", { name: "Arrangement" });
+    return Object.assign(fake, { unmount: view.unmount });
+  }
+
+  it("plays the selected track's instrument, following the selection", async () => {
+    const song = songWithDrumLoop();
+    const fake = await renderWithMidi(song);
+    const [drumTrack, pianoTrack] = song.tracks;
+
+    await waitFor(() =>
+      expect(fakeEngine.prepareLive).toHaveBeenCalledWith(drumTrack.id, drums.rows),
+    );
+    noteOn(fake, 36);
+    expect(fakeEngine.liveNoteOn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "kick" }),
+      expect.objectContaining({ voiceKey: drumTrack.id, velocity: 90 }),
+    );
+
+    await selectTrack(/^Select Piano track/);
+    await waitFor(() =>
+      expect(fakeEngine.prepareLive).toHaveBeenCalledWith(pianoTrack.id, piano.rows),
+    );
+    noteOn(fake, 60);
+    expect(fakeEngine.liveNoteOn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "c4" }),
+      expect.objectContaining({ voiceKey: pianoTrack.id, velocity: 90 }),
+    );
+  });
+
+  it("shows a recorded take in the lane right after note-off and puts it on the selected track", async () => {
+    const song = newSong();
+    song.measures = 8;
+    song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
+    const fake = await renderWithMidi(normalizeSong(song));
+    await selectTrack(/^Select Piano track/);
+    await waitFor(() => expect(fakeEngine.prepareLive).toHaveBeenCalledWith(song.tracks[1].id, piano.rows));
+    await userEvent.click(screen.getByRole("button", { name: "Count-in" }));
+
+    expect(within(lane("Piano")).queryByTestId("clip-notes")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    expect(fakeEngine.play).toHaveBeenCalled();
+    expect(status()).toHaveTextContent("Recording from bar 1.");
+
+    fakeEngine.stepAt.mockReturnValueOnce({ step: 0, frac: 0, seconds: 0, stepSeconds: 0.125 }).mockReturnValueOnce({ step: 4, frac: 0, seconds: 0, stepSeconds: 0.125 });
+    noteOn(fake, 60);
+    const before = performance.now();
+    noteOff(fake, 60);
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+    expect(performance.now() - before).toBeLessThan(100);
+    expect(within(lane("Drums")).queryByTestId("clip-notes")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    expect(status()).toHaveTextContent("Recorded 1 note. Undo removes the take.");
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(within(lane("Piano")).queryByTestId("clip-notes")).not.toBeInTheDocument();
+  });
+
+  async function recordPianoNote() {
+    const song = newSong();
+    song.measures = 8;
+    song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
+    const fake = await renderWithMidi(normalizeSong(song));
+    await selectTrack(/^Select Piano track/);
+    await waitFor(() => expect(fakeEngine.prepareLive).toHaveBeenCalledWith(song.tracks[1].id, piano.rows));
+    await userEvent.click(screen.getByRole("button", { name: "Count-in" }));
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    fakeEngine.stepAt.mockReturnValueOnce({ step: 0, frac: 0, seconds: 0, stepSeconds: 0.125 }).mockReturnValueOnce({ step: 4, frac: 0, seconds: 0, stepSeconds: 0.125 });
+    noteOn(fake, 60);
+    noteOff(fake, 60);
+    return fake;
+  }
+
+  it("ends the take before an undo, announcing only the committed notes and keeping redo", async () => {
+    await recordPianoNote();
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "true");
+
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+    expect(status()).toHaveTextContent("Recorded 1 note.");
+    expect(within(lane("Piano")).queryByTestId("clip-notes")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+  });
+
+  it("ends the take when a clip is nudged mid-take, keeping the recorded notes", async () => {
+    await recordPianoNote();
+    const drumClip = screen.getByRole("button", { name: /^.*measures 1 to 8/ });
+    drumClip.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.keyboard("{/ArrowRight}");
+
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(lane("Piano")).getByTestId("clip-notes")).toBeInTheDocument();
+  });
+
+  it("commits and saves a held note at its real length when the page unmounts after playback is torn down", async () => {
+    const song = newSong();
+    song.measures = 8;
+    song.tracks[0] = trackWithNotes(song.tracks[0], [], 8);
+    const fake = await renderWithMidi(normalizeSong(song));
+    await selectTrack(/^Select Piano track/);
+    await waitFor(() => expect(fakeEngine.prepareLive).toHaveBeenCalledWith(song.tracks[1].id, piano.rows));
+    await userEvent.click(screen.getByRole("button", { name: "Count-in" }));
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    let calls = 0;
+    fakeEngine.stepAt.mockImplementation(() => ({
+      step: ++calls === 1 ? 0 : 4,
+      frac: 0,
+      seconds: 0,
+      stepSeconds: 0.125,
+    }));
+    // Position lookups fail once playback is torn down, which would stretch a note committed late.
+    onPlaybackTeardown = () => fakeEngine.stepAt.mockReturnValue(null);
+    noteOn(fake, 60);
+
+    fake.unmount();
+
+    await waitFor(async () => {
+      const saved = (await library.open(song.id))!;
+      const notes = saved.tracks[1].loops.flatMap((l) => l.notes);
+      expect(notes).toEqual([expect.objectContaining({ row_id: "c4", step: 0, length_steps: 4 })]);
+    });
+  });
+
+  it("starts recording when the engine reports the count-in over, naming the engine's start bar", async () => {
+    fakeEngine.startMeasure.mockReturnValue(3);
+    await renderWithMidi(songWithDrumLoop());
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    expect(fakeEngine.play).toHaveBeenCalledWith({ countIn: true });
+    expect(status()).not.toHaveTextContent("Recording from");
+
+    act(() => countInEndListeners.forEach((cb) => cb()));
+
+    expect(status()).toHaveTextContent("Recording from bar 3.");
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("cancels a count-in on Stop without recording", async () => {
+    const fake = await renderWithMidi(songWithDrumLoop());
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    expect(fakeEngine.play).toHaveBeenCalledWith({ countIn: true });
+    act(() => countInListeners.forEach((cb) => cb(4)));
+    noteOn(fake, 36);
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(fakeEngine.stop).toHaveBeenCalled();
+    expect(status()).toHaveTextContent("Count-in cancelled. Nothing was recorded.");
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
   });
 });

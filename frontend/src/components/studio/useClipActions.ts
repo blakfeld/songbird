@@ -82,6 +82,8 @@ export function useClipActions(
   store: SongStore,
   announce: (message: string) => void,
   requestRename: (loopId: string, invoker: HTMLElement | null) => void,
+  // A drag starting mid-take would share the take's gesture, so the take has to end first.
+  guardEdit: (edit: () => void) => void = (edit) => edit(),
 ): ClipActions {
   return useMemo<ClipActions>(() => {
     const state = () => store.getState();
@@ -220,7 +222,7 @@ export function useClipActions(
         }
         announce(`Deleted the loop “${loop.name}”${tail}. Undo to restore.`);
       },
-      beginGesture: () => state().beginGesture(),
+      beginGesture: () => guardEdit(() => state().beginGesture()),
       endGesture: () => state().endGesture(),
       cancelGesture: () => state().cancelGesture(),
       requestRename: (loopId, invoker) =>
@@ -230,5 +232,5 @@ export function useClipActions(
       announce,
     };
     return api;
-  }, [store, announce, requestRename]);
+  }, [store, announce, requestRename, guardEdit]);
 }

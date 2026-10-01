@@ -1,9 +1,11 @@
 import type { Row } from "@/generated/Row";
 import { stepToSeconds } from "@/lib/timing";
+import { createMetronomeSource, type MetronomeSource } from "./metronomeSource";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { getSoundSourceFactory } from "./registry";
 import type {
   LoopRange,
+  NoteHandle,
   Playback,
   PlaybackModel,
   PlaybackStatus,
@@ -52,6 +54,35 @@ export interface AuditionOptions {
   velocity?: number;
 }
 
+export interface LiveNoteOptions {
+  voiceKey?: string;
+  velocity?: number;
+}
+
+export interface LiveNote {
+  source: SoundSource;
+  handle: NoteHandle;
+}
+
+export interface PlayOptions {
+  // A take from stopped needs a bar to settle into the tempo before any note counts.
+  countIn?: boolean;
+}
+
+export interface StepPosition {
+  // Song-absolute, so it already reflects loop wrapping.
+  step: number;
+  // Kept so a caller can tell how sloppy the timing was, since quantizing to the step hides it.
+  frac: number;
+  // Transport time of the event, so two events can be compared for how long apart they were even when
+  // loop wrapping maps them to the same step.
+  seconds: number;
+  // One sixteenth at the bar's tempo, which turns that time gap into steps without the caller knowing the tempo.
+  stepSeconds: number;
+}
+
+const DEFAULT_BEAT_STEPS = 4;
+
 // Tempo and swing are frozen per bar so step times within a bar stay
 // consistent even if the user edits them mid-bar.
 interface ScheduledBar {
@@ -61,7 +92,9 @@ interface ScheduledBar {
   steps: number;
   tempo: number;
   swing: number;
+  // 0 marks the count-in bar, which sounds clicks only and is not part of the song.
   measure: number;
+  beatSteps: number;
 }
 
 // Enough to cover the gap between what is scheduled and what is audible.
@@ -72,7 +105,24 @@ export type PlaybackSnapshot = Pick<Playback, "isPlaying" | "status" | "error">;
 export interface PlaybackEngine extends Playback {
   setLoop(range: LoopRange | null): void;
   setLooping(enabled: boolean): void;
+  play(options?: PlayOptions): Promise<void>;
   audition(row: Row, options?: AuditionOptions): Promise<void>;
+  // Starts audio and loads the target's samples ahead of the first key press, which must not wait.
+  prepareLive(voiceKey?: string, rows?: Row[]): Promise<void>;
+  // Null while the audio context is not running, so a held-back note cannot queue and fire in a burst later.
+  liveNoteOn(row: Row, options?: LiveNoteOptions): LiveNote | null;
+  liveNoteOff(note: LiveNote): void;
+  // Lets the caller tell a note dropped for browser autoplay policy from one dropped for any other reason.
+  liveBlocked(): boolean;
+  // Asked before Play because Play consumes a pending seek, and the take's announcement must still name that bar.
+  startMeasure(): number;
+  // Output latency separates what was scheduled from what the player heard, so the step is the heard one.
+  stepAt(domTimeStamp: number): StepPosition | null;
+  setMetronome(enabled: boolean): void;
+  // Beats remaining in the count-in bar (4, 3, 2, 1), then null. Driven by animation frames, so it only suits display.
+  subscribeCountIn(cb: (beatsLeft: number | null) => void): () => void;
+  // Fires from the transport, not from frames, so a take can start recording even when frames are throttled.
+  subscribeCountInEnd(cb: () => void): () => void;
   dispose(): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(cb: () => void): () => void;
@@ -98,6 +148,8 @@ export function createPlaybackEngine(
   let snapshot: PlaybackSnapshot = { isPlaying: false, status: "idle", error: null };
   const listeners = new Set<() => void>();
   const positionListeners = new Set<(step: number | null) => void>();
+  const countInListeners = new Set<(beatsLeft: number | null) => void>();
+  const countInEndListeners = new Set<() => void>();
 
   let loop: LoopRange | null = null;
   let looping = true;
@@ -115,6 +167,13 @@ export function createPlaybackEngine(
   let stepInBar = 0;
   let tickTime = 0;
   let lastEmitted: number | null = null;
+  let lastCountIn: number | null = null;
+  let metronomeOn = false;
+  let metronome: MetronomeSource | null = null;
+  // Consumed by the first bar of a run, so only that bar is the count-in.
+  let countInPending = false;
+  // Unlike countInPending this is known as soon as Play is called, which is while samples are still loading.
+  let countInRequested = false;
   let frame: number | null = null;
   // Invalidates an in-flight play() when stop() lands during loading.
   let session = 0;
@@ -130,10 +189,16 @@ export function createPlaybackEngine(
     positionListeners.forEach((cb) => cb(step));
   };
 
-  const getPosition = (): number | null => {
+  const emitCountIn = (beatsLeft: number | null) => {
+    if (beatsLeft === lastCountIn) return;
+    lastCountIn = beatsLeft;
+    countInListeners.forEach((cb) => cb(beatsLeft));
+  };
+
+  // The audio clock, not Transport.seconds, which runs ahead by the
+  // scheduler's lookahead and would make the playhead lead the sound.
+  const locate = (): { bar: ScheduledBar; rel: number } | null => {
     if (!tone) return null;
-    // The audio clock, not Transport.seconds, which runs ahead by the
-    // scheduler's lookahead and would make the playhead lead the sound.
     const t = tone
       .getTransport()
       .getSecondsAtTime(tone.getContext().currentTime);
@@ -148,11 +213,25 @@ export function createPlaybackEngine(
     ) {
       rel += 1;
     }
-    return current.firstStep + rel;
+    return { bar: current, rel };
+  };
+
+  const getPosition = (): number | null => {
+    const at = locate();
+    if (!at || at.bar.measure === 0) return null;
+    return at.bar.firstStep + at.rel;
+  };
+
+  const getCountInBeatsLeft = (): number | null => {
+    const at = locate();
+    if (!at || at.bar.measure !== 0) return null;
+    const beats = Math.ceil(at.bar.steps / at.bar.beatSteps);
+    return beats - Math.floor(at.rel / at.bar.beatSteps);
   };
 
   const frameLoop = () => {
     emitPosition(getPosition());
+    emitCountIn(getCountInBeatsLeft());
     if (snapshot.isPlaying) frame = requestFrame(frameLoop);
   };
 
@@ -172,10 +251,17 @@ export function createPlaybackEngine(
   };
 
   const startBar = (timing: PlaybackTiming) => {
-    const previous = bars.at(-1)?.measure ?? null;
-    const measure =
-      jumpTo === null ? nextMeasure(timing, previous) : Math.min(Math.max(jumpTo, 1), timing.measures);
-    jumpTo = null;
+    // The count-in bar (measure 0) is not a position, so the first real bar starts the run.
+    const previous = bars.at(-1)?.measure || null;
+    const afterPreRoll = bars.at(-1)?.measure === 0;
+    const preRoll = countInPending;
+    countInPending = false;
+    const measure = preRoll
+      ? 0
+      : jumpTo === null
+        ? nextMeasure(timing, previous)
+        : Math.min(Math.max(jumpTo, 1), timing.measures);
+    if (!preRoll) jumpTo = null;
     const steps = timing.stepsPerMeasure;
     const tempo = timing.tempo;
     // Steps per measure is even, so swing delays cancel at each barline.
@@ -190,11 +276,26 @@ export function createPlaybackEngine(
         tempo,
         swing: timing.swing,
         measure,
+        beatSteps: timing.beatSteps ?? DEFAULT_BEAT_STEPS,
       },
     ].slice(-BARS_KEPT);
+    if (afterPreRoll && tone) {
+      const startedSession = session;
+      // Deferred because Tone warns about transport changes made inside a scheduled callback.
+      tone.getTransport().scheduleOnce(() => {
+        queueMicrotask(() => {
+          if (startedSession === session) countInEndListeners.forEach((cb) => cb());
+        });
+      }, nextBarStart);
+    }
     nextBarStart += duration;
     stepInBar = 0;
   };
+
+  const firstMeasure = (timing: PlaybackTiming) =>
+    !looping && jumpTo !== null
+      ? Math.min(Math.max(jumpTo, 1), timing.measures)
+      : nextMeasure(timing, null);
 
   // Fading first, then disposing later, avoids a click from cutting a channel that is still sounding.
   const disposeVoice = (entry: VoiceChannel, immediate = false) => {
@@ -272,6 +373,23 @@ export function createPlaybackEngine(
     return entry;
   };
 
+  // A voice key routes through that voice's preview channel; without one the single-instrument
+  // path plays straight out, as it has no mixer.
+  const resolveLiveSource = (t: ToneModule, voiceKey?: string): SoundSource | null => {
+    const voice = voiceKey
+      ? model.getVoices().find((v) => v.key === voiceKey)
+      : undefined;
+    if (voice) return previewVoice(t, voice).source;
+    const instrument = model.instrument;
+    if (!instrument) return null;
+    let standalone = auditionSources.get(instrument);
+    if (!standalone) {
+      standalone = getSoundSourceFactory(instrument)(t);
+      auditionSources.set(instrument, standalone);
+    }
+    return standalone;
+  };
+
   const syncVoices = (t: ToneModule, voices: Voice[]) => {
     const keys = new Set(voices.map((v) => v.key));
     for (const [key, entry] of channels) {
@@ -289,6 +407,12 @@ export function createPlaybackEngine(
   ) => {
     const absStep = bar.firstStep + stepInBar;
     const offset = stepToSeconds(stepInBar, bar.tempo, bar.swing);
+    const preRoll = bar.measure === 0;
+    if ((preRoll || metronomeOn) && stepInBar % bar.beatSteps === 0 && tone) {
+      metronome ??= createMetronomeSource(tone);
+      metronome.click(audioTime, stepInBar === 0);
+    }
+    if (preRoll) return;
     for (const { voice, entry } of voices) {
       if (!voice.audible) continue;
       for (const note of voice.notes) {
@@ -360,9 +484,10 @@ export function createPlaybackEngine(
     t.getTransport().scheduleOnce((time) => tick(mySession, time), tickTime);
   };
 
-  const play = async () => {
+  const play = async (options: PlayOptions = {}) => {
     if (!model.getTiming() || snapshot.status === "loading") return;
     const mySession = ++session;
+    countInRequested = options.countIn === true;
     // Started before any await so it still counts as part of the user
     // gesture; browsers may leave the context suspended otherwise.
     const alreadyStarted = tone?.start();
@@ -383,7 +508,9 @@ export function createPlaybackEngine(
       stepInBar = 0;
       tickTime = 0;
       lastEmitted = null;
+      lastCountIn = null;
       lastNoteEnd = 0;
+      countInPending = options.countIn === true;
       // With looping on, Play starts at the region; a seek only chooses a start when looping is off.
       if (looping) jumpTo = null;
       transport.scheduleOnce((time) => tick(mySession, time), 0);
@@ -414,10 +541,13 @@ export function createPlaybackEngine(
     }
     if (hardStop) for (const entry of channels.values()) entry.source.stopAll();
     bars = [];
+    countInPending = false;
+    countInRequested = false;
     if (snapshot.isPlaying || snapshot.status === "loading") {
       setSnapshot({ isPlaying: false, status: "idle" });
     }
     emitPosition(null);
+    emitCountIn(null);
   }
 
   function stop() {
@@ -438,6 +568,7 @@ export function createPlaybackEngine(
       if (snapshot.isPlaying || snapshot.status === "loading") stop();
       else void play();
     },
+    play,
     stop,
     async preload(rows?: Row[]) {
       // Errors are left for play() to surface; warming is best-effort.
@@ -467,24 +598,8 @@ export function createPlaybackEngine(
       try {
         const t = (tone ??= await loadTone());
         await (alreadyStarted ?? t.start());
-        const voice = options.voiceKey
-          ? model.getVoices().find((v) => v.key === options.voiceKey)
-          : undefined;
-        let active: SoundSource;
-        if (voice) {
-          active = previewVoice(t, voice).source;
-        } else {
-          const instrument = model.instrument;
-          if (!instrument) return;
-          // Not routed through a channel: this is the single-instrument path,
-          // which has no mixer.
-          let standalone = auditionSources.get(instrument);
-          if (!standalone) {
-            standalone = getSoundSourceFactory(instrument)(t);
-            auditionSources.set(instrument, standalone);
-          }
-          active = standalone;
-        }
+        const active = resolveLiveSource(t, options.voiceKey);
+        if (!active) return;
         await active.load([row]);
         const start = t.getContext().currentTime + AUDITION_DELAY_SECONDS;
         active.trigger(
@@ -496,6 +611,118 @@ export function createPlaybackEngine(
       } catch {
         // Best-effort: Play is where audio failures are surfaced to the user.
       }
+    },
+    async prepareLive(voiceKey, rows) {
+      const alreadyStarted = tone?.start();
+      try {
+        const t = (tone ??= await loadTone());
+        await (alreadyStarted ?? t.start());
+        const source = resolveLiveSource(t, voiceKey);
+        const wanted =
+          rows ?? model.getVoices().find((v) => v.key === voiceKey)?.rows ?? [];
+        await source?.load(wanted);
+      } catch {
+        // Best-effort: Play is where audio failures are surfaced to the user.
+      }
+    },
+    liveNoteOn(row, options = {}) {
+      if (!tone || tone.getContext().state !== "running") return null;
+      const source = resolveLiveSource(tone, options.voiceKey);
+      if (!source) return null;
+      const handle = source.noteOn(
+        row,
+        tone.getContext().currentTime,
+        options.velocity ?? AUDITION_VELOCITY,
+      );
+      return { source, handle };
+    },
+    liveNoteOff(note) {
+      if (!tone) return;
+      note.source.noteOff(note.handle, tone.getContext().currentTime);
+    },
+    liveBlocked() {
+      // Not-yet-loaded audio is a loading state, not the autoplay block a click would fix.
+      return !!tone && tone.getContext().state !== "running";
+    },
+    startMeasure() {
+      const timing = model.getTiming();
+      return timing ? firstMeasure(timing) : 1;
+    },
+    stepAt(domTimeStamp) {
+      if (!tone) return null;
+      const ctx = tone.getContext();
+      const raw = ctx.rawContext as { outputLatency?: number; baseLatency?: number };
+      // Both add to what the player hears: base latency is the graph's processing delay and output latency
+      // is the device's, and browsers that omit one still report the other.
+      const latency = (raw.baseLatency ?? 0) + (raw.outputLatency ?? 0);
+      const audioTime =
+        ctx.currentTime - (performance.now() - domTimeStamp) / 1000 - latency;
+      const t = tone.getTransport().getSecondsAtTime(audioTime);
+
+      // A player who hits the downbeat just as Record is pressed plays before the first bar sounds. That note
+      // belongs on the first step, not in the bin: Play loads samples first, so the gap is not short.
+      const runPending =
+        !countInRequested &&
+        (snapshot.status === "loading" ||
+          (snapshot.isPlaying && (bars.length === 0 || t < bars[0].transportStart)));
+      const timing = model.getTiming();
+      if (runPending && timing) {
+        return {
+          step: (firstMeasure(timing) - 1) * timing.stepsPerMeasure,
+          frac: 0,
+          seconds: t,
+          stepSeconds: stepToSeconds(1, timing.tempo, 0),
+        };
+      }
+
+      const index = bars.findIndex(
+        (b) => t >= b.transportStart && t < b.transportStart + b.duration,
+      );
+      if (index < 0) return null;
+      const bar = bars[index];
+      const elapsed = t - bar.transportStart;
+
+      let rel = 0;
+      let best = Infinity;
+      for (let r = 0; r <= bar.steps; r++) {
+        const at =
+          r === bar.steps ? bar.duration : stepToSeconds(r, bar.tempo, bar.swing);
+        const distance = Math.abs(at - elapsed);
+        if (distance < best) {
+          best = distance;
+          rel = r;
+        }
+      }
+      const sixteenth = stepToSeconds(1, bar.tempo, 0);
+      const frac =
+        (elapsed -
+          (rel === bar.steps ? bar.duration : stepToSeconds(rel, bar.tempo, bar.swing))) /
+        sixteenth;
+
+      const at = (step: number): StepPosition => ({ step, frac, seconds: t, stepSeconds: sixteenth });
+      if (rel < bar.steps) {
+        return bar.measure === 0 ? null : at(bar.firstStep + rel);
+      }
+      const following = bars[index + 1];
+      if (following) return at(following.firstStep);
+      if (!timing || (!looping && jumpTo === null && bar.measure >= timing.measures)) return null;
+      // The next bar is not scheduled yet, so a pending seek has to be honoured here as startBar will.
+      const measure =
+        jumpTo === null
+          ? nextMeasure(timing, bar.measure || null)
+          : Math.min(Math.max(jumpTo, 1), timing.measures);
+      return at((measure - 1) * timing.stepsPerMeasure);
+    },
+    setMetronome(enabled) {
+      metronomeOn = enabled;
+    },
+    subscribeCountIn(cb) {
+      countInListeners.add(cb);
+      return () => countInListeners.delete(cb);
+    },
+    subscribeCountInEnd(cb) {
+      countInEndListeners.add(cb);
+      return () => countInEndListeners.delete(cb);
     },
     subscribePosition(cb) {
       positionListeners.add(cb);
@@ -509,6 +736,8 @@ export function createPlaybackEngine(
       previews.clear();
       for (const src of auditionSources.values()) src.dispose?.();
       auditionSources.clear();
+      metronome?.dispose();
+      metronome = null;
     },
     getSnapshot: () => snapshot,
     subscribe(cb) {

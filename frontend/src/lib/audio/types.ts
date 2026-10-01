@@ -19,6 +19,9 @@ export interface Playback {
   subscribePosition(cb: (absoluteStep: number | null) => void): () => void;
 }
 
+// Opaque to callers so each source can keep whatever it needs to release the note later.
+export type NoteHandle = object;
+
 // Times are AudioContext seconds because the audio clock, unlike wall time, does not drift under load.
 export interface SoundSource {
   load(rows: Row[]): Promise<void>;
@@ -28,6 +31,9 @@ export interface SoundSource {
     endSeconds: number,
     velocity: number,
   ): void;
+  // For live play, where the end is unknown until the key is released.
+  noteOn(row: Row, startSeconds: number, velocity: number): NoteHandle;
+  noteOff(handle: NoteHandle, endSeconds: number): void;
   stopAll(): void;
   // Nodes stay connected to the channel until released, so a removed voice would keep running unheard.
   dispose?(): void;
@@ -37,6 +43,8 @@ export interface PlaybackTiming {
   tempo: number;
   swing: number;
   stepsPerMeasure: number;
+  // Optional because only models that know their meter can place clicks on its beats; the rest get quarter-note clicks.
+  beatSteps?: number;
   measures: number;
 }
 

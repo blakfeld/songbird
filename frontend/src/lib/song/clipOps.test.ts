@@ -361,3 +361,121 @@ describe("loopGrid", () => {
     expect(clips.loopGrid(l, [], SPM)).toEqual({ notes: l.notes, rows: [], totalSteps: 2 * SPM });
   });
 });
+
+describe("recordNotes", () => {
+  const rec = (song: Song, notes: ReturnType<typeof note>[], state = clips.createTakeState()) =>
+    ok(clips.recordNotes(song, "t", notes, state)).song;
+
+  it("records into an existing linked clip at the matching loop position", () => {
+    const song = songWith([loop("a", 2, [])], [clip("c1", "a", 1, 2), clip("c2", "a", 5, 2)]);
+    const next = rec(song, [note("snare", 5 * SPM)]);
+    expect(track(next).loops[0].notes).toEqual([note("snare", SPM)]);
+    expect(track(next).clips).toHaveLength(2);
+    const resolved = clips.resolveTrackNotes(next, track(next)).map((n) => n.step);
+    expect(resolved).toEqual([SPM, 5 * SPM]);
+  });
+
+  it("creates one loop and clip over empty space", () => {
+    const song = songWith([loop("a", 16, [])], [clip("c", "a", 1, 8)]);
+    const next = rec(song, [note("c4", 9 * SPM), note("c4", 10 * SPM)]);
+    const created = track(next).clips.find((c) => c.id !== "c")!;
+    expect(created).toMatchObject({ start_measure: 10, measures: 2 });
+    const l = track(next).loops.find((x) => x.id === created.loop_id)!;
+    expect(l.measures).toBe(2);
+    expect(l.notes.map((n) => n.step)).toEqual([0, SPM]);
+    expect(l.name).toBe("Bass 1");
+  });
+
+  it("splits a take across a clip and empty space", () => {
+    const song = songWith([loop("a", 4, [])], [clip("c", "a", 1, 4)]);
+    const next = rec(song, [note("c4", 2 * SPM), note("c4", 3 * SPM), note("c4", 4 * SPM), note("c4", 5 * SPM)]);
+    expect(track(next).loops.find((l) => l.id === "a")!.notes.map((n) => n.step)).toEqual([2 * SPM, 3 * SPM]);
+    const created = track(next).clips.find((c) => c.id !== "c")!;
+    expect(created).toMatchObject({ start_measure: 5, measures: 2 });
+  });
+
+  it("creates only one clip when a take loops over empty space", () => {
+    const song = songWith([loop("a", 1, [])], [clip("c", "a", 1, 1)]);
+    const state = clips.createTakeState();
+    let s = song;
+    for (let pass = 0; pass < 3; pass++) s = rec(s, [note("c4", 4 * SPM + pass * 2)], state);
+    s = rec(s, [note("c4", 5 * SPM)], state);
+    expect(track(s).clips).toHaveLength(2);
+    expect(track(s).clips.filter((c) => c.id !== "c")).toHaveLength(1);
+    expect(track(s).clips.find((c) => c.id !== "c")).toMatchObject({ start_measure: 5, measures: 2 });
+  });
+
+  it("extends a take clip backwards and keeps note positions", () => {
+    const song = songWith([loop("a", 1, [])], [clip("c", "a", 1, 1)]);
+    const state = clips.createTakeState();
+    let s = rec(song, [note("c4", 5 * SPM)], state);
+    s = rec(s, [note("c4", 3 * SPM)], state);
+    const created = track(s).clips.find((c) => c.id !== "c")!;
+    expect(created).toMatchObject({ start_measure: 4, measures: 3 });
+    expect(clips.resolveTrackNotes(s, track(s)).map((n) => n.step)).toEqual([3 * SPM, 5 * SPM]);
+  });
+
+  it("grows the clip to cover a note that ends in a later measure, within the run", () => {
+    const song = songWith([loop("a", 1, [])], [clip("c", "a", 1, 1), clip("d", "a", 4, 1)]);
+    const next = rec(song, [note("c4", 2 * SPM + 14, 40)]);
+    const created = track(next).clips.find((c) => c.id !== "c" && c.id !== "d")!;
+    expect(created).toMatchObject({ start_measure: 3, measures: 1 });
+    expect(track(next).loops.find((l) => l.id === created.loop_id)!.notes[0].length_steps).toBe(2);
+  });
+
+  it("counts notes dropped at the clip limit", () => {
+    const many = Array.from({ length: MAX_CLIPS }, (_, i) => clip(`c${i}`, "a", 1, 1));
+    const base = songWith([loop("a", 1)], [clip("c0", "a", 1, 1)]);
+    const full = { ...base, tracks: [{ ...track(base), clips: many }, base.tracks[1]] };
+    const state = clips.createTakeState();
+    const next = rec(full, [note("c4", 4 * SPM), note("c4", 4 * SPM + 4)], state);
+    expect(track(next).clips).toHaveLength(MAX_CLIPS);
+    expect(state.dropped).toEqual({ "clip-limit": 2 });
+  });
+
+  it("counts notes dropped at the loop limit", () => {
+    const loops = Array.from({ length: MAX_LOOPS }, (_, i) => loop(`l${i}`, 1, []));
+    const song = songWith(loops, [clip("c", "l0", 1, 1)]);
+    const state = clips.createTakeState();
+    rec(song, [note("c4", 4 * SPM)], state);
+    expect(state.dropped).toEqual({ "loop-limit": 1 });
+  });
+
+  it("lengthens the song when a clip is created past its end", () => {
+    const song = songWith([loop("a", 8, [])], [clip("c", "a", 1, 8)]);
+    expect(song.measures).toBe(8);
+    const next = rec(song, [note("c4", 9 * SPM)]);
+    expect(next.measures).toBe(10);
+  });
+
+  it("drops a note beyond the visible timeline", () => {
+    const song = songWith([loop("a", 8, [])], [clip("c", "a", 1, 8)]);
+    const state = clips.createTakeState();
+    const next = rec(song, [note("c4", timelineMeasures(song) * SPM + 1)], state);
+    expect(next).toBe(song);
+    expect(state.dropped).toEqual({ "no-room": 1 });
+  });
+
+  it("does not mutate the input song", () => {
+    const song = songWith([loop("a", 2, [])], [clip("c", "a", 1, 2)]);
+    const snapshot = JSON.stringify(song);
+    rec(song, [note("c4", 0)]);
+    expect(JSON.stringify(song)).toBe(snapshot);
+  });
+});
+
+describe("newClipWithNotes", () => {
+  it("makes a loop as long as the clip, holding the given notes", () => {
+    const song = songWith([], []);
+    const r = ok(clips.newClipWithNotes(song, "t", 3, 2, [note("c4", 4)]));
+    expect(track(r.song).clips[0]).toMatchObject({ start_measure: 3, measures: 2 });
+    expect(track(r.song).loops[0]).toMatchObject({ measures: 2, notes: [note("c4", 4)] });
+    expect(r.clipId).toBe(track(r.song).clips[0].id);
+  });
+
+  it("shortens to the free span", () => {
+    const song = songWith([loop("a", 1)], [clip("c", "a", 4, 1)]);
+    const r = ok(clips.newClipWithNotes(song, "t", 2, 5, []));
+    expect(track(r.song).clips[0].measures).toBe(2);
+  });
+});

@@ -165,6 +165,61 @@ describe("synth source", () => {
   });
 });
 
+describe("synth source held notes", () => {
+  it("attacks without releasing until noteOff", () => {
+    const source = createSynthSource(preset)(tone);
+    const handle = source.noteOn(row(69), 1, 127);
+    expect(h.voices[0].attacks).toEqual([[440, 1, 1]]);
+    expect(h.voices[0].releases).toEqual([]);
+
+    source.noteOff(handle, 3);
+    expect(h.voices[0].releases).toEqual([3]);
+  });
+
+  it("does not reuse a held voice until noteOff and its release tail are done", () => {
+    const source = createSynthSource(preset)(tone);
+    const handle = source.noteOn(row(60), 1, 100);
+    source.trigger(row(62), 1000, 1001, 100);
+    expect(h.voices).toHaveLength(2);
+
+    source.noteOff(handle, 2);
+    source.trigger(row(64), 2 + RELEASE, 4, 100);
+    expect(h.voices).toHaveLength(2);
+    expect(h.voices[0].attacks).toHaveLength(2);
+  });
+
+  it("steals a releasing voice before a held one when the pool is full", () => {
+    const source = createSynthSource(preset)(tone);
+    const handles = [];
+    for (let i = 0; i < MAX_POLYPHONY; i++) {
+      handles.push(source.noteOn(row(40 + i), 1 + i * 0.01, 100));
+    }
+    // The newest voice is released, so it is the only one stealable without cutting a held key.
+    source.noteOff(handles[MAX_POLYPHONY - 1], 1.5);
+    source.trigger(row(90), 2, 3, 100);
+
+    expect(h.voices[MAX_POLYPHONY - 1].attacks).toHaveLength(2);
+    expect(h.voices[0].attacks).toHaveLength(1);
+  });
+
+  it("steals the oldest held voice only when every voice is held", () => {
+    const source = createSynthSource(preset)(tone);
+    for (let i = 0; i < MAX_POLYPHONY; i++) source.noteOn(row(40 + i), 1 + i * 0.01, 100);
+    source.noteOn(row(90), 2, 100);
+    expect(h.voices).toHaveLength(MAX_POLYPHONY);
+    expect(h.voices[0].attacks).toHaveLength(2);
+  });
+
+  it("ignores a noteOff for a voice that has since been stolen", () => {
+    const source = createSynthSource(preset)(tone);
+    const first = source.noteOn(row(40), 1, 100);
+    for (let i = 1; i < MAX_POLYPHONY; i++) source.noteOn(row(40 + i), 1 + i * 0.01, 100);
+    source.noteOn(row(90), 2, 100);
+    source.noteOff(first, 3);
+    expect(h.voices[0].releases).toEqual([]);
+  });
+});
+
 describe("synth source routing", () => {
   const destination = { name: "destination" };
   const output = { name: "channel" };

@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Row } from "@/generated/Row";
 import type { SongStore } from "@/lib/song/songStore";
-import { createPlaybackEngine, type AuditionOptions } from "./engine";
+import { createPlaybackEngine, type AuditionOptions, type PlaybackEngine } from "./engine";
 import { createSongPlaybackModel } from "./songPlaybackModel";
 import { playRange, type LoopSetting } from "@/lib/loopRegion";
 import type { Playback } from "./types";
 
 export interface SongPlayback extends Playback {
   audition(row: Row, options?: AuditionOptions): Promise<void>;
+  // Exposed so recording can drive live notes and count-in on the same engine that plays the song.
+  engine: PlaybackEngine;
 }
 
 export function useSongPlayback(
@@ -56,6 +58,7 @@ export function useSongPlayback(
       preload: engine.preload,
       subscribePosition: engine.subscribePosition,
       audition: engine.audition,
+      engine,
     }),
     [engine, snapshot],
   );

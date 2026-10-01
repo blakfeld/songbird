@@ -257,7 +257,7 @@ export function EditorDock({
             onSetVelocity={(rowId, step, v) => edit((g) => setGridVelocity(g, rowId, step, v))}
             onResizeNote={(rowId, step, len) => edit((g) => resizeGridNote(g, rowId, step, len))}
             onEditNotes={edit}
-            onBeginGesture={() => store.getState().beginGesture()}
+            onBeginGesture={() => clipActions.beginGesture()}
             onEndGesture={() => store.getState().endGesture()}
             onCancelGesture={() => store.getState().cancelGesture()}
             inspectorTarget={inspectorSlot}

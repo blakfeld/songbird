@@ -1,4 +1,5 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import { beatSteps } from "@/lib/pianoRoll";
 import type { SongStore } from "@/lib/song/songStore";
 import { resolveTrackNotes } from "@/lib/song/clipOps";
 import { audibleTracks } from "@/lib/song/songOps";
@@ -31,6 +32,7 @@ export function createSongPlaybackModel(
       return {
         tempo: song.tempo_bpm,
         swing: song.swing,
+        beatSteps: beatSteps(song.time_signature),
         stepsPerMeasure: song.steps_per_measure,
         measures: loopingMeasures(song),
       };

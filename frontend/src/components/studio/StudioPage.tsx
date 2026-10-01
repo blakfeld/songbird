@@ -8,8 +8,11 @@ import type { TimeSignature } from "@/generated/TimeSignature";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import { Transport } from "@/components/editor/Transport";
 import { useShortcuts } from "@/components/editor/useEditorShortcuts";
+import { useRecordingSession, useTakeFinalizer } from "@/components/editor/useRecordingSession";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { getInstruments } from "@/lib/api";
+import type { MidiAccess } from "@/lib/midi/access";
+import { createSongTake } from "@/lib/recording/songTake";
 import { defaultLoop, type LoopSetting } from "@/lib/loopRegion";
 import { songLoop } from "@/lib/song/songLoop";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
@@ -42,7 +45,14 @@ const HANDLE_PX = 8;
 const ARRANGEMENT_ID = "studio-arrangement";
 const DOCK_ID = "studio-editor";
 
-export function StudioPage({ library: provided }: { library?: SongLibrary }) {
+export function StudioPage({
+  library: provided,
+  midi,
+}: {
+  library?: SongLibrary;
+  // Injectable so tests can drive a fake; defaults to the shared browser singleton.
+  midi?: MidiAccess;
+}) {
   const library = provided ?? getSongLibrary();
   const [store] = useState(() => createSongStore());
   const song = useSongStore(store, (s) => s.song);
@@ -58,6 +68,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
   const [follow, setFollow] = useState(true);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const finalizer = useTakeFinalizer();
   const requestedSong = useRef<string | null | undefined>(undefined);
   const detachAutosave = useRef<(() => void) | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -174,20 +185,52 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
     });
   }, [library]);
 
+  const liveTrack = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0];
+  const liveInstrument = instruments.data?.find((i) => i.id === liveTrack?.instrument);
+  const liveTrackId = liveTrack?.id;
+  const liveRows = liveInstrument?.rows;
+  const liveOneShot = liveInstrument?.kind === "drums";
+  const liveTarget = useMemo(
+    () => (liveTrackId && liveRows ? { rows: liveRows, voiceKey: liveTrackId, oneShot: liveOneShot } : null),
+    [liveTrackId, liveRows, liveOneShot],
+  );
+  // Read from the store at start so the take stays on that track even if the selection moves later.
+  const createTarget = useCallback(() => {
+    const { song: current, selectedTrackId: id } = store.getState();
+    const trackId = current?.tracks.find((t) => t.id === id)?.id ?? current?.tracks[0]?.id;
+    return trackId ? createSongTake(store, trackId) : null;
+  }, [store]);
+  const session = useRecordingSession({
+    engine: playback.engine,
+    playback,
+    loop,
+    measures: song?.measures ?? 0,
+    stepsPerMeasure: song?.steps_per_measure ?? 0,
+    liveTarget,
+    createTarget,
+    onAnnounce: setStatus,
+    midi,
+    finalizer,
+  });
+
+  const { guardEdit } = session;
   const togglePlayback = () => {
     if (!song) return;
-    if (!playback.isPlaying) setFollow(true);
-    playback.toggle();
+    session.guardToggle(() => {
+      if (!playback.isPlaying) setFollow(true);
+      playback.toggle();
+    });
   };
   const requestRename = useCallback((loopId: string, invoker: HTMLElement | null) => {
     renameInvoker.current = invoker;
     setRenamingLoopId(loopId);
   }, []);
-  const clipActions = useClipActions(store, setStatus, requestRename);
+  const clipActions = useClipActions(store, setStatus, requestRename, session.guardEdit);
   useShortcuts({
     togglePlayback,
-    undo: () => store.getState().undo(),
-    redo: () => store.getState().redo(),
+    toggleRecord: session.toggleRecord,
+    undo: () => session.guardEdit(() => store.getState().undo()),
+    redo: () => session.guardEdit(() => store.getState().redo()),
     duplicate: () => clipActions.duplicateSelected(),
   });
 
@@ -212,10 +255,10 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
         if (name) setStatus(`Deleted the ${name} track. Undo to restore.`);
       },
       mixer: (id, patch, options) => store.getState().setMixer(id, patch, options),
-      beginGesture: () => store.getState().beginGesture(),
+      beginGesture: () => guardEdit(() => store.getState().beginGesture()),
       endGesture: () => store.getState().endGesture(),
     }),
-    [store],
+    [store, guardEdit],
   );
 
   const addTrack = (instrument: InstrumentInfo) => {
@@ -302,6 +345,7 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
               onAnnounce={setStatus}
               onToggleAssistant={() => setAssistantOpen(true)}
               assistantOpen={assistantOpen}
+              guardEdit={session.guardEdit}
             />
             <p role="status" className="min-h-5 px-4 text-sm text-zinc-600 sm:px-6 dark:text-zinc-400">
               {status}
@@ -316,6 +360,11 @@ export function StudioPage({ library: provided }: { library?: SongLibrary }) {
                 onLoopChange={setLoop}
                 follow={follow}
                 onFollowChange={setFollow}
+                recording={session.recording}
+                onRecordToggle={session.onRecordToggle}
+                subscribeCountIn={session.subscribeCountIn}
+                onAnnounce={setStatus}
+                midi={midi}
               />
             </div>
           </>

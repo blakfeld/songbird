@@ -308,7 +308,7 @@ describe("review fixes", () => {
 
 // The engine caches its source per instrument, so every test must share one registered trigger.
 const trigger = vi.fn();
-registerSoundSource("piano", () => ({ load: async () => {}, trigger, stopAll: () => {} }));
+registerSoundSource("piano", () => ({ load: async () => {}, trigger, noteOn: () => ({}), noteOff: () => {}, stopAll: () => {} }));
 
 describe("pitch audition", () => {
   it("plays half a second at velocity 100 without changing the pattern or history", async () => {

@@ -1,6 +1,6 @@
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
-import { type NoteGrid, normalizeNotes } from "../patternOps";
+import { type NoteGrid, mergeNotes, normalizeNotes } from "../patternOps";
 import { normalizeSong, timelineMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
@@ -149,10 +149,13 @@ function newLoopName(track: Track): string {
   }
 }
 
-export function newClip(
+// Notes are loop-relative so a take can seed the loop with what it already knows about the clip.
+export function newClipWithNotes(
   song: Song,
   trackId: string,
   measure: number,
+  measures: number,
+  notes: Note[],
 ): ClipOpResult {
   const clipId = newId();
   return editTrack(song, trackId, clipId, (track) => {
@@ -160,18 +163,18 @@ export function newClip(
     if (track.loops.length >= MAX_LOOPS) return "loop-limit";
     const free = freeSpanAt(track, measure, song);
     if (free === 0) return "no-room";
-    const measures = Math.min(NEW_CLIP_MEASURES, free);
+    const length = clamp(Math.round(measures), 1, Math.min(free, LOOP_MEASURE_RANGE.max));
     const loop: Loop = {
       id: newId(),
       name: newLoopName(track),
-      measures,
-      notes: [],
+      measures: length,
+      notes,
     };
     const clip: Clip = {
       id: clipId,
       loop_id: loop.id,
       start_measure: measure,
-      measures,
+      measures: length,
     };
     return {
       ...track,
@@ -180,6 +183,9 @@ export function newClip(
     };
   });
 }
+
+export const newClip = (song: Song, trackId: string, measure: number): ClipOpResult =>
+  newClipWithNotes(song, trackId, measure, NEW_CLIP_MEASURES, []);
 
 // `measures` lets an Alt-drag copy keep the dragged clip's length rather than the loop's.
 export function placeLoop(
@@ -446,4 +452,126 @@ export function resolveTrackNotes(song: Song, track: Track): Note[] {
   }
   byClips.set(track.clips, { stepsPerMeasure: spm, notes: out });
   return out;
+}
+
+export type DropReason = "clip-limit" | "loop-limit" | "no-room";
+
+// The take owns this across many recordNotes calls, so it is mutated in place rather than threaded through results.
+export interface TakeState {
+  // Keyed by the first measure of the empty stretch, which stays put however the take's clip grows inside it.
+  runs: Map<number, { loopId: string; clipId: string; limit: number }>;
+  dropped: Partial<Record<DropReason, number>>;
+}
+
+export const createTakeState = (): TakeState => ({ runs: new Map(), dropped: {} });
+
+const lastMeasureOf = (n: Note, stepsPerMeasure: number) =>
+  Math.floor((n.step + n.length_steps - 1) / stepsPerMeasure) + 1;
+
+const mapTrack = (song: Song, trackId: string, fn: (t: Track) => Track): Song =>
+  normalizeSong({
+    ...song,
+    tracks: song.tracks.map((t) => (t.id === trackId ? fn(t) : t)),
+  });
+
+// Notes are song-absolute steps. Transient: the take's gesture makes the whole thing one undo step.
+export function recordNotes(
+  song: Song,
+  trackId: string,
+  notes: Note[],
+  takeState: TakeState,
+): ClipOpResult {
+  if (!song.tracks.some((t) => t.id === trackId)) return fail("not-found");
+  const spm = song.steps_per_measure;
+  const drop = (reason: DropReason) => {
+    takeState.dropped[reason] = (takeState.dropped[reason] ?? 0) + 1;
+  };
+  const trackOf = (s: Song) => s.tracks.find((t) => t.id === trackId)!;
+  const intoLoop = (s: Song, loopId: string, n: Note, local: number): Song =>
+    mapTrack(s, trackId, (t) => ({
+      ...t,
+      loops: t.loops.map((l) => {
+        if (l.id !== loopId) return l;
+        const room = l.measures * spm - local;
+        const placed = { ...n, step: local, length_steps: clamp(n.length_steps, 1, room) };
+        return { ...l, notes: mergeNotes(l.notes, [placed]) };
+      }),
+    }));
+
+  let current = song;
+  for (const n of [...notes].sort((a, b) => a.step - b.step)) {
+    if (n.step < 0) continue;
+    const track = trackOf(current);
+    const takeClips = new Set([...takeState.runs.values()].map((r) => r.clipId));
+    const foreign = track.clips.filter((c) => !takeClips.has(c.id));
+    const m = Math.floor(n.step / spm) + 1;
+
+    const inside = foreign.find((c) => m >= c.start_measure && m < clipEnd(c));
+    if (inside) {
+      const loop = track.loops.find((l) => l.id === inside.loop_id);
+      if (!loop) continue;
+      const local = (n.step - (inside.start_measure - 1) * spm) % (loop.measures * spm);
+      current = intoLoop(current, loop.id, n, local);
+      continue;
+    }
+
+    const bound = timelineMeasures(current);
+    if (m > bound) {
+      drop("no-room");
+      continue;
+    }
+    let lo = 1;
+    let hi = bound + 1;
+    for (const c of foreign) {
+      if (clipEnd(c) <= m) lo = Math.max(lo, clipEnd(c));
+      else if (c.start_measure > m) hi = Math.min(hi, c.start_measure);
+    }
+
+    const run = takeState.runs.get(lo);
+    const clip = run && track.clips.find((c) => c.id === run.clipId);
+    const loop = run && track.loops.find((l) => l.id === run.loopId);
+    if (run && clip && loop) {
+      if (m >= run.limit) {
+        drop("no-room");
+        continue;
+      }
+      const start = Math.min(clip.start_measure, m);
+      const end = Math.max(clipEnd(clip), Math.min(lastMeasureOf(n, spm), run.limit - 1) + 1);
+      const measures = end - start;
+      if (measures > LOOP_MEASURE_RANGE.max) {
+        drop("no-room");
+        continue;
+      }
+      if (start !== clip.start_measure || measures !== clip.measures) {
+        // Growing backwards moves the loop's origin, so existing notes shift to keep their song positions.
+        const shift = (clip.start_measure - start) * spm;
+        current = mapTrack(current, trackId, (t) => ({
+          ...t,
+          loops: t.loops.map((l) =>
+            l.id === loop.id
+              ? { ...l, measures, notes: l.notes.map((x) => ({ ...x, step: x.step + shift })) }
+              : l,
+          ),
+          clips: t.clips.map((c) =>
+            c.id === clip.id ? { ...c, start_measure: start, measures } : c,
+          ),
+        }));
+      }
+      current = intoLoop(current, loop.id, n, n.step - (start - 1) * spm);
+      continue;
+    }
+
+    const measures = Math.min(lastMeasureOf(n, spm), hi - 1) - m + 1;
+    const local = n.step - (m - 1) * spm;
+    const placed = { ...n, step: local, length_steps: clamp(n.length_steps, 1, measures * spm - local) };
+    const result = newClipWithNotes(current, trackId, m, measures, [placed]);
+    if (result.song === null) {
+      drop(result.reason === "not-found" ? "no-room" : (result.reason as DropReason));
+      continue;
+    }
+    const created = trackOf(result.song).clips.find((c) => c.id === result.clipId)!;
+    takeState.runs.set(lo, { loopId: created.loop_id, clipId: created.id, limit: hi });
+    current = result.song;
+  }
+  return ok(current);
 }

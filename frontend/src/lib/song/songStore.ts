@@ -69,6 +69,8 @@ export interface SongState {
   makeUnique: (trackId: string, clipId: string) => ClipFailure | null;
   renameLoop: (trackId: string, loopId: string, name: string) => ClipFailure | null;
   deleteLoop: (trackId: string, loopId: string) => ClipFailure | null;
+  // Transient and applied to the current song, not the gesture base: each call builds on what the take already wrote.
+  recordNotes: (trackId: string, notes: Note[], takeState: clipOps.TakeState) => void;
   setMixer: (
     trackId: string,
     patch: ops.MixerPatch,
@@ -278,6 +280,19 @@ export function createSongStore(initial: Song | null = null): SongStore {
         run((s) => clipOps.renameLoop(s, trackId, loopId, name), trackId),
       deleteLoop: (trackId, loopId) =>
         run((s) => clipOps.deleteLoop(s, trackId, loopId), trackId),
+      recordNotes: (trackId, notes, takeState) =>
+        set((s) => {
+          if (!s.song) return s;
+          const result = clipOps.recordNotes(s.song, trackId, notes, takeState);
+          if (result.song === null || result.song === s.song) return s;
+          return {
+            song: result.song,
+            gestureBase: s.gestureBase ?? s.song,
+            gestureFuture: s.gestureBase ? s.gestureFuture : s.future,
+            gestureLoop: s.gestureBase ? s.gestureLoop : songLoop(s.song),
+            future: [],
+          };
+        }),
       setMixer: (trackId, patch, options) => {
         if (!options?.transient) return edit((s) => ops.setMixer(s, trackId, patch));
         set((s) => {

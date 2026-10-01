@@ -44,6 +44,7 @@ export function SongHeader({
   onAnnounce,
   onToggleAssistant,
   assistantOpen,
+  guardEdit = (edit) => edit(),
 }: {
   store: SongStore;
   library: SongLibrary;
@@ -55,9 +56,15 @@ export function SongHeader({
   onAnnounce: (message: string) => void;
   onToggleAssistant: () => void;
   assistantOpen: boolean;
+  // Ends a running take before the history moves, so the take is committed and announced rather than cut off.
+  guardEdit?: (edit: () => void) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
-  const canUndo = useSongStore(store, (s) => s.past.length > 0);
+  const canUndo = useSongStore(
+    store,
+    // A take or drag in flight has no history entry yet, but undo still works because it commits that gesture first.
+    (s) => s.past.length > 0 || (s.gestureBase !== null && s.gestureBase !== s.song),
+  );
   const canRedo = useSongStore(store, (s) => s.future.length > 0);
   const actions = () => store.getState();
 
@@ -114,7 +121,7 @@ export function SongHeader({
           title="Undo (⌘Z / Ctrl+Z)"
           aria-keyshortcuts="Meta+Z Control+Z"
           disabled={!canUndo}
-          onClick={() => actions().undo()}
+          onClick={() => guardEdit(() => actions().undo())}
         >
           <span aria-hidden="true">↶</span>
           <span className="max-sm:hidden">Undo</span>
@@ -124,7 +131,7 @@ export function SongHeader({
           title="Redo (⇧⌘Z / Ctrl+Shift+Z)"
           aria-keyshortcuts="Shift+Meta+Z Shift+Control+Z"
           disabled={!canRedo}
-          onClick={() => actions().redo()}
+          onClick={() => guardEdit(() => actions().redo())}
         >
           <span aria-hidden="true">↷</span>
           <span className="max-sm:hidden">Redo</span>
