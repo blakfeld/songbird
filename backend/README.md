@@ -120,6 +120,105 @@ Manually checked on 2026-09-29: a piano pattern generated with the `ollama`
 provider (`qwen2.5:7b-instruct`) and exported with this endpoint imported into
 Logic Pro, and its pitches matched the pattern's notes.
 
+### `GET /api/v1/songs/limits`
+
+`{"max_input_tokens": 256, "max_range_measures": 32, "max_song_measures": 128,
+"max_tracks": 16, "max_chat_messages": 20}`. Only `max_input_tokens` depends on
+configuration.
+
+### `POST /api/v1/songs/tracks/generate`
+
+Generates one track of a song over a range of measures, with the song's other
+tracks as context. The server stores nothing; the client applies the result.
+
+```sh
+curl -s localhost:8080/api/v1/songs/tracks/generate \
+  -H 'content-type: application/json' \
+  -d '{"song":{"version":2,"id":"s1","name":"Late Train","tempo_bpm":96,"time_signature":"4/4","steps_per_measure":16,"swing":0,"key":{"tonic":"E","mode":"minor"},"measures":4,"tracks":[{"id":"t1","name":"Drums","instrument":"drums","volume_db":0,"pan":0,"muted":false,"soloed":false,"loops":[{"id":"l1","name":"Beat","measures":1,"notes":[{"row_id":"kick","step":0,"length_steps":1,"velocity":100}]}],"clips":[{"id":"c1","loop_id":"l1","start_measure":1,"measures":4}]},{"id":"t2","name":"Bass","instrument":"bass","volume_db":0,"pan":0,"muted":false,"soloed":false,"loops":[],"clips":[]}]},"track_id":"t2","prompt":"driving eighth-note bass","range":{"start_measure":1,"end_measure":4}}'
+```
+
+Body: `song` (a song document, validated as for song export), `track_id`,
+`prompt` (the pattern endpoint's prompt rules), and optional `range`
+(`{"start_measure", "end_measure"}`, 1-based and inclusive, from measure 1 to
+128 and at most 32 measures). A range may extend past the song's current last
+measure, because a song's length follows its clips; measures past the end have
+no context from other tracks. Without `range` the whole song is generated, which
+a song longer than 32 measures does not allow. The response is
+`{"track_id", "range", "notes"}`. The notes use the target instrument's rows and
+count `step` from the first step of `range`, so a client can store them as a loop
+that starts at the range. Tempo, time signature, swing and key come from the
+song; the AI cannot change them.
+
+Errors are those of the pattern endpoint, plus `422 invalid_song` (with the
+song-export validation message), `422 invalid_track` (`track_id` is not in the
+song) and `422 invalid_range` (outside measures 1-128, longer than 32 measures, or
+missing for a song longer than 32 measures). The body limit is 2 MiB.
+
+The provider is shown a text summary of the song, rendered by
+`music::context::render_context`: tempo, meter, key (C major when the song has
+none), the target's own notes in the measures just outside the range, and every
+unmuted track's notes from one measure before the range to one after. Only notes
+that clips actually play are included. Drums list the struck rows per measure;
+melodic tracks list the pitches sounding on each beat and the lowest one. Track
+names are escaped inside the block.
+
+`SONGBIRD_MAX_CONTEXT_TOKENS` (default 4000, 0-32000) caps that summary using
+the same estimate as the prompt limit. When it would be exceeded, measures far
+from the range are dropped first, then the last tracks in song order; a request
+is never rejected for context size. `0` sends no context. A dense 16-track,
+32-measure song renders to about 4000 estimated tokens at the default budget.
+
+### `POST /api/v1/songs/chat`
+
+Builds a song one part at a time. The client sends the song and the recent
+conversation; the server stores nothing. It makes two provider calls, each under
+`SONGBIRD_GENERATION_TIMEOUT_SECS`: a planner call that picks the instrument,
+names the track and rewrites the request into a standalone prompt, and then
+track generation exactly as above, with every other unmuted track as context.
+
+```sh
+curl -s localhost:8080/api/v1/songs/chat \
+  -H 'content-type: application/json' \
+  -d '{"song":{"version":2,"id":"s1","name":"Late Train","tempo_bpm":96,"time_signature":"4/4","steps_per_measure":16,"swing":0,"measures":4,"tracks":[{"id":"t1","name":"Piano","instrument":"piano","volume_db":0,"pan":0,"muted":false,"soloed":false,"loops":[{"id":"l1","name":"Chords","measures":1,"notes":[{"row_id":"C4","step":0,"length_steps":4,"velocity":100}]}],"clips":[{"id":"c1","loop_id":"l1","start_measure":1,"measures":4}]}]},"messages":[{"role":"user","content":"give me the drums to match"}]}'
+```
+
+Body: `song`, `messages` (1-20 `{"role": "user"|"assistant", "content"}` entries,
+the last from the user; assistant messages at most 4000 characters) and optional
+`range` (`{"start_measure", "end_measure"}`), the song's active loop range. The
+last message follows the prompt rules of pattern generation. The response is
+`{"reply", "track"}`, where `track` is `null` or
+`{"name", "instrument", "range", "notes"}`; `notes` count from the start of
+`range`, as for track generation. Ids stay with the client.
+
+The range is chosen in this order. A length the user names ("16 bars", "eight
+measures"), which the planner reports as `measures` (1-32), gives measures
+1 to that length, extending the song if needed. Otherwise a song in which no
+track has a clip gets measures 1-8. Otherwise the whole song is used when it has
+at most 32 measures. A longer song uses the supplied `range` if it spans at most
+32 measures; otherwise the reply asks the user to turn on looping and draw a
+loop region, and no track is added. A planner `measures` outside 1-32 is treated
+as not named.
+A reply with `track: null` is also returned for questions, and when the song
+already has 16 tracks (enforced by the server whatever the planner says).
+
+Every invalid body is rejected with `400` and one of the codes of track
+generation (`invalid_song`, `invalid_instrument`, `invalid_prompt`,
+`prompt_too_long`, `invalid_range`), or `invalid_request` for a message list that
+is empty, over 20 entries, does not end with a user message, or has an assistant
+message over 4000 characters. Provider failures are `502 generation_failed` and
+`504 generation_timeout`. The planner prompt holds the song's
+tracks (and the measures they play in) and the conversation, trimmed oldest
+first to `SONGBIRD_MAX_CONTEXT_TOKENS`; the latest message is never trimmed.
+With `SONGBIRD_AI_PROVIDER=mock` the planner is keyword based: a number (digits
+or words, 1-32) followed by bar(s) or measure(s) is the named length; a question gets a
+reply only; `drum` or `beat` gives a Drums track, `piano`, `chord` or `keys` a
+Piano track, `bass` a Bass track, and anything else the first melodic
+instrument (Piano).
+
+The song document may carry a `chat` array of `{"role", "content", "track_id"?}`
+entries (at most 20, each at most 4000 characters), which the Studio saves with
+the song; export and generation ignore it.
+
 ## Choosing an AI provider
 
 Set `SONGBIRD_AI_PROVIDER`. The service checks the provider at startup and
@@ -193,6 +292,36 @@ the draft schema marks every property required and spells out nullable fields.
 
 Set `ANTHROPIC_API_KEY` (required) and optionally `SONGBIRD_AI_MODEL`. The
 service forces a tool call whose input schema is the draft schema.
+
+Song track generation and chat, checked manually on 2026-10-01 with the `ollama`
+provider (`qwen2.5:7b-instruct`, Ollama's default 4096-token context window,
+`SONGBIRD_GENERATION_TIMEOUT_SECS=240`, driven by a script that
+timed each `curl`-style request end to end):
+
+- `POST /api/v1/songs/tracks/generate` on a 3-track, 8-measure song (drums and
+  piano with notes, an empty bass target, key A minor): `200` in 19.8 s with 48
+  bass notes on E1 and A1. The context was 407 estimated tokens (1626
+  characters), measured with `render_context`.
+- A three-message chat on an 8-measure song, feeding each reply back with a
+  client-assigned track, loop and clip: "give me a piano that plays slow jazzy
+  chords" 28 s and 49 s in two runs, "give me the drums to match" 183 s, "now
+  the bass" 70 s. The planner and generation calls are not timed separately by
+  the API; a planner-only request (a question) took 4.6 s with the model
+  loaded, so nearly all of each total is generation. The longer runs follow
+  from the model writing many lanes: the drums part had 768 notes across ten
+  rows, and one earlier run of that same message hit the 240 s limit and
+  returned `504 generation_timeout`. Expect to raise
+  `SONGBIRD_GENERATION_TIMEOUT_SECS` well above 60 for chat with a 7B model.
+- Planner choices were sensible: Piano for the piano request, Drums for "the
+  drums to match" and Bass for "now the bass". Track names were "Drums" and
+  "Bass", but the piano track was named "Track 2", which is not descriptive;
+  the planner prompt could ask for a name that describes the part. The replies were
+  accurate but wordy (the bass reply was a full paragraph).
+- No planner or draft retries were logged; the only warning was the one timeout.
+- Quality: the bass followed the piano's roots (A, F) only loosely, and the
+  first bass used a 3-step grid. This is a model limit, not a validity problem,
+  because normalization kept every note valid. `just test-live-ollama` also
+  passes, but it covers pattern generation only.
 
 ## Tests
 

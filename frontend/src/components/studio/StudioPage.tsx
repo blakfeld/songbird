@@ -27,6 +27,9 @@ import { HeightHandle } from "@/components/editor/HeightHandle";
 import { Arrangement } from "./Arrangement";
 import { AssistantPanel } from "./AssistantPanel";
 import { EditorDock } from "./EditorDock";
+import { TrackGenerateDialog } from "./TrackGenerateDialog";
+import { useChat } from "./useChat";
+import { useTrackGeneration } from "./useTrackGeneration";
 import { SongHeader } from "./SongHeader";
 import type { TrackActions } from "./trackActions";
 import { useClipActions } from "./useClipActions";
@@ -59,6 +62,7 @@ export function StudioPage({
   const gestureBase = useSongStore(store, (s) => s.gestureBase);
   const selectedTrackId = useSongStore(store, (s) => s.selectedTrackId);
   const selectedClipId = useSongStore(store, (s) => s.selectedClipId);
+  const generatingTrackId = useSongStore(store, (s) => s.generatingTrackId);
   const [renamingLoopId, setRenamingLoopId] = useState<string | null>(null);
   const renameInvoker = useRef<HTMLElement | null>(null);
   const instruments = useApiResource(getInstruments);
@@ -245,6 +249,10 @@ export function StudioPage({
 
   const focusTitle = () => requestAnimationFrame(() => titleRef.current?.focus());
 
+  const generation = useTrackGeneration(store, setStatus, guardEdit);
+  const { open: openGenerate } = generation;
+  const chat = useChat(store, setStatus);
+
   const trackActions = useMemo<TrackActions>(
     () => ({
       select: (id) => store.getState().selectTrack(id),
@@ -255,10 +263,11 @@ export function StudioPage({
         if (name) setStatus(`Deleted the ${name} track. Undo to restore.`);
       },
       mixer: (id, patch, options) => store.getState().setMixer(id, patch, options),
+      generate: openGenerate,
       beginGesture: () => guardEdit(() => store.getState().beginGesture()),
       endGesture: () => store.getState().endGesture(),
     }),
-    [store, guardEdit],
+    [store, guardEdit, openGenerate],
   );
 
   const addTrack = (instrument: InstrumentInfo) => {
@@ -392,6 +401,7 @@ export function StudioPage({
             subscribePosition={playback.subscribePosition}
             actions={trackActions}
             clipActions={clipActions}
+            generatingTrackId={generatingTrackId}
             onAddTrack={addTrack}
             onSeek={seek}
           />
@@ -447,14 +457,25 @@ export function StudioPage({
         </>
       )}
 
-      <AssistantPanel className="max-lg:hidden lg:col-start-2 lg:row-span-4 lg:row-start-1" />
+      {song && track && (
+        <TrackGenerateDialog
+          open={generation.dialog !== null}
+          song={song}
+          track={song.tracks.find((t) => t.id === generation.dialog?.trackId) ?? track}
+          initialPrompt={generation.dialog?.prompt}
+          initialError={generation.dialog?.error}
+          onSubmit={(request) => generation.dialog && void generation.submit(generation.dialog.trackId, request)}
+          onClose={generation.close}
+        />
+      )}
+      <AssistantPanel song={song} chat={chat} instruments={instruments.data} className="max-lg:hidden lg:col-start-2 lg:row-span-4 lg:row-start-1" />
       <ModalDialog
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
         label="Assistant"
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
-        <AssistantPanel className="h-full border-l-0" />
+        <AssistantPanel song={song} chat={chat} instruments={instruments.data} className="h-full border-l-0" />
       </ModalDialog>
     </main>
   );

@@ -4,6 +4,7 @@ import { type NoteGrid, mergeNotes, normalizeNotes } from "../patternOps";
 import { normalizeSong, timelineMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
+  MEASURE_RANGE,
   LOOP_NAME_MAX,
   MAX_CLIPS,
   MAX_LOOPS,
@@ -22,7 +23,8 @@ export type ClipFailure =
   | "no-room"
   | "clip-limit"
   | "loop-limit"
-  | "not-shared";
+  | "not-shared"
+  | "generating";
 
 // `clipId` names the clip the caller should select afterwards; null when no clip results from the op.
 // A success may return the same song reference, which the store treats as a no-op.
@@ -284,6 +286,139 @@ export function resizeClip(
         : track.loops,
       clips: track.clips.map((c) => (c === clip ? { ...c, measures: next } : c)),
     };
+  });
+}
+
+// A tail that starts on a repeat of its loop can share it; any other start would shift the loop's phase, so the
+// tail gets its own loop with the notes baked in. Baking is exact, whereas rotating a loop would cut wrapped notes.
+function splitTrackClip(
+  song: Song,
+  track: Track,
+  clip: Clip,
+  at: number,
+  tailId: string,
+): Track | ClipFailure {
+  if (at <= clip.start_measure || at >= clipEnd(clip)) return track;
+  if (track.clips.length >= MAX_CLIPS) return "clip-limit";
+  const head: Clip = { ...clip, measures: at - clip.start_measure };
+  const tail: Clip = { ...clip, id: tailId, start_measure: at, measures: clipEnd(clip) - at };
+  const loop = track.loops.find((l) => l.id === clip.loop_id);
+  let loops = track.loops;
+  if (loop && (at - clip.start_measure) % loop.measures !== 0) {
+    if (loops.length >= MAX_LOOPS) return "loop-limit";
+    const spm = song.steps_per_measure;
+    const cut = (at - 1) * spm;
+    const played = resolveTrackNotes(song, { ...track, clips: [clip] });
+    const baked: Loop = {
+      id: newId(),
+      name: fitName(loop.name, " (cont.)"),
+      measures: tail.measures,
+      // A note sounding across the cut belongs to the head, which clips it at its own end.
+      notes: played.filter((n) => n.step >= cut).map((n) => ({ ...n, step: n.step - cut })),
+    };
+    tail.loop_id = baked.id;
+    loops = [...loops, baked];
+  }
+  return {
+    ...track,
+    loops,
+    clips: track.clips.map((c) => (c === clip ? head : c)).concat(tail).sort(byStart),
+  };
+}
+
+// Returns the new tail's clip id so a caller can select what it just made.
+export function splitClip(
+  song: Song,
+  trackId: string,
+  clipId: string,
+  atMeasure: number,
+): ClipOpResult {
+  const tailId = newId();
+  return editTrack(song, trackId, tailId, (track) => {
+    const clip = track.clips.find((c) => c.id === clipId);
+    if (!clip) return "not-found";
+    return splitTrackClip(song, track, clip, Math.round(atMeasure), tailId);
+  });
+}
+
+// Pieces are cut straight from each original clip rather than by splitting twice and deleting: a split at the
+// range start would bake the doomed inside part into a loop nothing plays, and a second split would rename the
+// kept tail "(cont.) (cont.)". Limits are checked by callers against the finished track, not intermediate ones.
+function clearTrackRange(song: Song, track: Track, start: number, end: number): Track {
+  const after = end + 1;
+  const loops = [...track.loops];
+  const clips: Clip[] = [];
+  let changed = false;
+  for (const clip of track.clips) {
+    if (clipEnd(clip) <= start || clip.start_measure >= after) {
+      clips.push(clip);
+      continue;
+    }
+    changed = true;
+    if (clip.start_measure < start) clips.push({ ...clip, measures: start - clip.start_measure });
+    if (clipEnd(clip) <= after) continue;
+    const tail: Clip = { ...clip, id: newId(), start_measure: after, measures: clipEnd(clip) - after };
+    const loop = track.loops.find((l) => l.id === clip.loop_id);
+    if (loop && (after - clip.start_measure) % loop.measures !== 0) {
+      const cut = (after - 1) * song.steps_per_measure;
+      const played = resolveTrackNotes(song, { ...track, clips: [clip] });
+      const baked: Loop = {
+        id: newId(),
+        name: fitName(loop.name, " (cont.)"),
+        measures: tail.measures,
+        // A note sounding across the cut belongs to the inside part, which is being removed.
+        notes: played.filter((n) => n.step >= cut).map((n) => ({ ...n, step: n.step - cut })),
+      };
+      tail.loop_id = baked.id;
+      loops.push(baked);
+    }
+    clips.push(tail);
+  }
+  return changed ? { ...track, loops, clips: clips.sort(byStart) } : track;
+}
+
+const overLimit = (track: Track): ClipFailure | null =>
+  track.clips.length > MAX_CLIPS ? "clip-limit" : track.loops.length > MAX_LOOPS ? "loop-limit" : null;
+
+export function clearMeasureRange(
+  song: Song,
+  trackId: string,
+  start: number,
+  end: number,
+): ClipOpResult {
+  return editTrack(song, trackId, null, (track) => {
+    const cleared = clearTrackRange(song, track, Math.round(start), Math.round(end));
+    return overLimit(cleared) ?? cleared;
+  });
+}
+
+// Written as one track edit rather than clear-then-newClip: clearing can shorten the song, and the timeline bound
+// that newClip honours would then cut the new clip short of the range.
+export function applyGeneratedRange(
+  song: Song,
+  trackId: string,
+  range: { start_measure: number; end_measure: number },
+  notes: Note[],
+): ClipOpResult {
+  const clipId = newId();
+  return editTrack(song, trackId, clipId, (track) => {
+    // The range may reach past the song's end, which grows the song, but never past the length cap.
+    if (range.end_measure > MEASURE_RANGE.max) return "no-room";
+    const cleared = clearTrackRange(song, track, range.start_measure, range.end_measure);
+    const measures = range.end_measure - range.start_measure + 1;
+    const loop: Loop = { id: newId(), name: newLoopName(cleared), measures, notes };
+    const clip: Clip = {
+      id: clipId,
+      loop_id: loop.id,
+      start_measure: range.start_measure,
+      measures,
+    };
+    const result = {
+      ...cleared,
+      loops: [...cleared.loops, loop],
+      clips: insertClip(cleared.clips, clip),
+    };
+    return overLimit(result) ?? result;
   });
 }
 

@@ -52,6 +52,36 @@ pub struct Song {
     #[ts(optional = nullable)]
     pub loop_region: Option<LoopRegion>,
     pub tracks: Vec<Track>,
+    /// The Studio's song chat, saved with the song so it survives a reload.
+    /// Optional so songs saved before the chat existed stay valid and songs
+    /// without a conversation serialize as they always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<ChatEntry>>", optional)]
+    pub chat: Vec<ChatEntry>,
+}
+
+/// The browser trims the saved conversation to this many entries.
+pub const MAX_CHAT_ENTRIES: usize = 20;
+/// Also the longest assistant message the chat endpoint accepts, so a saved
+/// conversation can always be sent back.
+pub const MAX_CHAT_CONTENT_CHARS: usize = 4000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ChatEntry {
+    pub role: ChatRole,
+    pub content: String,
+    /// The track an assistant reply added, so the panel can label it and show
+    /// when undo has removed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub track_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -86,6 +116,36 @@ pub enum Tonic {
 pub enum KeyMode {
     Major,
     Minor,
+}
+
+impl SongKey {
+    /// A song without a key reads as C major, matching what the Studio shows.
+    pub const DEFAULT: SongKey = SongKey {
+        tonic: Tonic::C,
+        mode: KeyMode::Major,
+    };
+
+    pub fn name(self) -> String {
+        let tonic = match self.tonic {
+            Tonic::C => "C",
+            Tonic::CSharp => "C#",
+            Tonic::D => "D",
+            Tonic::DSharp => "D#",
+            Tonic::E => "E",
+            Tonic::F => "F",
+            Tonic::FSharp => "F#",
+            Tonic::G => "G",
+            Tonic::GSharp => "G#",
+            Tonic::A => "A",
+            Tonic::ASharp => "A#",
+            Tonic::B => "B",
+        };
+        let mode = match self.mode {
+            KeyMode::Major => "major",
+            KeyMode::Minor => "minor",
+        };
+        format!("{tonic} {mode}")
+    }
 }
 
 /// The flag sits beside the region because looping can be on with no region,
@@ -151,6 +211,7 @@ pub enum SongErrorKind {
     StepsPerMeasure,
     Measures,
     LoopRegion,
+    Chat,
     TrackCount,
     TrackName,
     Volume,
@@ -182,6 +243,7 @@ impl SongErrorKind {
             Self::StepsPerMeasure => "steps_per_measure",
             Self::Measures => "measures",
             Self::LoopRegion => "loop_region",
+            Self::Chat => "chat",
             Self::TrackCount => "track_count",
             Self::TrackName => "track_name",
             Self::Volume => "volume",
@@ -354,6 +416,19 @@ impl Song {
                     ),
                 ));
             }
+        }
+        if self.chat.len() > MAX_CHAT_ENTRIES
+            || self
+                .chat
+                .iter()
+                .any(|e| e.content.chars().count() > MAX_CHAT_CONTENT_CHARS)
+        {
+            return Err(invalid(
+                SongErrorKind::Chat,
+                format!(
+                    "chat holds at most {MAX_CHAT_ENTRIES} messages of {MAX_CHAT_CONTENT_CHARS} characters"
+                ),
+            ));
         }
         Ok(())
     }
@@ -645,6 +720,7 @@ pub(crate) mod tests {
             measures,
             loop_region: None,
             tracks,
+            chat: vec![],
         }
     }
 
@@ -836,6 +912,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_song_without_a_key_serializes_byte_identically() {
+        let original = serde_json::to_string(&two_track_song()).unwrap();
+        assert!(!original.contains("\"key\""));
+        let reparsed: Song = serde_json::from_str(&original).unwrap();
+        assert_eq!(serde_json::to_string(&reparsed).unwrap(), original);
+    }
+
+    #[test]
     fn key_and_loop_region_round_trip_in_the_browser_shape() {
         let mut s = two_track_song();
         s.key = Some(SongKey {
@@ -890,9 +974,21 @@ pub(crate) mod tests {
         let registry = InstrumentRegistry::builtin();
         assert!(fixture.cases.iter().any(|c| c.error.is_none()));
         for case in fixture.cases {
-            let song: Song = serde_json::from_value(case.song)
-                .unwrap_or_else(|e| panic!("{}: does not deserialize: {e}", case.name));
-            let actual = song.validate(&registry).err().map(|e| e.kind().as_str());
+            let actual = match serde_json::from_value::<Song>(case.song.clone()) {
+                Ok(song) => song.validate(&registry).err().map(|e| e.kind().as_str()),
+                Err(e) => {
+                    // The key is typed, so a bad tonic or mode is refused while
+                    // deserializing; the browser reports the same case as `key`.
+                    let mut without_key = case.song.clone();
+                    without_key.as_object_mut().unwrap().remove("key");
+                    assert!(
+                        serde_json::from_value::<Song>(without_key).is_ok(),
+                        "{}: does not deserialize: {e}",
+                        case.name
+                    );
+                    Some("key")
+                }
+            };
             assert_eq!(actual, case.error.as_deref(), "{}", case.name);
         }
     }

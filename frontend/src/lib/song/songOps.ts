@@ -1,3 +1,4 @@
+import type { ChatTrack } from "@/generated/ChatTrack";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
 import { clampLoop } from "../loopRegion";
@@ -95,6 +96,28 @@ export function addTrack(
       : uniqueTrackName(song, instrument.name),
   );
   return { ...song, tracks: [...song.tracks, track] };
+}
+
+// The server returns names and notes only; ids and mixer defaults are minted here so the store stays their sole source.
+export function addChatTrack(
+  song: Song,
+  part: Pick<ChatTrack, "name" | "instrument" | "range" | "notes">,
+): { song: Song; trackId: string } | null {
+  if (song.tracks.length >= MAX_TRACKS) return null;
+  const name = uniqueTrackName(song, part.name.trim().slice(0, TRACK_NAME_MAX) || part.instrument);
+  const measures = part.range.end_measure - part.range.start_measure + 1;
+  const loop: Loop = {
+    id: newId(),
+    name: name.slice(0, LOOP_NAME_MAX),
+    measures,
+    notes: part.notes.map((n) => ({ ...n })),
+  };
+  const track: Track = {
+    ...newTrack(part.instrument, name),
+    loops: [loop],
+    clips: [{ id: newId(), loop_id: loop.id, start_measure: part.range.start_measure, measures }],
+  };
+  return { song: normalizeSong({ ...song, tracks: [...song.tracks, track] }), trackId: track.id };
 }
 
 export function deleteTrack(song: Song, trackId: string): Song {

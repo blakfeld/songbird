@@ -34,6 +34,7 @@ export type ProjectErrorKind =
   | "measures"
   | "key"
   | "loop_region"
+  | "chat"
   | "track_count"
   | "track_name"
   | "volume"
@@ -126,6 +127,22 @@ function checkHeader(raw: Raw): Problem | null {
           `the loop region must satisfy 1 <= start <= end <= ${MEASURE_RANGE.max}`,
         );
     }
+  }
+  if (raw.chat !== undefined) {
+    const c = raw.chat;
+    if (
+      !Array.isArray(c) ||
+      c.length > 20 ||
+      c.some(
+        (e) =>
+          !isObject(e) ||
+          (e.role !== "user" && e.role !== "assistant") ||
+          typeof e.content !== "string" ||
+          [...e.content].length > 4000 ||
+          (e.track_id !== undefined && typeof e.track_id !== "string"),
+      )
+    )
+      return problem("chat", "the saved chat must be at most 20 messages of 4000 characters");
   }
   return null;
 }

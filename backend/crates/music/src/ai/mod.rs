@@ -5,6 +5,7 @@ pub mod claude;
 pub mod codex;
 pub mod mock;
 pub mod ollama;
+pub mod plan;
 pub mod prompt;
 
 use async_trait::async_trait;
@@ -18,6 +19,7 @@ pub use claude::ClaudeProvider;
 pub use codex::CodexCliProvider;
 pub use mock::MockProvider;
 pub use ollama::OllamaProvider;
+pub use plan::{MockPlanProvider, PlanProvider, SchemaPlanProvider};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructuredRequest {
@@ -52,6 +54,23 @@ pub trait StructuredProvider: Send + Sync {
     /// Run at startup so a misconfigured provider fails fast instead of on the
     /// first user request.
     async fn check(&self) -> Result<(), ProviderError>;
+}
+
+/// Lets one transport serve every provider kind, so startup checks and
+/// connections are made once however many kinds are built over it.
+#[async_trait]
+impl<T: StructuredProvider + ?Sized> StructuredProvider for std::sync::Arc<T> {
+    fn name(&self) -> &'static str {
+        (**self).name()
+    }
+
+    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+        (**self).generate(request).await
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        (**self).check().await
+    }
 }
 
 /// The seam between transports and the domain: providers only produce a draft,
@@ -89,7 +108,7 @@ impl<T: StructuredProvider> PatternProvider for SchemaProvider<T> {
         instrument: &Instrument,
     ) -> Result<PatternDraft, ProviderError> {
         let structured = StructuredRequest {
-            system: prompt::system_prompt(instrument),
+            system: prompt::system_prompt_for(request, instrument),
             user: prompt::user_message(request),
             schema: prompt::draft_schema(instrument),
             tool_name: prompt::TOOL_NAME.into(),

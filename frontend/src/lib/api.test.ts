@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Pattern } from "@/generated/Pattern";
+import type { Song } from "@/generated/Song";
 import {
   ApiError,
   exportMidi,
+  generateTrack,
   generatePattern,
   getInstruments,
   getLimits,
+  getSongLimits,
+  sendChat,
 } from "./api";
 
 const json = (body: unknown, status = 200) =>
@@ -53,6 +57,106 @@ describe("api client", () => {
     expect(url).toBe("/api/v1/patterns/generate");
     expect(init!.method).toBe("POST");
     expect(JSON.parse(init!.body as string)).toEqual(body);
+  });
+
+  it("getSongLimits fetches the song limits", async () => {
+    const limits = { max_input_tokens: 256, max_range_measures: 32, max_song_measures: 128, max_tracks: 16, max_chat_messages: 20 };
+    const fn = mockFetch(json(limits));
+    expect(await getSongLimits()).toEqual(limits);
+    expect(fn.mock.calls[0][0]).toBe("/api/v1/songs/limits");
+  });
+
+  it("generateTrack posts the body as JSON", async () => {
+    const response = { track_id: "t1", range: { start_measure: 1, end_measure: 4 }, notes: [] };
+    const fn = mockFetch(json(response));
+    const body = {
+      song: { name: "s" } as unknown as Song,
+      track_id: "t1",
+      prompt: "walking bass",
+      range: { start_measure: 1, end_measure: 4 },
+    };
+    expect(await generateTrack(body)).toEqual(response);
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/songs/tracks/generate");
+    expect(init!.method).toBe("POST");
+    expect(JSON.parse(init!.body as string)).toEqual(body);
+  });
+
+  it.each([
+    ["generation_failed", 502, "could not generate"],
+    ["generation_timeout", 504, "too long"],
+    ["prompt_too_long", 422, "too long"],
+    ["invalid_range", 422, "measure range"],
+    ["invalid_track", 422, "no longer in the song"],
+  ])("generateTrack maps %s to a friendly message", async (code, status, fragment) => {
+    mockFetch(json(errorBody(code), status));
+    const err = await generateTrack({
+      song: {} as unknown as Song,
+      track_id: "t",
+      prompt: "p",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(code);
+    expect(err.status).toBe(status);
+    expect(err.message).toContain(fragment);
+  });
+
+  it("generateTrack surfaces the server's reason for other 422 codes", async () => {
+    mockFetch(json(errorBody("invalid_song", "song has no tracks"), 422));
+    const err = await generateTrack({
+      song: {} as unknown as Song,
+      track_id: "t",
+      prompt: "p",
+    }).catch((e) => e);
+    expect(err.message).toBe("song has no tracks");
+  });
+
+  it("generateTrack reports a network failure", async () => {
+    mockFetch(new Error("offline"));
+    const err = await generateTrack({
+      song: {} as unknown as Song,
+      track_id: "t",
+      prompt: "p",
+    }).catch((e) => e);
+    expect(err.code).toBe("network_error");
+  });
+
+  it("sendChat posts the history and range as JSON", async () => {
+    const response = { reply: "Added a Bass track.", track: null };
+    const fn = mockFetch(json(response));
+    const body = {
+      song: { name: "s" } as unknown as Song,
+      messages: [{ role: "user" as const, content: "now the bass" }],
+      range: { start_measure: 1, end_measure: 8 },
+    };
+    expect(await sendChat(body)).toEqual(response);
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/songs/chat");
+    expect(init!.method).toBe("POST");
+    expect(JSON.parse(init!.body as string)).toEqual(body);
+  });
+
+  it.each([
+    [502, "generation_failed", "could not generate"],
+    [504, "generation_timeout", "too long"],
+    [400, "invalid_request", "Something went wrong"],
+    [400, "prompt_too_long", "too long"],
+    [400, "invalid_instrument", "not supported"],
+    [400, "invalid_range", "measure range"],
+  ])("sendChat maps a %s %s error", async (status, code, fragment) => {
+    mockFetch(json(errorBody(code), status));
+    const err = await sendChat({ song: {} as unknown as Song, messages: [] }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(code);
+    expect(err.message).toContain(fragment);
+  });
+
+  it("sendChat surfaces the server's reason for a 400 invalid_song or invalid_prompt", async () => {
+    for (const code of ["invalid_song", "invalid_prompt"]) {
+      mockFetch(json(errorBody(code, `reason for ${code}`), 400));
+      const err = await sendChat({ song: {} as unknown as Song, messages: [] }).catch((e) => e);
+      expect(err.message).toBe(`reason for ${code}`);
+    }
   });
 
   it("exportMidi returns the blob and the server filename", async () => {

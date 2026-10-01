@@ -6,8 +6,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
 use music::instruments::{InstrumentKind, PitchRange};
-use music::song::{KeyMode, LoopRegion, MeasureRegion, SongKey, Tonic};
+use music::song::{ChatEntry, ChatRole, KeyMode, LoopRegion, MeasureRegion, SongKey, Tonic};
+use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
     Clip, GenerateRequestBody, GenerationLimits, InstrumentInfo, InstrumentRegistry, Loop, Pattern,
     Song, Track,
@@ -35,6 +37,16 @@ fn export_into(dir: &Path) {
     KeyMode::export_all(&cfg).unwrap();
     LoopRegion::export_all(&cfg).unwrap();
     MeasureRegion::export_all(&cfg).unwrap();
+    MeasureRange::export_all(&cfg).unwrap();
+    TrackGenerateBody::export_all(&cfg).unwrap();
+    TrackGenerateResponse::export_all(&cfg).unwrap();
+    SongLimits::export_all(&cfg).unwrap();
+    ChatBody::export_all(&cfg).unwrap();
+    ChatMessage::export_all(&cfg).unwrap();
+    ChatResponse::export_all(&cfg).unwrap();
+    ChatTrack::export_all(&cfg).unwrap();
+    ChatRole::export_all(&cfg).unwrap();
+    ChatEntry::export_all(&cfg).unwrap();
 }
 
 fn read_ts_files(dir: &Path) -> BTreeMap<String, String> {

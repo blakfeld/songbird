@@ -113,6 +113,8 @@ pub enum DraftError {
     NoSections,
     #[error("draft contains no notes")]
     NoNotes,
+    #[error("plan is unusable: {0}")]
+    InvalidPlan(String),
 }
 
 impl PatternDraft {

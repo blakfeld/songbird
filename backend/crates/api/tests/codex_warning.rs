@@ -5,7 +5,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use api::config::{Config, AI_PROVIDER, BIND_ADDR, CODEX_BIN};
-use api::provider::build_provider;
+use api::provider::build_providers;
 
 #[derive(Clone, Default)]
 struct LogBuffer(Arc<Mutex<Vec<u8>>>);
@@ -43,7 +43,7 @@ async fn codex_on_loopback_starts_and_warns() {
         _ => None,
     })
     .unwrap();
-    build_provider(&config).await.unwrap();
+    build_providers(&config).await.unwrap();
 
     let output = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
     assert!(output.contains("WARN"), "{output}");
