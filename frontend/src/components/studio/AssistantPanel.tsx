@@ -143,7 +143,10 @@ export function AssistantPanel({
           variant="primary"
           disabled={blocked || draft.trim() === ""}
           aria-label="Send message"
-          className="self-end"
+          // Matches the textarea's height and corners so the pair reads as one
+          // control; `!` is needed because Button's pill padding and radius
+          // share these properties and would otherwise win by CSS order.
+          className="w-12 shrink-0 self-stretch rounded-lg! px-0!"
         >
           <span aria-hidden="true">➤</span>
         </Button>
