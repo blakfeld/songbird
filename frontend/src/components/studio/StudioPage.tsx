@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useStore } from "zustand";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Row } from "@/generated/Row";
@@ -20,7 +20,7 @@ import { openRecordingInput } from "@/lib/audio/recorder/recordingInput";
 import { inputOwner, type InputOwner } from "@/lib/audio/recorder/trackInput";
 import { RECORD_AUDIO_UNSUPPORTED, RECORD_MIC_BLOCKED } from "@/components/editor/useRecordControl";
 import { defaultLoop, type LoopSetting } from "@/lib/loopRegion";
-import { songLoop } from "@/lib/song/songLoop";
+import { MAX_GENERATE_MEASURES, songLoop } from "@/lib/song/songLoop";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
 import { beatSteps } from "@/lib/pianoRoll";
 import { Button } from "@/components/ui/Button";
@@ -28,7 +28,7 @@ import { isSigningOut } from "@/lib/auth/signOut";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
 import { timelineMeasures } from "@/lib/song/songOps";
-import { newSong, type Song } from "@/lib/song/types";
+import { MEASURE_RANGE, newSong, type Song } from "@/lib/song/types";
 import { useInstruments } from "@/lib/useInstruments";
 import { useStoredHeight } from "@/lib/useStoredHeight";
 import { useStoredValue } from "@/lib/useStoredValue";
@@ -36,7 +36,12 @@ import { HeightHandle } from "@/components/editor/HeightHandle";
 import { Arrangement } from "./Arrangement";
 import { LyricsPanel } from "@/components/lyrics/LyricsPanel";
 import { AssistantPanel } from "./AssistantPanel";
-import { RightColumnTabs } from "./RightColumnTabs";
+import { RIGHT_TAB_KEY, RightColumnTabs, parseTab, type RightTab } from "./RightColumnTabs";
+import { SectionDialog, type SectionDialogRequest, type SectionDialogValues } from "./SectionDialog";
+import type { SectionActions } from "./SectionMenu";
+import { SectionNotes } from "./SectionNotes";
+import { implicitIndex, implicitName } from "@/lib/song/implicitSections";
+import { sectionStarts, sectionsOf } from "@/lib/songSectionOps";
 import { EditorDock } from "./EditorDock";
 import { NoTracksDock } from "./NoTracksDock";
 import { TrackGenerateDialog } from "./TrackGenerateDialog";
@@ -72,6 +77,25 @@ const HANDLE_PX = 8;
 const RECORD_NEEDS_TRACK = "Add a track to record onto.";
 const parseOpen = (raw: string) => (raw === "true" ? true : raw === "false" ? false : null);
 
+const NOTES_ASIDE_ID = "section-notes-column";
+const NOTES_DRAWER_ID = "section-notes-drawer";
+const WIDE_QUERY = "(min-width: 1024px)";
+
+// Mirrors the layout's lg breakpoint, which shows the right column and hides the drawers' buttons. Without a
+// matchMedia (tests, old browsers) the wide layout is assumed, as the column is the default surface.
+function useWideColumn() {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window.matchMedia !== "function") return () => {};
+      const query = window.matchMedia(WIDE_QUERY);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => typeof window.matchMedia !== "function" || window.matchMedia(WIDE_QUERY).matches,
+    () => true,
+  );
+}
+
 const ARRANGEMENT_ID = "studio-arrangement";
 const DOCK_ID = "studio-editor";
 
@@ -103,6 +127,11 @@ export function StudioPage({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const lyricsButton = useRef<HTMLButtonElement>(null);
+  const [selectedSectionRaw, setSelectedSection] = useState<string | null>(null);
+  const [sectionDialog, setSectionDialog] = useState<{ request: SectionDialogRequest; invoker: HTMLElement | null } | null>(null);
+  const [sectionDrawerOpen, setSectionDrawerOpen] = useState(false);
+  // Stored in the browser rather than the song: which panel is open is a layout preference, not part of the work.
+  const [rightTab, setRightTab] = useStoredValue<RightTab>(RIGHT_TAB_KEY, "assistant", parseTab);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const finalizer = useTakeFinalizer();
   const requestedSong = useRef<string | null | undefined>(undefined);
@@ -159,6 +188,12 @@ export function StudioPage({
     return () => void lyricFlushers.current.delete(flush);
   }, []);
   const flushLyrics = useCallback(() => lyricFlushers.current.forEach((flush) => flush()), []);
+  const setSectionNotes = useCallback(
+    (text: string, songId: string, sectionId: string) => {
+      if (store.getState().song?.id === songId) store.getState().setSectionNotes(sectionId, text);
+    },
+    [store],
+  );
   const maxDock = Math.max(MIN_DOCK_PX, space - MIN_ARRANGEMENT_PX - HANDLE_PX);
   const dockHeight =
     storedDock === null ? null : Math.min(maxDock, Math.max(MIN_DOCK_PX, storedDock));
@@ -171,6 +206,7 @@ export function StudioPage({
   const show = useCallback(
     (next: Song) => {
       flushLyrics();
+      setSelectedSection(null);
       detachAutosave.current?.();
       store.getState().loadSong(next);
       detachAutosave.current = library.autosave(store);
@@ -595,6 +631,108 @@ export function StudioPage({
     audio.place(selectedAudioTrack.id, entry, playheadTicks());
   };
 
+  // Typing notes into the implicit section gives it a real id; the selection follows it rather than going stale.
+  const selectedSectionId = (() => {
+    if (!song || selectedSectionRaw === null) return null;
+    const real = song.sections ?? [];
+    const implicit = implicitIndex(selectedSectionRaw);
+    if (implicit !== null && real.length > 0)
+      return (real.find((s) => s.name === implicitName(implicit) && s.kind === "other") ?? real[implicit] ?? real[0]).id;
+    return sectionsOf(song).some((s) => s.id === selectedSectionRaw) ? selectedSectionRaw : null;
+  })();
+
+  const selectedSectionRange = (() => {
+    if (!song || selectedSectionId === null) return null;
+    const sections = sectionsOf(song);
+    const at = sections.findIndex((s) => s.id === selectedSectionId);
+    // Generation reads a bounded range, and an implicit section can span more than that.
+    if (at < 0 || sections[at].measures > MAX_GENERATE_MEASURES) return null;
+    const start = sectionStarts(sections)[at];
+    return { name: sections[at].name, start_measure: start, end_measure: start + sections[at].measures - 1 };
+  })();
+
+  const focusSectionRuler = () =>
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('[data-section-ruler] [data-section-id][tabindex="0"]')?.focus(),
+    );
+
+  const wide = useWideColumn();
+  const showNotes = (sectionId: string) => {
+    setSelectedSection(sectionId);
+    if (wide) setRightTab("section");
+    else setSectionDrawerOpen(true);
+    // Two frames: the tab or drawer has to mount its field before it can take focus.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => document.getElementById(wide ? NOTES_ASIDE_ID : NOTES_DRAWER_ID)?.focus()),
+    );
+  };
+
+  const sectionActions: SectionActions = {
+    toggle: (id) => {
+      if (!song) return;
+      const sections = sectionsOf(song);
+      const at = sections.findIndex((s) => s.id === id);
+      if (at < 0) return;
+      const section = sections[at];
+      if (selectedSectionId === id) {
+        setSelectedSection(null);
+        setStatus(`${section.name} deselected. Loop unchanged.`);
+        return;
+      }
+      const start = sectionStarts(sections)[at];
+      const end = start + section.measures - 1;
+      setSelectedSection(id);
+      setLoop({ region: { start, end }, enabled: true });
+      setStatus(`${section.name} selected. Looping measures ${start} to ${end}.`);
+    },
+    clear: () => {
+      const section = song && sectionsOf(song).find((s) => s.id === selectedSectionId);
+      setSelectedSection(null);
+      if (section) setStatus(`${section.name} deselected. Loop unchanged.`);
+    },
+    add: (invoker) => {
+      if (song && song.measures >= MEASURE_RANGE.max) {
+        setStatus(`The song is ${MEASURE_RANGE.max} measures, the most it can hold.`);
+        return;
+      }
+      setSectionDialog({ request: { mode: "add" }, invoker });
+    },
+    insert: (sectionId, where, invoker) => setSectionDialog({ request: { mode: "insert", sectionId, where }, invoker }),
+    edit: (sectionId, invoker) => setSectionDialog({ request: { mode: "edit", sectionId }, invoker }),
+    duplicate: (id) => {
+      const name = song && sectionsOf(song).find((s) => s.id === id)?.name;
+      const result = store.getState().duplicateSection(id);
+      if ("error" in result) return setStatus(result.error);
+      const copy = store.getState().song?.sections?.find((s) => s.id === result.sectionId);
+      setStatus(`Duplicated ${name} as ${copy?.name ?? "a new section"}.`);
+    },
+    remove: (id) => {
+      const name = song && sectionsOf(song).find((s) => s.id === id)?.name;
+      const result = store.getState().deleteSection(id);
+      if ("error" in result) return setStatus(result.error);
+      if (selectedSectionId === id) setSelectedSection(null);
+      setStatus(`Deleted ${name}. Undo to restore it.`);
+      focusSectionRuler();
+    },
+    openNotes: showNotes,
+  };
+
+  function submitSection(request: SectionDialogRequest, values: SectionDialogValues): string | null {
+    const get = store.getState();
+    const spec = { kind: values.kind, name: values.name, measures: values.measures };
+    const result =
+      request.mode === "add"
+        ? get.addSection(spec)
+        : request.mode === "insert"
+          ? get.insertSection(spec, request.sectionId, request.where)
+          : get.editSection(request.sectionId, values);
+    if ("error" in result) return result.error;
+    const invoker = sectionDialog?.invoker;
+    setSectionDialog(null);
+    requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+    return null;
+  }
+
   const track = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0] ?? null;
   const pickTrack = picking ? song?.tracks.find((t) => t.id === picking.target.trackId) : undefined;
   const pickRow = picking?.target.rowId ?? null;
@@ -773,6 +911,8 @@ export function StudioPage({
             onAddAudio={addAudioTrack}
             onAddSampler={addSampler}
             onSeek={seek}
+            selectedSectionId={selectedSectionId}
+            sectionActions={sectionActions}
           />
           {dockOpen && (
             <>
@@ -850,6 +990,7 @@ export function StudioPage({
           track={song.tracks.find((t) => t.id === generation.dialog?.trackId) ?? track}
           initialPrompt={generation.dialog?.prompt}
           initialError={generation.dialog?.error}
+          section={selectedSectionRange}
           onSubmit={(request) => generation.dialog && void generation.submit(generation.dialog.trackId, request)}
           onClose={generation.close}
         />
@@ -948,6 +1089,21 @@ export function StudioPage({
         className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`}
         assistant={<AssistantPanel song={song} chat={chat} instruments={instruments.data} heading={false} />}
         lyrics={<LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} />}
+        section={
+          // Mounted only while the column is visible, because a hidden second editor would hold its own diverging text.
+          wide && (
+          <SectionNotes
+            fieldId={NOTES_ASIDE_ID}
+            song={song}
+            selectedId={selectedSectionId}
+            actions={sectionActions}
+            onChange={setSectionNotes}
+            registerFlush={registerLyricsFlush}
+          />
+          )
+        }
+        tab={rightTab}
+        onTabChange={setRightTab}
       />
       <ModalDialog
         open={assistantOpen}
@@ -968,6 +1124,34 @@ export function StudioPage({
       >
         <LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} heading />
       </ModalDialog>
+      <ModalDialog
+        open={sectionDrawerOpen}
+        onClose={() => setSectionDrawerOpen(false)}
+        label="Section"
+        className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
+      >
+        <SectionNotes
+          fieldId={NOTES_DRAWER_ID}
+          song={song}
+          selectedId={selectedSectionId}
+          actions={sectionActions}
+          onChange={setSectionNotes}
+          registerFlush={registerLyricsFlush}
+          heading
+        />
+      </ModalDialog>
+      {song && (
+        <SectionDialog
+          request={sectionDialog?.request ?? null}
+          song={song}
+          onSubmit={submitSection}
+          onClose={() => {
+            const invoker = sectionDialog?.invoker;
+            setSectionDialog(null);
+            requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+          }}
+        />
+      )}
     </main>
     </AudioInputProvider>
   );

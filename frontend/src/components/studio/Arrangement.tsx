@@ -23,6 +23,11 @@ import { CLIP_KEYS_HELP, CLIP_KEYS_HELP_ID } from "./ClipLane";
 import type { ClipActions } from "./useClipActions";
 import type { AudioActions } from "./useAudioActions";
 import { AUDIO_CLIP_KEYS_HELP, AUDIO_CLIP_KEYS_HELP_ID } from "./audio/AudioClipLane";
+import { SectionRuler, SECTION_KEYS_HELP, SECTION_KEYS_HELP_ID } from "./SectionRuler";
+import type { SectionActions } from "./SectionMenu";
+import { sectionsOf } from "@/lib/songSectionOps";
+import { MEASURE_RANGE } from "@/lib/song/types";
+import { focusRing } from "@/components/ui/classes";
 import { NewTrackDropZone } from "./samples/NewTrackDropZone";
 import { useDragActive, type SampleDrop } from "./samples/useSampleDrop";
 
@@ -73,6 +78,8 @@ export function Arrangement({
   onAddSampler,
   onSeek,
   sectionId,
+  selectedSectionId,
+  sectionActions,
 }: {
   song: Song;
   timeline: number;
@@ -95,6 +102,8 @@ export function Arrangement({
   onAddSampler: (kind: "keys" | "pads") => void;
   onSeek: (trackId: string, measureIndex: number) => void;
   sectionId: string;
+  selectedSectionId: string | null;
+  sectionActions: SectionActions;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const rulerCell = useRef<HTMLDivElement>(null);
@@ -165,9 +174,16 @@ export function Arrangement({
       <p id={AUDIO_CLIP_KEYS_HELP_ID} className="sr-only">
         {AUDIO_CLIP_KEYS_HELP}
       </p>
+      <p id={SECTION_KEYS_HELP_ID} className="sr-only">
+        {SECTION_KEYS_HELP}
+      </p>
       <p className="sr-only">
-        Song length: {song.measures} {song.measures === 1 ? "measure" : "measures"}. Add clips after the end to
-        lengthen it.
+        {song.sections && song.sections.length > 0
+          ? `Song length: ${song.measures} ${song.measures === 1 ? "measure" : "measures"} in ${sectionsOf(song).length} ${sectionsOf(song).length === 1 ? "section" : "sections"}. Change a section's length or add a section to lengthen it.`
+          : `Song length: ${song.measures} ${song.measures === 1 ? "measure" : "measures"}. Add clips after the end to lengthen it.`}
+      </p>
+      <p id="add-section-full" className="sr-only">
+        The song is {MEASURE_RANGE.max} measures, the most it can hold
       </p>
       <div aria-live="polite" className="sr-only">
         <p key={announcement.seq}>{announcement.text}</p>
@@ -203,6 +219,28 @@ export function Arrangement({
                 onChange={onLoopChange}
               />
             </MeasureRuler>
+          </div>
+        </div>
+        <div className="flex h-8 items-center justify-between gap-2 border-r border-b border-zinc-300 px-3 max-sm:px-2 dark:border-zinc-700">
+          <span className="text-xs font-semibold text-zinc-600 max-sm:sr-only dark:text-zinc-400">Sections</span>
+          <button
+            type="button"
+            aria-label="Add section"
+            aria-disabled={song.measures >= MEASURE_RANGE.max}
+            aria-describedby={song.measures >= MEASURE_RANGE.max ? "add-section-full" : undefined}
+            title={song.measures >= MEASURE_RANGE.max ? `The song is ${MEASURE_RANGE.max} measures, the most it can hold` : undefined}
+            onClick={(e) => sectionActions.add(e.currentTarget)}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-900 hover:bg-zinc-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 max-sm:px-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900 ${focusRing}`}
+          >
+            <span aria-hidden="true">+</span>
+            <span className="max-sm:hidden">Add section</span>
+          </button>
+        </div>
+        <div className="@container min-w-0">
+          <div style={fit}>
+            <SectionRuler song={song} selectedId={selectedSectionId} actions={sectionActions}>
+              <PastEnd song={song} timeline={timeline} />
+            </SectionRuler>
           </div>
         </div>
       </div>

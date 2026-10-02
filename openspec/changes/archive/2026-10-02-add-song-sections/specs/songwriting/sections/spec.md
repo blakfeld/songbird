@@ -26,9 +26,9 @@ A song SHALL hold an ordered list of sections.
 - **THEN** the section is not added and the user is told the song cannot exceed 128 measures
 
 ### Requirement: Implicit section for unsectioned songs
-A song with no sections SHALL be shown as one implicit section. That section SHALL be named "Song", SHALL have kind `other`, and SHALL span the whole song.
+A song with no sections SHALL be shown as implicit sections of kind `other` that together span the whole song. A song of at most 32 measures SHALL be shown as one implicit section named "Song". A longer song SHALL be shown as consecutive implicit sections of 32 measures each, with the last holding the remainder, named "Song", "Song 2", "Song 3", and so on, so that no section exceeds 32 measures.
 
-The first structural edit or notes edit on an unsectioned song SHALL first turn the implicit section into a real section with the same name, kind, and length, and SHALL then apply the edit.
+The first structural edit or notes edit on an unsectioned song SHALL first turn the implicit sections into real sections with the same names, kinds, and lengths, and SHALL then apply the edit.
 
 Songs saved before sections existed SHALL load without any change to their tracks, loops, or clips.
 
@@ -40,6 +40,10 @@ Songs saved before sections existed SHALL load without any change to their track
 - **WHEN** the user adds a 4-measure "Intro" before the implicit section of a 16-measure song
 - **THEN** the song has two sections, Intro (4) and Song (16), and is 20 measures long
 
+#### Scenario: Long old song is split into implicit sections
+- **WHEN** the user opens a song saved before sections existed, whose clips end at measure 70
+- **THEN** the section ruler shows "Song" (1–32), "Song 2" (33–64), and "Song 3" (65–70), and typing notes into "Song 2" saves three real sections that pass song validation
+
 ### Requirement: Measure edits move clips, not loop contents
 Inserting, removing, and duplicating measures for a section edit SHALL act on each track's clips (see `songs/clips`):
 - A clip that crosses a point where measures are inserted or removed SHALL be split there into two clips.
@@ -48,6 +52,10 @@ Inserting, removing, and duplicating measures for a section edit SHALL act on ea
 - Clips inside removed measures SHALL be deleted. Clips after the edit point SHALL move by the number of measures inserted or removed.
 - The contents of existing loops SHALL NOT change, so clips of those loops outside the edited measures SHALL play as before.
 - An edit that would take any track past its loop or clip limit SHALL NOT be applied, and the user SHALL be told which track is full.
+- Audio clips on audio tracks SHALL follow the same rules, measured on the song's tick grid: an audio clip that starts at or after the edit point SHALL move by the inserted or removed measures, an audio clip inside removed measures SHALL be deleted, and an audio clip that crosses a split point SHALL be split there into two clips.
+- The part of a split audio clip after the split point SHALL play exactly the audio it played before, except for fades: the head SHALL keep the clip's fade-in and the tail SHALL keep its fade-out, each shortened to fit its piece, and no fade SHALL be added at the cut. A fade that crosses the cut is therefore shortened rather than continued on the other piece.
+- An edit that would split a looping audio clip anywhere other than a boundary between repeats of its loop SHALL NOT be applied, and the user SHALL be told which audio track holds that clip and to turn its Loop off or trim it first.
+- An edit that would take an audio track past its audio clip limit SHALL NOT be applied, and the user SHALL be told which track is full.
 
 #### Scenario: Linked loop is untouched
 - **WHEN** the loop "Groove A" is placed at measures 1–4 and 13–16, and the user shortens the section covering measures 1–8 to 6 measures
@@ -61,6 +69,14 @@ Inserting, removing, and duplicating measures for a section edit SHALL act on ea
 - **WHEN** the first section covers measures 1–6, a clip of a 4-measure loop covers measures 1–16, and the user lengthens the first section to 8 measures
 - **THEN** measures 7–8 are empty, and a clip covering measures 9–18 plays a new "(cont.)" loop that sounds exactly as measures 7–16 did before
 
+
+#### Scenario: Audio follows a section edit
+- **WHEN** an audio clip plays from measure 5 to measure 12, the first section covers measures 1–8, and the user inserts a 4-measure section after it
+- **THEN** one audio clip plays measures 5–8 as before, measures 9–12 are silent on that track, and a second audio clip plays measures 13–16 with exactly the audio that measures 9–12 played before
+
+#### Scenario: Cutting a looping audio clip mid-loop is refused
+- **WHEN** a looping audio clip with a 3-measure loop plays measures 1–12, the first section covers measures 1–8, and the user inserts a section after it
+- **THEN** the song is unchanged and the user is told which audio track has a looping clip the edit would cut mid-loop
 ### Requirement: Adding and inserting sections
 The user SHALL be able to add a section at the end of the song, or insert one immediately before or after the selected section. The user chooses its kind, name, and length.
 - The length SHALL default to 8 measures.

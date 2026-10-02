@@ -2,6 +2,8 @@ import type { Clip } from "@/generated/Clip";
 import type { KeyMode } from "@/generated/KeyMode";
 import type { Loop } from "@/generated/Loop";
 import type { LoopRegion } from "@/generated/LoopRegion";
+import type { Section } from "@/generated/Section";
+import type { SectionKind } from "@/generated/SectionKind";
 import type { Song } from "@/generated/Song";
 import type { SongKey } from "@/generated/SongKey";
 import type { Tonic } from "@/generated/Tonic";
@@ -9,7 +11,7 @@ import type { TimeSignature } from "@/generated/TimeSignature";
 import type { Track } from "@/generated/Track";
 import { STEPS_PER_MEASURE } from "../patternOps";
 
-export type { Clip, KeyMode, Loop, LoopRegion, Song, SongKey, Tonic, Track };
+export type { Clip, KeyMode, Loop, LoopRegion, Section, SectionKind, Song, SongKey, Tonic, Track };
 
 export const TONICS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 export const DEFAULT_KEY: SongKey = { tonic: "C", mode: "major" };
@@ -26,6 +28,20 @@ export const MAX_LOOPS = 64;
 export const MAX_CLIPS = 256;
 // Unicode code points, matching the server's chars().count(), not UTF-16 units.
 export const LYRICS_MAX_CHARS = 20_000;
+
+export const SECTION_NAME_MAX = 40;
+export const SECTION_MEASURE_RANGE = { min: 1, max: 32 } as const;
+// Code points, like lyrics, because the server counts section notes with chars().
+export const SECTION_NOTES_MAX_CHARS = 5_000;
+export const SECTION_KINDS: readonly SectionKind[] = [
+  "intro",
+  "verse",
+  "pre-chorus",
+  "chorus",
+  "bridge",
+  "outro",
+  "other",
+];
 
 export const newId = () => crypto.randomUUID();
 

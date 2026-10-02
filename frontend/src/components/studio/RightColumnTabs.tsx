@@ -2,29 +2,35 @@
 
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { focusRing } from "@/components/ui/classes";
-import { useStoredValue } from "@/lib/useStoredValue";
 
-export type RightTab = "assistant" | "lyrics";
+export type RightTab = "assistant" | "lyrics" | "section";
 const TABS: { id: RightTab; label: string }[] = [
   { id: "assistant", label: "Assistant" },
   { id: "lyrics", label: "Lyrics" },
+  { id: "section", label: "Section" },
 ];
 
 export const RIGHT_TAB_KEY = "songbird.studio.rightTab";
-const parseTab = (raw: string): RightTab | null => (raw === "lyrics" || raw === "assistant" ? raw : null);
+export const parseTab = (raw: string): RightTab | null =>
+  raw === "lyrics" || raw === "assistant" || raw === "section" ? raw : null;
 
 export function RightColumnTabs({
   assistant,
   lyrics,
+  section,
+  tab,
+  onTabChange: setTab,
   className = "",
 }: {
   assistant: ReactNode;
   lyrics: ReactNode;
+  section: ReactNode;
+  // Controlled because a section's Notes action has to bring this tab forward from outside.
+  tab: RightTab;
+  onTabChange: (tab: RightTab) => void;
   className?: string;
 }) {
-  // Stored in the browser rather than the song: which panel is open is a layout preference, not part of the work.
-  const [tab, setTab] = useStoredValue<RightTab>(RIGHT_TAB_KEY, "assistant", parseTab);
-  const buttons = useRef<Record<RightTab, HTMLButtonElement | null>>({ assistant: null, lyrics: null });
+  const buttons = useRef<Record<RightTab, HTMLButtonElement | null>>({ assistant: null, lyrics: null, section: null });
 
   const select = (next: RightTab) => {
     setTab(next);
@@ -45,7 +51,7 @@ export function RightColumnTabs({
 
   return (
     <aside
-      aria-label="Assistant and lyrics"
+      aria-label="Assistant, lyrics, and section"
       className={`flex min-h-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${className}`}
     >
       <div
@@ -86,7 +92,7 @@ export function RightColumnTabs({
         aria-labelledby={`rt-tab-${tab}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {tab === "lyrics" ? lyrics : assistant}
+        {tab === "lyrics" ? lyrics : tab === "section" ? section : assistant}
       </div>
     </aside>
   );

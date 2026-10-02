@@ -12,7 +12,7 @@ use music::instruments::{InstrumentKind, PitchRange};
 use music::song::{
     AudioClip, ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect,
     KeyMode, KeysSettings, LoopRegion, MeasureRegion, PadSettings, ReverbEffect, Sample,
-    SamplerSettings, SongKey, Tone, Tonic, TrackSound,
+    SamplerSettings, Section, SectionKind, SongKey, Tone, Tonic, TrackSound,
 };
 use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
@@ -57,6 +57,8 @@ fn export_into(dir: &Path) {
     ChatTrack::export_all(&cfg).unwrap();
     ChatRole::export_all(&cfg).unwrap();
     ChatEntry::export_all(&cfg).unwrap();
+    Section::export_all(&cfg).unwrap();
+    SectionKind::export_all(&cfg).unwrap();
     TrackSound::export_all(&cfg).unwrap();
     Tone::export_all(&cfg).unwrap();
     Effects::export_all(&cfg).unwrap();

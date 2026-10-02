@@ -21,6 +21,7 @@ import {
   samplesToTicks,
 } from "../song/audioTiming";
 import type { SongStore } from "../song/songStore";
+import { lengthLimit } from "../song/songOps";
 import { MEASURE_RANGE } from "../song/types";
 import { createPeakFeed } from "./recordingOverlay";
 import type { AudioTakeLimit, AudioTakeOutcome, TakeTarget } from "./take";
@@ -93,6 +94,8 @@ export function createAudioTake(
   // Where the run will begin when it starts from stopped, which is all the count-in has to show.
   let plannedTicks: number | null = null;
   let songSecondsMax = Infinity;
+  // Which sentence explains stopping at the end of the song: a sectioned song ends where its last section can reach.
+  let endLimit: AudioTakeLimit = "song";
   let unsubscribe: (() => void) | null = null;
   let unsubscribePeaks: (() => void) | null = null;
   let unsubscribeLost: (() => void) | null = null;
@@ -171,7 +174,7 @@ export function createAudioTake(
     lastEnd = Math.max(lastEnd, chunk.frame + frames);
     if (captured >= MAX_TAKE_SECONDS * sampleRate) hitLimit("duration");
     const origin = passes[passes.length - 1];
-    if (origin && (lastEnd / sampleRate - origin.contextTime) + origin.songSeconds - latency() >= songSecondsMax) hitLimit("song");
+    if (origin && (lastEnd / sampleRate - origin.contextTime) + origin.songSeconds - latency() >= songSecondsMax) hitLimit(endLimit);
   };
 
   const build = async (unpins: (() => void)[]): Promise<AudioTakeOutcome> => {
@@ -296,8 +299,9 @@ export function createAudioTake(
       existingTakes = takesOnTrack(song?.samples ?? [], trackId);
       existingSamples = song?.samples?.length ?? 0;
       firstNumber = nextTakeNumber(song?.samples ?? [], trackId, trackName);
+      endLimit = song && lengthLimit(song) < MEASURE_RANGE.max ? "section" : "song";
       songSecondsMax = song
-        ? (MEASURE_RANGE.max * song.steps_per_measure * TICKS_PER_SIXTEENTH) / (TICKS_PER_SECOND_PER_BPM * song.tempo_bpm)
+        ? (lengthLimit(song) * song.steps_per_measure * TICKS_PER_SIXTEENTH) / (TICKS_PER_SECOND_PER_BPM * song.tempo_bpm)
         : Infinity;
       plannedTicks = song && !engine.isPlaying ? ((engine.startMeasure?.() ?? 1) - 1) * song.steps_per_measure * TICKS_PER_SIXTEENTH : null;
       peaks.clear();

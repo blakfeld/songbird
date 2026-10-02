@@ -17,13 +17,15 @@ import {
   ticksToSamples,
 } from "./audioTiming";
 import { samplerSampleIds } from "./sampler";
-import { normalizeSong, uniqueTrackName } from "./songOps";
+import { lengthLimit, normalizeSong, uniqueTrackName } from "./songOps";
 import { MAX_TRACKS, MEASURE_RANGE, TRACK_NAME_MAX, newId, newTrack, type Song, type Track } from "./types";
 
 export type AudioFailure =
   | "not-found"
   | "no-room"
   | "song-limit"
+  // Sectioned songs stop at what the last section can reach, which adding a section lifts.
+  | "section-limit"
   | "clip-limit"
   | "sample-limit"
   | "track-limit"
@@ -49,7 +51,8 @@ const byStart = (a: AudioClip, b: AudioClip) => a.start_ticks - b.start_ticks;
 const isAudio = (t: Track) => t.instrument === AUDIO_INSTRUMENT_ID;
 
 // Scaled by the clip's sample rate like every other end comparison, so bounds never depend on rounding.
-const songLimit = (song: Song, rate: number) => MEASURE_RANGE.max * scaledMeasure(song.steps_per_measure, rate);
+const songLimit = (song: Song, rate: number) => lengthLimit(song) * scaledMeasure(song.steps_per_measure, rate);
+const limitReason = (song: Song): AudioFailure => (lengthLimit(song) < MEASURE_RANGE.max ? "section-limit" : "song-limit");
 
 const maxLength = (song: Song, start: number, rate: number, limitScaled: number) =>
   Math.floor((limitScaled - start * rate) / (TICKS_PER_SECOND_PER_BPM * song.tempo_bpm));
@@ -139,7 +142,7 @@ function placeInTrack(song: Song, track: Track, sample: Sample, startTicks: numb
   const clip = fullClip(sample, Math.max(0, Math.round(startTicks)));
   const rates = sampleMap(song.samples);
   const room = maxLength(song, clip.start_ticks, sample.sample_rate, songLimit(song, sample.sample_rate));
-  if (room < clip.length_samples) return fail("song-limit");
+  if (room < clip.length_samples) return fail(limitReason(song));
   const taken = clips(track).some((o) => {
     const rate = rates.get(o.sample_id)?.sample_rate ?? sample.sample_rate;
     const before = o.start_ticks < clip.start_ticks;
@@ -310,7 +313,9 @@ export function duplicateClip(song: Song, trackId: string, clipId: string): Audi
     sample.sample_rate,
     Math.min(songLimit(song, sample.sample_rate), following === null ? Infinity : following * sample.sample_rate),
   );
-  if (room < 1) return fail(following === null ? "song-limit" : "no-room");
+  if (room < 1) return fail(following === null ? limitReason(song) : "no-room");
+  // A copy cut short at the section reach would be a different clip from the one asked for, so it is refused instead.
+  if (limitReason(song) === "section-limit" && room < clip.length_samples && following === null) return fail("section-limit");
   const copy = fitFades({ ...clip, id: newId(), start_ticks: start, length_samples: Math.min(clip.length_samples, room) });
   const next: Track = { ...track, audio_clips: [...clips(track), copy].sort(byStart) };
   return ok(normalizeSong({ ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) }), copy.id);
@@ -396,7 +401,7 @@ export function recordTake(song: Song, trackId: string, takes: Sample[], clip: T
   };
   const end = clipEndTicks(placed, sample.sample_rate, song.tempo_bpm);
   if (maxLength(song, placed.start_ticks, sample.sample_rate, songLimit(song, sample.sample_rate)) < placed.length_samples)
-    return fail("song-limit");
+    return fail(limitReason(song));
   const cut = replaceSpan(withSamples, trackId, placed.start_ticks, end);
   if (!cut.song) return cut;
   const cutTrack = cut.song.tracks.find((t) => t.id === trackId)!;

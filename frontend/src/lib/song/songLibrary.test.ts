@@ -266,8 +266,20 @@ describe("saving", () => {
     expect((await lib.open(song.id))!.lyrics).toBe("[Chorus]\nla la");
   });
 
+  it("autosaves section notes written with setSectionNotes", async () => {
+    const song = await lib.create(newSongWithTracks());
+    const store = createSongStore(song);
+    lib.autosave(store);
+    store.getState().addSection({ kind: "chorus", measures: 4 });
+    store.getState().setSectionNotes(store.getState().song!.sections![1].id, "call and response");
+    await lib.flush();
+    const reopened = (await lib.open(song.id))!;
+    expect(reopened.sections!.map((s) => s.measures)).toEqual([1, 4]);
+    expect(reopened.sections![1].notes).toBe("call and response");
+  });
+
   it("writes unrecognised fields back unchanged", async () => {
-    const song = { ...newSongWithTracks(), sections: [{ name: "Verse" }] };
+    const song = { ...newSongWithTracks(), mood: "wistful" };
     (song.tracks[0] as unknown as Record<string, unknown>).future_flag = 7;
     const id = server.seed(song);
     const store = createSongStore((await lib.open(id))!);
@@ -275,7 +287,7 @@ describe("saving", () => {
     store.getState().setTempo(100);
     await lib.flush();
     const saved = server.projects.get(id)!.song;
-    expect(saved.sections).toEqual([{ name: "Verse" }]);
+    expect(saved.mood).toBe("wistful");
     expect((saved.tracks as Record<string, unknown>[])[0].future_flag).toBe(7);
     expect(saved.tempo_bpm).toBe(100);
   });

@@ -3905,6 +3905,1652 @@
       "error": "lyrics"
     },
     {
+      "name": "valid with sections tiling the song",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "Intro",
+            "kind": "intro",
+            "measures": 1,
+            "notes": ""
+          },
+          {
+            "id": "s2",
+            "name": "Pre-chorus",
+            "kind": "pre-chorus",
+            "measures": 3,
+            "notes": "build"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid with one section of every kind",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s0",
+            "name": "s0",
+            "kind": "intro",
+            "measures": 1,
+            "notes": ""
+          },
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 1,
+            "notes": ""
+          },
+          {
+            "id": "s2",
+            "name": "s2",
+            "kind": "pre-chorus",
+            "measures": 1,
+            "notes": ""
+          },
+          {
+            "id": "s3",
+            "name": "s3",
+            "kind": "chorus",
+            "measures": 1,
+            "notes": ""
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid with empty sections list",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": []
+      },
+      "error": null
+    },
+    {
+      "name": "valid section name of 40 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "kind": "verse",
+            "measures": 4,
+            "notes": ""
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid section notes of 5000 multi-byte characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 4,
+            "notes": "é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid 32-measure section in a 32-measure song",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 32,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "other",
+            "measures": 32,
+            "notes": ""
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "section lengths below song measures",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 3,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_total"
+    },
+    {
+      "name": "section lengths above song measures",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 4,
+            "notes": ""
+          },
+          {
+            "id": "s2",
+            "name": "s2",
+            "kind": "chorus",
+            "measures": 1,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_total"
+    },
+    {
+      "name": "section of 0 measures",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 0,
+            "notes": ""
+          },
+          {
+            "id": "s2",
+            "name": "s2",
+            "kind": "chorus",
+            "measures": 4,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_length"
+    },
+    {
+      "name": "section of 33 measures",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 33,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 33,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_length"
+    },
+    {
+      "name": "duplicate section ids",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 1,
+            "notes": ""
+          },
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "chorus",
+            "measures": 3,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "duplicate_section_id"
+    },
+    {
+      "name": "empty section name",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "",
+            "kind": "verse",
+            "measures": 4,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_name"
+    },
+    {
+      "name": "section name of 41 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "kind": "verse",
+            "measures": 4,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "section_name"
+    },
+    {
+      "name": "section notes of 5001 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "verse",
+            "measures": 4,
+            "notes": "é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪é♪x"
+          }
+        ]
+      },
+      "error": "section_notes"
+    },
+    {
+      "name": "unknown section kind",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "id": "s1",
+            "name": "s1",
+            "kind": "refrain",
+            "measures": 4,
+            "notes": ""
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
       "name": "no tracks is valid",
       "song": {
         "version": 2,

@@ -45,6 +45,7 @@ const LIMIT_SENTENCE = (trackName: string) => ({
   input: `${trackName} input disconnected. Recording stopped. What was recorded is kept.`,
   duration: "Recording stopped after 20 minutes. What was recorded is kept.",
   song: "Recording stopped at measure 128, the end of the song. What was recorded is kept.",
+  section: "Recording stopped at the furthest measure the last section can reach. Add a section to record further. What was recorded is kept.",
   takes: "Recording stopped because the track has the most takes it can hold. What was recorded is kept.",
   samples: "Recording stopped because the song has the most samples it can hold. What was recorded is kept.",
 });

@@ -75,7 +75,7 @@ export function createTake(baseNotes: Note[]): Take {
 }
 
 // Why a recording stopped by itself, so the announcement can say it instead of leaving the user to wonder.
-export type AudioTakeLimit = "duration" | "song" | "takes" | "samples" | "input" | "seek";
+export type AudioTakeLimit = "duration" | "song" | "section" | "takes" | "samples" | "input" | "seek";
 
 export type AudioTakeOutcome =
   | { kind: "saved"; trackName: string; takeName: string; takes: number; measures: number; limit?: AudioTakeLimit }

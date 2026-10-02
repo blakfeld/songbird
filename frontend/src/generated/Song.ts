@@ -2,6 +2,7 @@
 import type { ChatEntry } from "./ChatEntry";
 import type { LoopRegion } from "./LoopRegion";
 import type { Sample } from "./Sample";
+import type { Section } from "./Section";
 import type { SongKey } from "./SongKey";
 import type { TimeSignature } from "./TimeSignature";
 import type { Track } from "./Track";
@@ -44,4 +45,10 @@ chat?: Array<ChatEntry>,
  * The Studio's lyric notepad. Optional so songs saved before it existed
  * stay valid and songs without lyrics serialize as they always did.
  */
-lyrics?: string, };
+lyrics?: string, 
+/**
+ * Optional so songs saved before sections existed stay valid and songs
+ * without sections serialize as they always did. While present, their
+ * lengths sum to `measures`.
+ */
+sections?: Array<Section>, };

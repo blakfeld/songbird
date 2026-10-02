@@ -1,6 +1,7 @@
 import { clampLoop, defaultLoop, parseLoop, type LoopSetting } from "../loopRegion";
 import { timelineMeasures } from "./songOps";
-import type { Song } from "./types";
+import { implicitName, implicitSections } from "./implicitSections";
+import { newId, type Song } from "./types";
 
 export function songLoop(song: Pick<Song, "loop_region">): LoopSetting {
   const r = song.loop_region;
@@ -79,10 +80,31 @@ export function activeLoopRange(
   return { start_measure: region.start, end_measure: region.end };
 }
 
+// Notes are typed outside the undo history like lyrics, so a snapshot's sections take the notes written since.
+// Typing in an unsectioned song's implicit section is what created its lone real section, and without it
+// undoing past that point would discard the notes along with the section they live in.
+function withLiveSectionNotes(snapshot: Song, current: Song): Song {
+  const live = current.sections ?? [];
+  if (live.length === 0) return snapshot;
+  const kept = snapshot.sections ?? [];
+  if (kept.length === 0) {
+    // Matched by name rather than position, because real sections added since the typing sit among the chunks.
+    const chunks = implicitSections(snapshot.measures).map((chunk, i) => {
+      const typed = live.find((l) => l.name === implicitName(i) && l.kind === "other");
+      return { ...chunk, id: typed?.id ?? newId(), notes: typed?.notes ?? "" };
+    });
+    // Clips can have changed the length since the notes were typed, so the chunks are refitted to the snapshot's.
+    return chunks.some((c) => c.notes !== "") ? { ...snapshot, sections: chunks } : snapshot;
+  }
+  const notes = new Map(live.map((s) => [s.id, s.notes]));
+  const next = kept.map((s) => (notes.has(s.id) && notes.get(s.id) !== s.notes ? { ...s, notes: notes.get(s.id)! } : s));
+  return next.some((s, i) => s !== kept[i]) ? { ...snapshot, sections: next } : snapshot;
+}
+
 // Chat and lyrics are written by the user outside the arrangement: undo must remove an added track but keep the
 // message that explains it and the words being written, so snapshots restored by undo or redo take the live values.
 export function withLiveFields(snapshot: Song, current: Song): Song {
-  let result = snapshot;
+  let result = withLiveSectionNotes(snapshot, current);
   for (const key of ["chat", "lyrics"] as const) {
     if (result[key] === current[key]) continue;
     if (current[key] === undefined) {
