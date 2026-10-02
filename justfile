@@ -20,6 +20,8 @@ dev:
     trap 'kill 0' EXIT INT TERM
     # Production is the backend's default, so the dev recipe has to opt in to run without user keys.
     export SONGBIRD_ENV="${SONGBIRD_ENV:-development}"
+    # A seed failure, such as refusing a non-local database, must not stop dev from starting.
+    just seed || echo "Skipped seeding the dev account; see above." >&2
     (cd {{backend}} && cargo run -p api) &
     (cd {{frontend}} && pnpm dev) &
     wait
