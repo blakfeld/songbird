@@ -9,6 +9,9 @@ use ts_rs::TS;
 
 use crate::instruments::sampler::{KEYS_ID, PADS_ID, PAD_COUNT, SAMPLER_KEYS, SAMPLER_PADS};
 use crate::instruments::{Instrument, InstrumentKind, InstrumentRegistry};
+use crate::lyrics::{
+    SuggestionAction, MAX_LABEL_CHARS, MAX_SUGGESTIONS, MAX_SUGGESTION_TEXT_CHARS,
+};
 use crate::meter::{TimeSignature, MAX_SWING, MAX_TEMPO_BPM, MIN_SWING, MIN_TEMPO_BPM};
 use crate::pattern::Note;
 
@@ -92,6 +95,12 @@ pub struct Song {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<ChatEntry>>", optional)]
     pub chat: Vec<ChatEntry>,
+    /// Separate from `chat` because its entries carry suggestions and a
+    /// selection, and mixing the two would feed each assistant history it
+    /// cannot act on. Optional like `chat`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<LyricChatEntry>>", optional)]
+    pub lyric_chat: Vec<LyricChatEntry>,
     /// The Studio's lyric notepad. Optional so songs saved before it existed
     /// stay valid and songs without lyrics serialize as they always did.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -156,6 +165,48 @@ pub struct ChatEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub track_id: Option<String>,
+}
+
+/// Offsets are UTF-16 units into the lyrics at the time the message was sent,
+/// which is what the editor uses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct LyricChatSelection {
+    pub from: u32,
+    pub to: u32,
+    /// Kept so applying a suggestion can tell whether the selected text has
+    /// changed since the reply.
+    pub text: String,
+}
+
+/// A reply's suggestion plus the name its section had when the reply arrived,
+/// so applying it still finds the section after the section is deleted or an
+/// implicit section becomes a real one with a new id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct StoredLyricSuggestion {
+    pub id: String,
+    pub label: String,
+    pub text: String,
+    pub action: SuggestionAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub section_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub section_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct LyricChatEntry {
+    pub role: ChatRole,
+    pub content: String,
+    /// Held by the assistant entry as the selection its suggestions target, so
+    /// trimming old entries never separates a reply from its own suggestions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub selection: Option<LyricChatSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub suggestions: Option<Vec<StoredLyricSuggestion>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -539,6 +590,7 @@ pub enum SongErrorKind {
     Measures,
     LoopRegion,
     Chat,
+    LyricChat,
     Lyrics,
     DuplicateSectionId,
     SectionName,
@@ -599,6 +651,7 @@ impl SongErrorKind {
             Self::Measures => "measures",
             Self::LoopRegion => "loop_region",
             Self::Chat => "chat",
+            Self::LyricChat => "lyric_chat",
             Self::Lyrics => "lyrics",
             Self::DuplicateSectionId => "duplicate_section_id",
             Self::SectionName => "section_name",
@@ -886,6 +939,7 @@ impl Song {
                 ),
             ));
         }
+        self.validate_lyric_chat()?;
         if self.lyrics.chars().count() > MAX_LYRICS_CHARS {
             return Err(invalid(
                 SongErrorKind::Lyrics,
@@ -893,6 +947,54 @@ impl Song {
             ));
         }
         self.validate_sections()
+    }
+
+    fn validate_lyric_chat(&self) -> Result<(), SongError> {
+        let fail = |message: String| Err(invalid(SongErrorKind::LyricChat, message));
+        if self.lyric_chat.len() > MAX_CHAT_ENTRIES {
+            return fail(format!(
+                "lyric chat holds at most {MAX_CHAT_ENTRIES} messages"
+            ));
+        }
+        for entry in &self.lyric_chat {
+            if entry.content.chars().count() > MAX_CHAT_CONTENT_CHARS {
+                return fail(format!(
+                    "lyric chat messages hold at most {MAX_CHAT_CONTENT_CHARS} characters"
+                ));
+            }
+            if let Some(selection) = &entry.selection {
+                if selection.text.chars().count() > MAX_LYRICS_CHARS {
+                    return fail(format!(
+                        "a lyric chat selection holds at most {MAX_LYRICS_CHARS} characters"
+                    ));
+                }
+            }
+            let suggestions = entry.suggestions.as_deref().unwrap_or_default();
+            if suggestions.len() > MAX_SUGGESTIONS {
+                return fail(format!(
+                    "a lyric chat message holds at most {MAX_SUGGESTIONS} suggestions"
+                ));
+            }
+            for suggestion in suggestions {
+                if suggestion.text.chars().count() > MAX_SUGGESTION_TEXT_CHARS
+                    || suggestion.label.chars().count() > MAX_LABEL_CHARS
+                {
+                    return fail(format!(
+                        "lyric chat suggestions hold at most {MAX_SUGGESTION_TEXT_CHARS} characters of text and {MAX_LABEL_CHARS} of label"
+                    ));
+                }
+                if suggestion
+                    .section_name
+                    .as_deref()
+                    .is_some_and(|name| name_len(name) > SECTION_NAME_MAX)
+                {
+                    return fail(format!(
+                        "lyric chat section names hold at most {SECTION_NAME_MAX} characters"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn validate_sections(&self) -> Result<(), SongError> {
@@ -1775,6 +1877,7 @@ pub(crate) mod tests {
             tracks,
             samples: vec![],
             chat: vec![],
+            lyric_chat: vec![],
             lyrics: String::new(),
             sections: vec![],
         }
@@ -2505,6 +2608,150 @@ pub(crate) mod tests {
         let json = serde_json::to_value(&s).unwrap();
         assert_eq!(json["lyrics"], "la");
         assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
+    }
+
+    fn lyric_entry(role: ChatRole, content: &str) -> LyricChatEntry {
+        LyricChatEntry {
+            role,
+            content: content.into(),
+            selection: None,
+            suggestions: None,
+        }
+    }
+
+    fn stored_suggestion() -> StoredLyricSuggestion {
+        StoredLyricSuggestion {
+            id: "s1".into(),
+            label: "label".into(),
+            text: "text".into(),
+            action: SuggestionAction::ReplaceSection,
+            section_id: Some("chorus".into()),
+            section_name: Some("Chorus".into()),
+        }
+    }
+
+    fn song_with_suggestions(suggestions: Vec<StoredLyricSuggestion>) -> Song {
+        let mut s = two_track_song();
+        s.lyric_chat = vec![LyricChatEntry {
+            suggestions: Some(suggestions),
+            ..lyric_entry(ChatRole::Assistant, "reply")
+        }];
+        s
+    }
+
+    #[test]
+    fn song_without_a_lyric_chat_serializes_byte_identically() {
+        let s = two_track_song();
+        let text = serde_json::to_string(&s).unwrap();
+        assert!(!text.contains("lyric_chat"));
+        let reloaded: Song = serde_json::from_str(&text).unwrap();
+        assert!(reloaded.lyric_chat.is_empty());
+        assert_eq!(serde_json::to_string(&reloaded).unwrap(), text);
+    }
+
+    #[test]
+    fn lyric_chat_round_trips_with_selection_and_suggestions() {
+        let mut s = two_track_song();
+        s.lyric_chat = vec![
+            lyric_entry(ChatRole::User, "help"),
+            LyricChatEntry {
+                selection: Some(LyricChatSelection {
+                    from: 1,
+                    to: 4,
+                    text: "abc".into(),
+                }),
+                suggestions: Some(vec![stored_suggestion()]),
+                ..lyric_entry(ChatRole::Assistant, "reply")
+            },
+        ];
+        let value = serde_json::to_value(&s).unwrap();
+        assert_eq!(
+            value["lyric_chat"][1]["suggestions"][0]["action"],
+            "replace_section"
+        );
+        assert!(value["lyric_chat"][0].get("selection").is_none());
+        assert_eq!(serde_json::from_value::<Song>(value).unwrap(), s);
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+    }
+
+    #[test]
+    fn lyric_chat_entry_count_limit() {
+        let mut s = two_track_song();
+        s.lyric_chat = (0..MAX_CHAT_ENTRIES)
+            .map(|_| lyric_entry(ChatRole::User, "m"))
+            .collect();
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        s.lyric_chat.push(lyric_entry(ChatRole::User, "m"));
+        assert_eq!(error_kind(&s), "lyric_chat");
+    }
+
+    #[test]
+    fn lyric_chat_content_limit_counts_characters() {
+        let mut s = two_track_song();
+        s.lyric_chat = vec![lyric_entry(
+            ChatRole::User,
+            &"é".repeat(MAX_CHAT_CONTENT_CHARS),
+        )];
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        s.lyric_chat[0].content.push('é');
+        assert_eq!(error_kind(&s), "lyric_chat");
+    }
+
+    #[test]
+    fn lyric_chat_selection_text_limit() {
+        let mut s = two_track_song();
+        let mut entry = lyric_entry(ChatRole::Assistant, "r");
+        entry.selection = Some(LyricChatSelection {
+            from: 0,
+            to: 0,
+            text: "x".repeat(MAX_LYRICS_CHARS),
+        });
+        s.lyric_chat = vec![entry];
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        s.lyric_chat[0].selection.as_mut().unwrap().text.push('x');
+        assert_eq!(error_kind(&s), "lyric_chat");
+    }
+
+    #[test]
+    fn lyric_chat_suggestion_limits() {
+        let registry = InstrumentRegistry::builtin();
+        let at_limit = StoredLyricSuggestion {
+            text: "x".repeat(MAX_SUGGESTION_TEXT_CHARS),
+            label: "x".repeat(MAX_LABEL_CHARS),
+            section_name: Some("x".repeat(SECTION_NAME_MAX)),
+            ..stored_suggestion()
+        };
+        song_with_suggestions(vec![at_limit.clone(); MAX_SUGGESTIONS])
+            .validate(&registry)
+            .unwrap();
+
+        assert_eq!(
+            error_kind(&song_with_suggestions(vec![
+                at_limit.clone();
+                MAX_SUGGESTIONS + 1
+            ])),
+            "lyric_chat"
+        );
+        let over = [
+            StoredLyricSuggestion {
+                text: "x".repeat(MAX_SUGGESTION_TEXT_CHARS + 1),
+                ..at_limit.clone()
+            },
+            StoredLyricSuggestion {
+                label: "x".repeat(MAX_LABEL_CHARS + 1),
+                ..at_limit.clone()
+            },
+            StoredLyricSuggestion {
+                section_name: Some("x".repeat(SECTION_NAME_MAX + 1)),
+                ..at_limit
+            },
+        ];
+        for suggestion in over {
+            assert_eq!(
+                error_kind(&song_with_suggestions(vec![suggestion])),
+                "lyric_chat"
+            );
+        }
     }
 
     fn section(id: &str, kind: SectionKind, measures: u32) -> Section {

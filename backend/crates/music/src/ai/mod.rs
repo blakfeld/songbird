@@ -3,6 +3,7 @@
 
 pub mod claude;
 pub mod codex;
+pub mod lyrics;
 pub mod mock;
 pub mod ollama;
 pub mod openai;
@@ -20,6 +21,7 @@ use crate::request::GenerateRequest;
 
 pub use claude::ClaudeProvider;
 pub use codex::CodexCliProvider;
+pub use lyrics::{LyricsProvider, LyricsRequest, MockLyricsProvider, SchemaLyricsProvider};
 pub use mock::MockProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAiProvider;

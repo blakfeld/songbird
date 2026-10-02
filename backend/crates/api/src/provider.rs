@@ -2,20 +2,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, MockPlanProvider, MockProvider, OllamaProvider,
-    PatternProvider, PlanProvider, ProviderError, SchemaPlanProvider, SchemaProvider,
-    StructuredProvider,
+    ClaudeProvider, CodexCliProvider, LyricsProvider, MockLyricsProvider, MockPlanProvider,
+    MockProvider, OllamaProvider, PatternProvider, PlanProvider, ProviderError,
+    SchemaLyricsProvider, SchemaPlanProvider, SchemaProvider, StructuredProvider,
 };
 
 use crate::ai_access::{AiAccess, MockUserProviders, RealUserProviders};
 use crate::config::{Config, ProviderKind, ANTHROPIC_API_KEY, BIND_ADDR};
 
-/// One transport serves both provider kinds, so a model is configured and
+/// One transport serves every provider kind, so a model is configured and
 /// checked once however many kinds the API needs.
 #[derive(Clone)]
 pub struct Providers {
     pub patterns: Arc<dyn PatternProvider>,
     pub plans: Arc<dyn PlanProvider>,
+    pub lyrics: Arc<dyn LyricsProvider>,
 }
 
 impl Providers {
@@ -36,7 +37,16 @@ impl Providers {
         Self {
             patterns: Arc::new(patterns),
             plans: Arc::new(plans),
+            lyrics: Arc::new(MockLyricsProvider),
         }
+    }
+
+    /// Defaulted in `new` so the many tests that build a bundle from a pattern
+    /// provider keep compiling; a test that cares about the lyric assistant
+    /// swaps in its own.
+    pub fn with_lyrics(mut self, lyrics: impl LyricsProvider + 'static) -> Self {
+        self.lyrics = Arc::new(lyrics);
+        self
     }
 }
 
@@ -47,8 +57,9 @@ impl Providers {
     pub fn over(transport: Arc<dyn StructuredProvider>) -> Self {
         Self::new(
             SchemaProvider::new(transport.clone()),
-            SchemaPlanProvider::new(transport),
+            SchemaPlanProvider::new(transport.clone()),
         )
+        .with_lyrics(SchemaLyricsProvider::new(transport))
     }
 }
 

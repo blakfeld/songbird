@@ -1,18 +1,22 @@
 "use client";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { Annotation, EditorState, RangeSetBuilder } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Facet, RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   ViewPlugin,
+  WidgetType,
   keymap,
   placeholder,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 import { useEffect, useId, useRef, useState } from "react";
-import { isHeadingLine } from "@/lib/lyrics/headings";
+import type { LyricChatSelection } from "@/generated/LyricChatSelection";
+import type { TextChange } from "@/lib/lyrics/applySuggestion";
+import { headingName, isHeadingLine } from "@/lib/lyrics/headings";
+import { linkKey } from "@/lib/lyrics/sectionLinks";
 import { LYRICS_MAX_CHARS } from "@/lib/song/types";
 
 const COUNTER_FROM = 18_000;
@@ -26,7 +30,55 @@ const fromStore = Annotation.define<boolean>();
 
 const codePoints = (text: string) => [...text].length;
 
+const LIMIT_NOTICE = `Lyrics limit reached (${LYRICS_MAX_CHARS.toLocaleString("en-US")} characters). That edit wasn't added.`;
+
 const headingMark = Decoration.line({ class: "cm-lyric-heading" });
+
+// The explanation is on the line and the badge both, because a generated pseudo-element is unreliable for screen readers.
+const unlinkedTitle = (name: string) => `No song section named "${name}". Rename a section or this heading to link them.`;
+const unlinkedMark = (name: string) =>
+  Decoration.line({
+    class: "cm-lyric-heading cm-lyric-heading-unlinked",
+    attributes: { title: unlinkedTitle(name) },
+  });
+
+class UnlinkedBadge extends WidgetType {
+  constructor(readonly name: string) {
+    super();
+  }
+  eq(other: UnlinkedBadge) {
+    return other.name === this.name;
+  }
+  toDOM() {
+    const badge = document.createElement("span");
+    badge.className = "cm-lyric-unlinked-badge";
+    badge.textContent = "no matching section";
+    badge.title = unlinkedTitle(this.name);
+    return badge;
+  }
+}
+
+// Null means the section names are not known, so no heading is flagged rather than every one.
+const sectionKeys = Facet.define<Set<string> | null, Set<string> | null>({
+  combine: (values) => values.at(-1) ?? null,
+});
+const sectionKeyCompartment = new Compartment();
+const keyExtension = (keys: readonly string[] | undefined) => sectionKeys.of(keys ? new Set(keys) : null);
+
+export interface LyricsEditorSnapshot {
+  doc: string;
+  // Null for an empty selection, which the server also treats as none.
+  selection: LyricChatSelection | null;
+  cursor: number;
+  hasFocused: boolean;
+}
+
+export interface LyricsEditorHandle {
+  // Read from the editor, not the store, because the debounced sync can lag typing and offsets must match the text sent.
+  snapshot: () => LyricsEditorSnapshot;
+  // Returns false when the length limit refused the change. A notice is shown for a refusal or for the given message.
+  apply: (change: TextChange, notice?: string) => boolean;
+}
 
 const headingPlugin = ViewPlugin.fromClass(
   class {
@@ -35,16 +87,22 @@ const headingPlugin = ViewPlugin.fromClass(
       this.decorations = this.build(view);
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
+      const keysChanged = u.startState.facet(sectionKeys) !== u.state.facet(sectionKeys);
+      if (u.docChanged || u.viewportChanged || keysChanged) this.decorations = this.build(u.view);
     }
     build(view: EditorView): DecorationSet {
       const builder = new RangeSetBuilder<Decoration>();
+      const keys = view.state.facet(sectionKeys);
       let last = -1;
       for (const { from, to } of view.visibleRanges) {
         for (let pos = from; pos <= to; ) {
           const line = view.state.doc.lineAt(pos);
           if (line.from > last && isHeadingLine(line.text)) {
-            builder.add(line.from, line.from, headingMark);
+            const linked = !keys || keys.has(linkKey(headingName(line.text) ?? ""));
+            const name = (headingName(line.text) ?? "").trim();
+            // The builder needs ranges in position order, so the badge at the line end comes after the line mark.
+            builder.add(line.from, line.from, linked ? headingMark : unlinkedMark(name));
+            if (!linked) builder.add(line.to, line.to, Decoration.widget({ widget: new UnlinkedBadge(name), side: 1 }));
           }
           last = line.from;
           pos = line.to + 1;
@@ -69,6 +127,12 @@ interface EditorProps {
   onChange: (text: string, songId: string) => void;
   // Lets the page flush typing in flight before it switches songs, when blur may not have fired yet.
   registerFlush?: (flush: () => void) => () => void;
+  // Must be stable: it registers in its own effect so that a new callback never rebuilds the editor and its undo history.
+  registerEditor?: (handle: LyricsEditorHandle) => () => void;
+  // Changing it reconfigures a compartment, so a rename relinks headings without rebuilding the editor and losing undo history.
+  sectionKeys?: readonly string[];
+  // Owned by the page because the editor remounts on a tab switch, which must not make an insert jump back to the end.
+  focusedSongs?: Set<string>;
 }
 
 function Editor({
@@ -76,19 +140,28 @@ function Editor({
   lyrics,
   onChange,
   registerFlush,
+  registerEditor,
+  sectionKeys: keys,
+  focusedSongs: focusedSongsProp,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const pending = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   const lyricsRef = useRef(lyrics);
+  const keysRef = useRef(keys);
+  const [ownFocused] = useState(() => new Set<string>());
+  const focused = focusedSongsProp ?? ownFocused;
+  const refused = useRef(false);
+  const showNotice = useRef<(message: string) => void>(() => {});
   const countId = useId();
   const [count, setCount] = useState<number | null>(() => overCounterFrom({ length: lyrics.length, toString: () => lyrics }));
-  const [notice, setNotice] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     lyricsRef.current = lyrics;
+    keysRef.current = keys;
   });
 
   useEffect(() => {
@@ -109,14 +182,19 @@ function Editor({
     };
 
     // Clearing first and setting on the next frame makes a repeat refusal announce again.
-    const refuse = () => {
-      setNotice(false);
+    const announce = (message: string) => {
+      setNotice(null);
       clearTimeout(noticeTimer);
       if (noticeFrame !== undefined) cancelAnimationFrame(noticeFrame);
       noticeFrame = requestAnimationFrame(() => {
-        setNotice(true);
-        noticeTimer = setTimeout(() => setNotice(false), NOTICE_MS);
+        setNotice(message);
+        noticeTimer = setTimeout(() => setNotice(null), NOTICE_MS);
       });
+    };
+    showNotice.current = announce;
+    const refuse = () => {
+      refused.current = true;
+      announce(LIMIT_NOTICE);
     };
 
     const editor = new EditorView({
@@ -133,6 +211,7 @@ function Editor({
             ...(overCounterFrom(v.state.doc) !== null && { "aria-describedby": countId }),
           })),
           placeholder(PLACEHOLDER),
+          sectionKeyCompartment.of(keyExtension(keysRef.current)),
           headingPlugin,
           EditorState.changeFilter.of((tr) => {
             if (!tr.docChanged || tr.annotation(fromStore)) return true;
@@ -141,12 +220,17 @@ function Editor({
             refuse();
             return false;
           }),
-          EditorView.domEventHandlers({ blur: () => void flush() }),
+          EditorView.domEventHandlers({
+            blur: () => void flush(),
+            focus: () => {
+              focused.add(songId);
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;
             setCount(overCounterFrom(u.state.doc));
             if (u.transactions.some((tr) => tr.annotation(fromStore))) return;
-            setNotice(false);
+            setNotice(null);
             pending.current = u.state.doc.toString();
             clearTimeout(syncTimer);
             syncTimer = setTimeout(flush, SYNC_DELAY_MS);
@@ -167,7 +251,44 @@ function Editor({
       editor.destroy();
       view.current = null;
     };
-  }, [songId, countId, registerFlush]);
+  }, [songId, countId, registerFlush, focused]);
+
+  const keySignature = keys ? JSON.stringify(keys) : null;
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor) return;
+    editor.dispatch({ effects: sectionKeyCompartment.reconfigure(keyExtension(keysRef.current)) });
+  }, [keySignature]);
+
+  useEffect(() => {
+    if (!registerEditor) return;
+    return registerEditor({
+      snapshot: () => {
+        const editor = view.current!;
+        const { from, to, head } = editor.state.selection.main;
+        return {
+          doc: editor.state.doc.toString(),
+          selection: from === to ? null : { from, to, text: editor.state.sliceDoc(from, to) },
+          cursor: head,
+          hasFocused: focused.has(songId),
+        };
+      },
+      apply: (change, message) => {
+        const editor = view.current;
+        if (!editor) return false;
+        refused.current = false;
+        editor.dispatch({
+          changes: change,
+          selection: { anchor: change.from + change.insert.length },
+          scrollIntoView: true,
+          userEvent: "input.suggestion",
+        });
+        if (refused.current) return false;
+        if (message) showNotice.current(message);
+        return true;
+      },
+    });
+  }, [registerEditor, focused, songId]);
 
   // Typing in flight wins until it has synced, so an outside change cannot erase the user's last few hundred ms of text.
   useEffect(() => {
@@ -189,7 +310,7 @@ function Editor({
       />
       <div
         className={`flex items-center justify-between gap-2 ${
-          count !== null || notice ? "border-t border-zinc-200 px-4 py-2 dark:border-zinc-800" : ""
+          count !== null || notice !== null ? "border-t border-zinc-200 px-4 py-2 dark:border-zinc-800" : ""
         }`}
       >
         {count !== null && (
@@ -198,7 +319,7 @@ function Editor({
           </p>
         )}
         <p role="status" className="text-xs font-semibold text-red-700 dark:text-red-400">
-          {notice && `Lyrics limit reached (${LYRICS_MAX_CHARS.toLocaleString("en-US")} characters). That edit wasn't added.`}
+          {notice}
         </p>
       </div>
     </div>

@@ -5,10 +5,11 @@ mod common;
 
 use common::request;
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, OllamaProvider, OpenAiProvider, PatternProvider,
-    SchemaProvider,
+    ClaudeProvider, CodexCliProvider, LyricsProvider, OllamaProvider, OpenAiProvider,
+    PatternProvider, SchemaLyricsProvider, SchemaProvider,
 };
 use music::generate::generate_pattern;
+use music::lyrics::assist_lyrics;
 use secrecy::SecretString;
 
 fn env_or(var: &str, default: &str) -> String {
@@ -69,4 +70,47 @@ async fn live_codex_generates_a_valid_pattern() {
         .ok()
         .filter(|m| !m.trim().is_empty());
     assert_generates(&SchemaProvider::new(CodexCliProvider::new(bin, model))).await;
+}
+
+async fn assert_assists_with_lyrics(provider: &dyn LyricsProvider) {
+    use music::chat::ChatMessage;
+    use music::lyrics::{LyricsAssistBody, LyricsSectionContext, LyricsSongContext};
+    use music::song::{ChatRole, SectionKind};
+    use music::TimeSignature;
+
+    provider.check().await.expect("provider check");
+    let body = LyricsAssistBody {
+        song_context: LyricsSongContext {
+            name: "Late Train".into(),
+            key: None,
+            tempo_bpm: 96,
+            time_signature: TimeSignature::FourFour,
+            sections: vec![LyricsSectionContext {
+                id: "chorus-1".into(),
+                name: "Chorus".into(),
+                kind: SectionKind::Chorus,
+                measures: 8,
+                notes: String::new(),
+                chords: vec![],
+            }],
+        },
+        lyrics: String::new(),
+        selection: None,
+        messages: vec![ChatMessage {
+            role: ChatRole::User,
+            content: "write a short chorus about leaving home".into(),
+        }],
+    };
+    let request = body.validate(256, 1_000).expect("valid request");
+    let response = assist_lyrics(provider, &request).await.expect("assistance");
+    assert!(!response.reply.is_empty());
+    assert!(response.suggestions.len() <= 5);
+}
+
+#[tokio::test]
+#[ignore = "needs a running Ollama with the model pulled"]
+async fn live_ollama_assists_with_lyrics() {
+    let url = env_or("SONGBIRD_OLLAMA_URL", "http://localhost:11434");
+    let model = env_or("SONGBIRD_OLLAMA_MODEL", "qwen2.5:7b-instruct");
+    assert_assists_with_lyrics(&SchemaLyricsProvider::new(OllamaProvider::new(url, model))).await;
 }

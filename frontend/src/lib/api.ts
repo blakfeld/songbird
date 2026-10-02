@@ -1,5 +1,7 @@
 import type { ChatBody } from "@/generated/ChatBody";
 import type { ChatResponse } from "@/generated/ChatResponse";
+import type { LyricsAssistBody } from "@/generated/LyricsAssistBody";
+import type { LyricsAssistResponse } from "@/generated/LyricsAssistResponse";
 import type { GenerateRequestBody } from "@/generated/GenerateRequestBody";
 import type { GenerationLimits } from "@/generated/GenerationLimits";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
@@ -157,6 +159,11 @@ export async function generateTrack(body: TrackGenerateBody): Promise<TrackGener
 
 export async function sendChat(body: ChatBody): Promise<ChatResponse> {
   return (await postJson("/api/v1/songs/chat", body)).json();
+}
+
+// Its 422 codes all carry readable reasons, which messageFor already surfaces for any 422.
+export async function assistLyrics(body: LyricsAssistBody): Promise<LyricsAssistResponse> {
+  return (await postJson("/api/v1/lyrics/assist", body)).json();
 }
 
 export interface MidiExport {

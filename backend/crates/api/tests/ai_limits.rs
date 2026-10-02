@@ -7,7 +7,7 @@ use api::config::{AI_REQUESTS_PER_DAY, AI_REQUESTS_PER_MINUTE, MAX_CONCURRENT_GE
 use api::provider::Providers;
 use async_trait::async_trait;
 use axum::http::{header, StatusCode};
-use common::app::{request, song, TestApp};
+use common::app::{lyrics_body, request, song, TestApp};
 use music::ai::{PatternProvider, ProviderError};
 use music::{GenerateRequest, Instrument, PatternDraft};
 use serde_json::{json, Value};
@@ -28,6 +28,7 @@ fn ai_routes() -> Vec<(&'static str, Value)> {
             "/api/v1/songs/chat",
             json!({"song": song("Late Train", 1), "messages": [{"role": "user", "content": "hello there"}]}),
         ),
+        ("/api/v1/lyrics/assist", lyrics_body()),
     ]
 }
 
@@ -93,6 +94,32 @@ async fn a_burst_over_the_per_minute_limit_gets_429_with_retry_after() {
         .unwrap();
     assert!((1..=61).contains(&retry));
     assert_eq!(app.calls(), 3);
+}
+
+#[tokio::test]
+async fn the_per_minute_limit_is_shared_by_lyric_and_chat_requests() {
+    let app = TestApp::new(&[(AI_REQUESTS_PER_MINUTE, "2")]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+    let routes = ai_routes();
+    let (chat_uri, chat_body) = &routes[2];
+    let (lyrics_uri, lyrics_body) = &routes[3];
+    assert_eq!(chat_uri, &"/api/v1/songs/chat");
+    assert_eq!(lyrics_uri, &"/api/v1/lyrics/assist");
+
+    assert_eq!(
+        post(&app, &cookie, chat_uri, chat_body).await.status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        post(&app, &cookie, lyrics_uri, lyrics_body).await.status,
+        StatusCode::OK
+    );
+    let calls = app.calls();
+    let refused = post(&app, &cookie, lyrics_uri, lyrics_body).await;
+
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(refused.body["error"]["code"], "too_many_requests");
+    assert_eq!(app.calls(), calls);
 }
 
 #[tokio::test]

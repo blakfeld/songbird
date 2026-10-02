@@ -115,6 +115,8 @@ pub enum DraftError {
     NoNotes,
     #[error("plan is unusable: {0}")]
     InvalidPlan(String),
+    #[error("lyric reply is unusable: {0}")]
+    InvalidLyrics(String),
 }
 
 impl PatternDraft {

@@ -46,6 +46,8 @@ import { EditorDock } from "./EditorDock";
 import { NoTracksDock } from "./NoTracksDock";
 import { TrackGenerateDialog } from "./TrackGenerateDialog";
 import { useChat } from "./useChat";
+import { useLyricChat } from "@/components/lyrics/useLyricChat";
+import type { LyricsEditorHandle } from "@/components/lyrics/LyricsEditor";
 import { useTrackGeneration } from "./useTrackGeneration";
 import { SongHeader } from "./SongHeader";
 import type { TrackActions } from "./trackActions";
@@ -415,6 +417,10 @@ export function StudioPage({
   const generation = useTrackGeneration(store, setStatus, guardEdit);
   const { open: openGenerate } = generation;
   const chat = useChat(store, setStatus);
+  // Above the panels because both of them unmount on a tab switch, and a pending request must survive that.
+  const lyricEditor = useRef<LyricsEditorHandle | null>(null);
+  const [lyricFocused] = useState(() => new Set<string>());
+  const lyricChat = useLyricChat(store, lyricEditor, setStatus);
 
   // UI state rather than song state, so opening a panel is never an undo step or a saved change.
   const [soundTrackId, setSoundTrackId] = useState<string | null>(null);
@@ -1088,7 +1094,7 @@ export function StudioPage({
       <RightColumnTabs
         className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`}
         assistant={<AssistantPanel song={song} chat={chat} instruments={instruments.data} heading={false} />}
-        lyrics={<LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} />}
+        lyrics={<LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} />}
         section={
           // Mounted only while the column is visible, because a hidden second editor would hold its own diverging text.
           wide && (
@@ -1122,7 +1128,7 @@ export function StudioPage({
         label="Lyrics"
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
-        <LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} heading />
+        <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} heading />
       </ModalDialog>
       <ModalDialog
         open={sectionDrawerOpen}

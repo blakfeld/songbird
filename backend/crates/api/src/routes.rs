@@ -60,6 +60,7 @@ pub fn routes(state: AppState) -> Router {
     let ai = Router::new()
         .merge(crate::patterns::ai_router())
         .merge(crate::songs::ai_router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
+        .merge(crate::lyrics::ai_router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
         .route_layer(from_fn_with_state(state.clone(), crate::ai_limits::meter))
         .route_layer(from_fn_with_state(limiter, shed_when_busy));
 

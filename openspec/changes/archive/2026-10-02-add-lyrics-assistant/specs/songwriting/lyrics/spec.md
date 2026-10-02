@@ -171,7 +171,7 @@ The system SHALL reject a request with status `422` and SHALL NOT invoke the AI 
 - The last message's estimated tokens exceed `max_input_tokens`, using the same estimation rule as pattern prompts. Error code: `prompt_too_long`.
 - `lyrics` exceeds 20,000 characters. Error code: `lyrics_too_long`.
 - `selection` has `from` greater than `to`, or `to` past the end of `lyrics`. Error code: `invalid_selection`.
-- `song_context` has no sections or more than 128, a blank or repeated section id, a section name that is empty or longer than 40 characters, a section length outside 1–32 measures, section notes over 5,000 characters, more than 64 chords in a section, a song name longer than 80 characters, or a tempo outside the song's tempo range. Error code: `invalid_song_context`.
+- `song_context` has no sections or more than 128, a blank or repeated section id or one longer than 64 characters, a section name that is empty or longer than 40 characters, a section length outside 1–32 measures, section notes over 5,000 characters, more than 64 chords in a section or a chord longer than 16 characters, a song name longer than 80 characters, or a tempo outside the song's tempo range. Error code: `invalid_song_context`.
 
 A body that is not valid JSON for the endpoint, including an unknown `role`, `kind`, or `time_signature`, SHALL be rejected with `400` and error code `invalid_json`, without invoking the provider.
 

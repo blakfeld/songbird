@@ -55,8 +55,77 @@ body {
   padding-top: 0.75rem;
 }
 
+/* Dashed underline plus a text badge, so the marker never rests on colour alone. */
+.cm-lyric-heading-unlinked {
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.cm-lyric-unlinked-badge {
+  margin-left: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
+  color: var(--color-zinc-600);
+}
+
 @media (prefers-color-scheme: dark) {
-  .cm-lyric-heading {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.cm-editor {
+  min-height: 100%;
+  outline: none !important;
+}
+.cm-editor .cm-scroller {
+  font-family: inherit;
+  line-height: inherit;
+}
+.cm-editor .cm-content {
+  padding: 0.75rem 1rem;
+  caret-color: currentColor;
+}
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-left-color: currentColor;
+}
+.cm-editor .cm-placeholder {
+  color: var(--color-zinc-500);
+}
+
+/* Padding rather than margin, because margins on lines break CodeMirror's height map. */
+.cm-lyric-heading {
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-zinc-600);
+  padding-top: 0.75rem;
+}
+
+/* Text as well as styling, so the marker does not rely on colour; generated content is not part of the lyrics text. */
+.cm-lyric-heading-unlinked::after {
+  content: " · no matching section";
+  font-weight: 400;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cm-lyric-heading,
+  .cm-lyric-unlinked-badge {
     color: var(--color-zinc-400);
   }
   .cm-editor .cm-placeholder {

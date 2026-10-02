@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use music::ai::{
-    claude, openai, ClaudeProvider, HttpClient, KeyCheckError, OpenAiProvider, PatternProvider,
-    PlanProvider, ProviderError, StructuredProvider,
+    claude, openai, ClaudeProvider, HttpClient, KeyCheckError, LyricsProvider, OpenAiProvider,
+    PatternProvider, PlanProvider, ProviderError, StructuredProvider,
 };
 use music::generate::GenerationError;
 use music::{Instrument, PatternDraft};
@@ -170,7 +170,8 @@ impl UserProviders for MockUserProviders {
     fn providers(&self, _: AiProvider, key: UserApiKey) -> Providers {
         match Self::failure(&key) {
             None => Providers::mock(),
-            Some(error) => Providers::new(Failing(error.clone()), Failing(error)),
+            Some(error) => Providers::new(Failing(error.clone()), Failing(error.clone()))
+                .with_lyrics(Failing(error)),
         }
     }
 
@@ -209,6 +210,20 @@ impl PlanProvider for Failing {
         &self,
         _: &music::ai::plan::PlanRequest,
     ) -> Result<music::ai::plan::PlanDraft, ProviderError> {
+        Err(self.0.clone())
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl LyricsProvider for Failing {
+    async fn assist(
+        &self,
+        _: &music::ai::LyricsRequest,
+    ) -> Result<music::lyrics::LyricsDraft, ProviderError> {
         Err(self.0.clone())
     }
 

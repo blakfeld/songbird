@@ -3,7 +3,7 @@ use axum::extract::{FromRequest, Request};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use music::{ChatRequestError, SongError, TrackRequestError, ValidationError};
+use music::{ChatRequestError, LyricsRequestError, SongError, TrackRequestError, ValidationError};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
@@ -36,6 +36,10 @@ pub enum ApiError {
     /// their own status.
     #[error("{message}")]
     ChatRejected { code: &'static str, message: String },
+    /// 422 like the other song routes, not the chat's 400, so the client's
+    /// existing handling of a 422 shows the server's message with no mapping.
+    #[error("{message}")]
+    LyricsRejected { code: &'static str, message: String },
     #[error("The song has no track with that id.")]
     InvalidTrack,
     /// 400 rather than 422 because no document change fixes it: the request
@@ -123,6 +127,7 @@ impl ApiError {
             | Self::InvalidSongInstrument(_)
             | Self::InvalidTrack
             | Self::InvalidRange
+            | Self::LyricsRejected { .. }
             | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
@@ -159,7 +164,7 @@ impl ApiError {
             Self::InvalidPattern(_) => "invalid_pattern",
             Self::InvalidSong(_) => "invalid_song",
             Self::InvalidSongInstrument(_) => "invalid_instrument",
-            Self::ChatRejected { code, .. } => code,
+            Self::ChatRejected { code, .. } | Self::LyricsRejected { code, .. } => code,
             Self::InvalidTrack => "invalid_track",
             Self::AudioTrackTarget => "audio_track_target",
             Self::SamplerTrackTarget => "invalid_target",
@@ -215,6 +220,20 @@ impl From<TrackRequestError> for ApiError {
             TrackRequestError::SamplerTrack => Self::SamplerTrackTarget,
             TrackRequestError::Prompt(e) => Self::Validation(e),
             TrackRequestError::InvalidRange => Self::InvalidRange,
+        }
+    }
+}
+
+impl From<LyricsRequestError> for ApiError {
+    fn from(error: LyricsRequestError) -> Self {
+        match error {
+            // The latest message goes through the shared prompt rules, so it
+            // surfaces exactly as it does on the other routes.
+            LyricsRequestError::Prompt(e) => Self::Validation(e),
+            other => Self::LyricsRejected {
+                code: other.code(),
+                message: other.to_string(),
+            },
         }
     }
 }
@@ -307,6 +326,14 @@ mod tests {
                 "too_many_requests",
             ),
             (ApiError::ServerBusy { retry_after: 1 }, 503, "server_busy"),
+            (
+                ApiError::LyricsRejected {
+                    code: "invalid_selection",
+                    message: "bad".into(),
+                },
+                422,
+                "invalid_selection",
+            ),
         ] {
             assert_eq!(error.status().as_u16(), status, "{code}");
             assert_eq!(error.code(), code);

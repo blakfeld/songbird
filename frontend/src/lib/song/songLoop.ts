@@ -101,11 +101,11 @@ function withLiveSectionNotes(snapshot: Song, current: Song): Song {
   return next.some((s, i) => s !== kept[i]) ? { ...snapshot, sections: next } : snapshot;
 }
 
-// Chat and lyrics are written by the user outside the arrangement: undo must remove an added track but keep the
+// Chat, lyric chat and lyrics are written by the user outside the arrangement: undo must remove an added track but keep the
 // message that explains it and the words being written, so snapshots restored by undo or redo take the live values.
 export function withLiveFields(snapshot: Song, current: Song): Song {
   let result = withLiveSectionNotes(snapshot, current);
-  for (const key of ["chat", "lyrics"] as const) {
+  for (const key of ["chat", "lyrics", "lyric_chat"] as const) {
     if (result[key] === current[key]) continue;
     if (current[key] === undefined) {
       const { [key]: _dropped, ...rest } = result;

@@ -225,6 +225,76 @@ The song document may carry a `chat` array of `{"role", "content", "track_id"?}`
 entries (at most 20, each at most 4000 characters), which the Studio saves with
 the song; export and generation ignore it.
 
+The song document may also carry a `lyric_chat` array of
+`{"role", "content", "selection"?, "suggestions"?}` entries (at most 20, each at
+most 4000 characters, at most 5 suggestions each), the lyric assistant's
+conversation below. It is checked on save like `chat`; the error kind is
+`lyric_chat`.
+
+### `POST /api/v1/lyrics/assist`
+
+Answers one message in a conversation about a song's lyrics. The client sends a
+projection of the song, the lyrics, an optional selection and the recent
+conversation; the server stores nothing. It makes one provider call under
+`SONGBIRD_GENERATION_TIMEOUT_SECS`, with the same sign-in, origin check, AI
+request limits, concurrency budget, per-user keys and key error codes as the
+other AI routes. Its body limit is the song endpoints' 2 MiB.
+
+```sh
+# Sign in first; `just seed` creates dev@example.com.
+curl -s -c cookies.txt localhost:8080/api/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"dev@example.com","password":"songbird-dev-password"}'
+curl -s -b cookies.txt localhost:8080/api/v1/lyrics/assist \
+  -H 'content-type: application/json' \
+  -d '{"song_context":{"name":"Late Train","tempo_bpm":96,"time_signature":"4/4","sections":[{"id":"verse-1","name":"Verse","kind":"verse","measures":8,"notes":"","chords":[]},{"id":"chorus-1","name":"Chorus","kind":"chorus","measures":8,"notes":"","chords":["C","G","Am","F"]}]},"lyrics":"[Verse]\nThe platform is empty","selection":{"from":8,"to":29},"messages":[{"role":"user","content":"suggest a chorus about leaving home"}]}'
+```
+
+Body:
+
+- `song_context`: `{name, key?, tempo_bpm, time_signature, sections}`, where each
+  section is `{id, name, kind, measures, notes, chords}`. The client builds it
+  from the song's real or implicit sections (ids `implicit`, `implicit-2`, ...).
+- `lyrics`: a string.
+- `selection` (optional): `{from, to}`, offsets into `lyrics` in UTF-16 code
+  units. The server slices the selected text itself.
+- `messages`: 1-20 `{"role": "user"|"assistant", "content"}` entries, the last
+  from the user.
+
+The response is `{"reply", "suggestions"}`. Each suggestion is
+`{id, label, text, action, section_id?}`; `action` is `insert`,
+`replace_selection` or `replace_section`, and `section_id` is present exactly for
+`replace_section`. The server normalizes every reply: the reply is cut to 4000
+characters, at most 5 suggestions are kept (text cut to 2000 characters, label to
+80), ids are `s1`, `s2`, ..., and suggestions with empty text, an unknown
+action, an unknown `section_id`, or `replace_selection` without a non-empty
+selection are dropped. A reply that is empty or unparseable after one retry is
+`502 generation_failed`; a hang is `504 generation_timeout`.
+
+Invalid bodies are `422` and never call the provider:
+
+| Code | Cause |
+|---|---|
+| `invalid_messages` | no messages, over 20, the last not from the user, or an earlier one over 4000 characters |
+| `invalid_prompt` / `prompt_too_long` | the last message is blank, or over `SONGBIRD_MAX_INPUT_TOKENS` (same rule as pattern prompts) |
+| `lyrics_too_long` | `lyrics` over 20000 characters |
+| `invalid_selection` | `from` greater than `to`, or `to` past the end of `lyrics` |
+| `invalid_song_context` | no sections or over 128, a blank or repeated section id or one over 64 characters, a section name empty or over 40 characters, a length outside 1-32 measures, notes over 5000 characters, over 64 chords or a chord over 16 characters, a song name over 80 characters, or a tempo outside 40-240 |
+
+A body that is not valid JSON for the endpoint, including an unknown `role`,
+`kind` or `time_signature`, is `400 invalid_json`.
+
+All client text (lyrics, selection, names, notes, chords and every message,
+assistant messages included) is escaped and fenced in the prompt as data. The
+song and section lines, the lyrics, the selection and the latest message are
+never trimmed. The rest is fitted to `SONGBIRD_MAX_CONTEXT_TOKENS`: older
+messages are dropped oldest first, then section notes from the last section
+backwards (shown as `(notes omitted)`). A budget of 0 keeps neither.
+With `SONGBIRD_AI_PROVIDER=mock` the reply is deterministic: it quotes the first
+60 characters of the message and offers an `insert` suggestion, a
+`replace_selection` suggestion when the selection is non-empty, and a
+`replace_section` suggestion for the first section.
+
 ## Database
 
 The backend is chosen by the scheme of `SONGBIRD_DATABASE_URL`:

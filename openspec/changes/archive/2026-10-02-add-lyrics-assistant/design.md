@@ -117,7 +117,8 @@ Validation (in `music::lyrics`, reusing song constants where they exist):
 - Every message but the last at most `MAX_CHAT_CONTENT_CHARS` (4,000).
 - The latest message checked by `validate_prompt` against `max_input_tokens`.
 - Lyrics at most `MAX_LYRICS_CHARS`.
-- 1–128 sections (`MAX_MEASURES`), each with a unique non-empty id, a name of 1–`SECTION_NAME_MAX` characters, 1–32 measures, notes at most `MAX_SECTION_NOTES_CHARS`, and at most 64 chords.
+- 1–128 sections (`MAX_MEASURES`), each with a unique non-empty id of at most 64 characters, a name of 1–`SECTION_NAME_MAX` characters, 1–32 measures, notes at most `MAX_SECTION_NOTES_CHARS`, and at most 64 chords of at most 16 characters each.
+- **Why cap id and chord length:** both are rendered into the untrimmed song lines (and ids into the schema enum), so without a cap only the 2 MiB body limit would bound the part of the prompt that is never trimmed.
 - A song name at most `SONG_NAME_MAX`, and the tempo in `MIN_TEMPO_BPM..=MAX_TEMPO_BPM`.
 - The selection measured in UTF-16 units.
 

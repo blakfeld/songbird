@@ -10,6 +10,7 @@ import { samplerProblem, type SamplerErrorKind } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
   LYRICS_MAX_CHARS,
+  SECTION_NAME_MAX,
   MAX_TRACKS,
   MEASURE_RANGE,
   PAN_RANGE,
@@ -43,6 +44,7 @@ export type ProjectErrorKind =
   | "loop_region"
   | "chat"
   | "lyrics"
+  | "lyric_chat"
   | "track_count"
   | "track_name"
   | "volume"
@@ -167,8 +169,72 @@ function checkHeader(raw: Raw): Problem | null {
         `the lyrics must be text of at most ${LYRICS_MAX_CHARS.toLocaleString("en-US")} characters`,
       );
   }
+  if (raw.lyric_chat !== undefined) {
+    const found = lyricChatProblem(raw.lyric_chat);
+    if (found) return found;
+  }
   const sections = sectionProblem(raw.sections, raw.measures, { checkTotal: true });
   if (sections) return sections;
+  return null;
+}
+
+const SUGGESTION_ACTIONS: readonly unknown[] = ["insert", "replace_selection", "replace_section"];
+const isOffset = (v: unknown): v is number => isInt(v) && v >= 0;
+
+// Rust refuses a wrong shape while parsing, before any limit is checked, so the shape pass runs over the whole
+// conversation first and reports "malformed" the way the shared fixture expects.
+function lyricChatShapeProblem(chat: unknown): Problem | null {
+  const bad = (what: string) => problem("malformed", `the saved lyric chat has ${what}`);
+  if (!Array.isArray(chat)) return bad("the wrong shape");
+  for (const e of chat) {
+    if (!isObject(e) || (e.role !== "user" && e.role !== "assistant") || typeof e.content !== "string")
+      return bad("a message that is not valid");
+    if (e.selection !== undefined) {
+      const sel = e.selection;
+      if (!isObject(sel) || !isOffset(sel.from) || !isOffset(sel.to) || typeof sel.text !== "string")
+        return bad("a selection that is not valid");
+    }
+    if (e.suggestions === undefined) continue;
+    if (!Array.isArray(e.suggestions)) return bad("suggestions that are not a list");
+    for (const s of e.suggestions) {
+      if (
+        !isObject(s) ||
+        typeof s.id !== "string" ||
+        typeof s.label !== "string" ||
+        typeof s.text !== "string" ||
+        !SUGGESTION_ACTIONS.includes(s.action) ||
+        (s.section_id !== undefined && typeof s.section_id !== "string") ||
+        (s.section_name !== undefined && typeof s.section_name !== "string")
+      )
+        return bad("a suggestion that is not valid");
+    }
+  }
+  return null;
+}
+
+// Mirrors Song::validate_lyric_chat. Text and label count code points like the server; the section name counts UTF-16
+// units like every other name check, so an emoji name cannot pass here and fail on save.
+function lyricChatProblem(chat: unknown): Problem | null {
+  const shape = lyricChatShapeProblem(chat);
+  if (shape) return shape;
+  const entries = chat as Raw[];
+  const tooLong = (message: string) => problem("lyric_chat", message);
+  const points = (v: unknown, max: number) => [...(v as string)].length <= max;
+  if (entries.length > 20) return tooLong("the saved lyric chat must be at most 20 messages");
+  for (const e of entries) {
+    if (!points(e.content, 4000)) return tooLong("lyric chat messages must be at most 4000 characters");
+    const sel = e.selection as Raw | undefined;
+    if (sel && !points(sel.text, LYRICS_MAX_CHARS))
+      return tooLong("a lyric chat selection must be at most 20000 characters");
+    const suggestions = (e.suggestions ?? []) as Raw[];
+    if (suggestions.length > 5) return tooLong("a lyric chat message holds at most 5 suggestions");
+    for (const s of suggestions) {
+      if (!points(s.text, 2000) || !points(s.label, 80))
+        return tooLong("lyric chat suggestions must be at most 2000 characters of text and 80 of label");
+      if (s.section_name !== undefined && charLength(s.section_name as string) > SECTION_NAME_MAX)
+        return tooLong(`lyric chat section names must be at most ${SECTION_NAME_MAX} characters`);
+    }
+  }
   return null;
 }
 

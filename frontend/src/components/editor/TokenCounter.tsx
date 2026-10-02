@@ -1,4 +1,14 @@
-export function TokenCounter({ id, count, max }: { id: string; count: number; max: number | null }) {
+export function TokenCounter({
+  id,
+  count,
+  max,
+  hint = "Shorten your description.",
+}: {
+  id: string;
+  count: number;
+  max: number | null;
+  hint?: string;
+}) {
   const over = max !== null && count > max;
   return (
     <p
@@ -9,7 +19,7 @@ export function TokenCounter({ id, count, max }: { id: string; count: number; ma
         {count} / {max ?? "…"}
       </span>{" "}
       tokens
-      {over && <span> Too long. Shorten your description.</span>}
+      {over && <span> Too long. {hint}</span>}
     </p>
   );
 }

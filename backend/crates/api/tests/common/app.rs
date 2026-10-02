@@ -17,7 +17,11 @@ use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use music::ai::plan::{PlanDraft, PlanRequest};
-use music::ai::{MockPlanProvider, MockProvider, PatternProvider, PlanProvider, ProviderError};
+use music::ai::{
+    LyricsProvider, LyricsRequest, MockLyricsProvider, MockPlanProvider, MockProvider,
+    PatternProvider, PlanProvider, ProviderError,
+};
+use music::lyrics::LyricsDraft;
 use music::{GenerateRequest, Instrument, InstrumentRegistry, PatternDraft};
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -51,6 +55,19 @@ impl PlanProvider for CountingPlans {
     async fn plan(&self, request: &PlanRequest) -> Result<PlanDraft, ProviderError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         MockPlanProvider.plan(request).await
+    }
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+struct CountingLyrics(Arc<AtomicUsize>);
+
+#[async_trait]
+impl LyricsProvider for CountingLyrics {
+    async fn assist(&self, request: &LyricsRequest) -> Result<LyricsDraft, ProviderError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        MockLyricsProvider.assist(request).await
     }
     async fn check(&self) -> Result<(), ProviderError> {
         Ok(())
@@ -111,7 +128,8 @@ impl TestApp {
         let providers = Providers::new(
             CountingPatterns(provider_calls.clone()),
             CountingPlans(provider_calls.clone()),
-        );
+        )
+        .with_lyrics(CountingLyrics(provider_calls.clone()));
         let mut state = AppState::new(
             providers,
             InstrumentRegistry::builtin(),
@@ -236,5 +254,21 @@ pub fn song(name: &str, track_count: usize) -> Value {
         "version": 2, "id": "client-chosen-id", "name": name, "tempo_bpm": 96,
         "time_signature": "4/4", "steps_per_measure": 16, "swing": 0,
         "measures": 4, "tracks": tracks,
+    })
+}
+
+/// Shared so the all-routes limit and key tests need no per-route knowledge
+/// of a valid body.
+pub fn lyrics_body() -> Value {
+    json!({
+        "song_context": {
+            "name": "Late Train", "tempo_bpm": 96, "time_signature": "4/4",
+            "sections": [
+                {"id": "verse-1", "name": "Verse", "kind": "verse", "measures": 8, "notes": "", "chords": []},
+                {"id": "chorus-1", "name": "Chorus", "kind": "chorus", "measures": 8, "notes": "", "chords": []},
+            ],
+        },
+        "lyrics": "[Verse]\nThe platform is empty",
+        "messages": [{"role": "user", "content": "suggest a chorus about leaving home"}],
     })
 }

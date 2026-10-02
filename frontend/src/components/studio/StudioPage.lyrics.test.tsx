@@ -18,6 +18,7 @@ vi.mock("@/lib/api", async (orig) => ({
   getInstruments: vi.fn(),
   getSongLimits: vi.fn(),
   sendChat: vi.fn(),
+  assistLyrics: vi.fn(),
 }));
 
 const toggle = vi.fn();
@@ -104,6 +105,7 @@ beforeEach(() => {
   library = createServerSongLibrary(fake.api);
   toggle.mockClear();
   vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
+  vi.mocked(api.getSongLimits).mockResolvedValue({ max_input_tokens: 256 } as Awaited<ReturnType<typeof api.getSongLimits>>);
 });
 afterEach(() => {
   cleanup();
@@ -264,10 +266,119 @@ describe("notepad keyboard isolation", () => {
     type(el, "kept");
     el.focus();
     await userEvent.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Add section headings" })).toHaveFocus();
+    await userEvent.tab({ shift: true });
     expect(screen.getByRole("tab", { name: "Lyrics" })).toHaveFocus();
     el.focus();
     await userEvent.tab();
     expect(el).not.toHaveFocus();
+    expect(viewOf(el).state.doc.toString()).toBe("kept");
+  });
+});
+
+describe("lyric assistant in the Studio", () => {
+  const lyricInput = () => screen.getByRole("textbox", { name: "Message the lyric assistant" });
+  const ask = async (message: string) => {
+    await userEvent.type(lyricInput(), message);
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+  };
+
+  it("never applies a reply to the lyrics by itself", async () => {
+    vi.mocked(api.assistLyrics).mockResolvedValue({
+      reply: "Here is an idea.",
+      suggestions: [{ id: "1", label: "Hook", text: "NEW LINE", action: "insert" }],
+    });
+    await renderStudio("lyrics");
+    const el = await notepad();
+    type(el, "my words");
+    await ask("help");
+    expect(await screen.findByText("Here is an idea.")).toBeInTheDocument();
+    expect(screen.getByText("NEW LINE")).toBeInTheDocument();
+    expect(viewOf(el).state.doc.toString()).toBe("my words");
+  });
+
+  it("keeps the lyric and song conversations apart", async () => {
+    vi.mocked(api.assistLyrics).mockResolvedValue({ reply: "Lyric reply.", suggestions: [] });
+    vi.mocked(api.sendChat).mockResolvedValue({ reply: "Song reply.", track: null });
+    await renderStudio("lyrics");
+    await notepad();
+    await ask("lyrics question");
+    expect(await screen.findByText("Lyric reply.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Assistant" }));
+    expect(screen.queryByText("Lyric reply.")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message the assistant" }), "song question");
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByText("Song reply.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Lyrics" }));
+    expect(screen.getByText("Lyric reply.")).toBeInTheDocument();
+    expect(screen.queryByText("Song reply.")).not.toBeInTheDocument();
+    expect(api.sendChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a reply that arrives after another song was opened", async () => {
+    let resolve!: (r: { reply: string; suggestions: [] }) => void;
+    vi.mocked(api.assistLyrics).mockReturnValue(new Promise((r) => (resolve = r)));
+    await library.create({ ...songOf(), name: "Alpha" });
+    await library.create({ ...songOf(), name: "Beta" });
+    localStorage.setItem(RIGHT_TAB_KEY, "lyrics");
+    render(<StudioPage library={library} />);
+    await notepad();
+    await ask("help");
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Songs" }));
+    const dialog = await screen.findByRole("dialog", { name: "Songs" });
+    const other = within(dialog)
+      .getAllByRole("button", { name: /^(Alpha|Beta)/ })
+      .find((b) => !b.hasAttribute("aria-current"))!;
+    await userEvent.click(other);
+    await waitFor(() => expect(screen.queryByText("Thinking…")).not.toBeInTheDocument());
+
+    await act(async () => resolve({ reply: "Late reply.", suggestions: [] }));
+    expect(screen.queryByText("Late reply.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the loading state and a disabled Send through a tab switch", async () => {
+    vi.mocked(api.assistLyrics).mockReturnValue(new Promise(() => {}));
+    await renderStudio("lyrics");
+    await notepad();
+    await ask("help");
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Assistant" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Lyrics" }));
+    await notepad();
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
+    await userEvent.type(lyricInput(), "second");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(api.assistLyrics).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the text back when a request fails after a tab switch", async () => {
+    let reject!: (e: Error) => void;
+    vi.mocked(api.assistLyrics).mockReturnValue(new Promise((_, r) => (reject = r)));
+    await renderStudio("lyrics");
+    await notepad();
+    await ask("help");
+    await userEvent.click(screen.getByRole("tab", { name: "Assistant" }));
+    await act(async () => reject(new api.ApiError("generation_failed", "x", 502)));
+    await userEvent.click(screen.getByRole("tab", { name: "Lyrics" }));
+    await notepad();
+    expect(lyricInput()).toHaveValue("help");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("leaves the conversation and lyrics unchanged when a request fails", async () => {
+    vi.mocked(api.assistLyrics).mockRejectedValue(new api.ApiError("generation_failed", "x", 502));
+    await renderStudio("lyrics");
+    const el = await notepad();
+    type(el, "kept");
+    await ask("help");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(lyricInput()).toHaveValue("help");
+    expect(screen.queryByRole("log", { name: "Lyric conversation" })).not.toBeInTheDocument();
     expect(viewOf(el).state.doc.toString()).toBe("kept");
   });
 });

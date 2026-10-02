@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "DraftSuggestion": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "insert adds the text at the cursor; replace_selection replaces the selected lyrics; replace_section replaces the body of one song section.",
+          "enum": [
+            "insert",
+            "replace_selection",
+            "replace_section"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "description": "A short title for the suggestion, at most 80 characters.",
+          "type": "string"
+        },
+        "section_id": {
+          "description": "The id of the section to replace; null unless the action is replace_section.",
+          "enum": [
+            "verse-1",
+            "chorus-1",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "The lyric text to add or substitute, at most 2000 characters, without section headings.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "label",
+        "section_id",
+        "text"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Your reply to the songwriter and up to five lyric suggestions.",
+  "properties": {
+    "reply": {
+      "description": "A short, friendly reply in plain text.",
+      "type": "string"
+    },
+    "suggestions": {
+      "description": "Up to five concrete lyric suggestions the songwriter can apply; empty when the reply alone is enough.",
+      "items": {
+        "$ref": "#/$defs/DraftSuggestion"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "reply",
+    "suggestions"
+  ],
+  "title": "LyricsDraft",
+  "type": "object"
+}

@@ -9,10 +9,15 @@ use std::path::{Path, PathBuf};
 use api::keys::{AiKeyEntry, AiKeySummary, AiProvider};
 use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
 use music::instruments::{InstrumentKind, PitchRange};
+use music::lyrics::{
+    LyricSelection, LyricSuggestion, LyricsAssistBody, LyricsAssistResponse, LyricsSectionContext,
+    LyricsSongContext, SuggestionAction,
+};
 use music::song::{
     AudioClip, ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect,
-    KeyMode, KeysSettings, LoopRegion, MeasureRegion, PadSettings, ReverbEffect, Sample,
-    SamplerSettings, Section, SectionKind, SongKey, Tone, Tonic, TrackSound,
+    KeyMode, KeysSettings, LoopRegion, LyricChatEntry, LyricChatSelection, MeasureRegion,
+    PadSettings, ReverbEffect, Sample, SamplerSettings, Section, SectionKind, SongKey,
+    StoredLyricSuggestion, Tone, Tonic, TrackSound,
 };
 use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
@@ -58,6 +63,16 @@ fn export_into(dir: &Path) {
     ChatRole::export_all(&cfg).unwrap();
     ChatEntry::export_all(&cfg).unwrap();
     Section::export_all(&cfg).unwrap();
+    LyricChatEntry::export_all(&cfg).unwrap();
+    LyricChatSelection::export_all(&cfg).unwrap();
+    StoredLyricSuggestion::export_all(&cfg).unwrap();
+    LyricsAssistBody::export_all(&cfg).unwrap();
+    LyricsSongContext::export_all(&cfg).unwrap();
+    LyricsSectionContext::export_all(&cfg).unwrap();
+    LyricSelection::export_all(&cfg).unwrap();
+    LyricsAssistResponse::export_all(&cfg).unwrap();
+    LyricSuggestion::export_all(&cfg).unwrap();
+    SuggestionAction::export_all(&cfg).unwrap();
     SectionKind::export_all(&cfg).unwrap();
     TrackSound::export_all(&cfg).unwrap();
     Tone::export_all(&cfg).unwrap();
