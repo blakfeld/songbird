@@ -18,7 +18,7 @@
 **Non-Goals:**
 - Any application tables. Those belong to the features that need them.
 - Data migration from SQLite to Postgres. Production starts on Postgres, and dev data is disposable. If that changes, a later change can add an export and import command.
-- Read replicas, multi-instance coordination, and backups. Those are operator concerns, to be documented later.
+- Read replicas, multi-instance coordination, and backups. Production backups are the managed Postgres provider's, set up in `add-vps-deployment`.
 
 ## Decisions
 
@@ -36,7 +36,7 @@ Use `sqlx::AnyPool` with `sqlx::any::install_default_drivers()`, built with the 
 - **SQLite:**
   - Connect options are `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout=5000`, and `synchronous=NORMAL`. They are applied via `after_connect` (`PRAGMA` statements), because `Any` connect options can't express SQLite-specific settings. `:memory:` is rejected in the service, because each pooled connection would see a different database.
   - Pool size defaults to `SONGBIRD_DATABASE_MAX_CONNECTIONS` for reads, but SQLite allows a single writer. Busy timeout plus WAL is enough at this scale, and no separate writer pool is added.
-- **Postgres:** TLS through rustls when the URL asks for it (`sslmode=require`).
+- **Postgres:** TLS through rustls when the URL asks for it. Production uses `sslmode=verify-full` with `sslrootcert=<provider CA>` (`add-vps-deployment`), because the managed database is reached over the internet and `require` alone doesn't check the server's identity. sqlx reads both parameters from the URL, so nothing here is production-specific.
 - **Errors:** `DbError` messages use a redacted URL (scheme, host, and database name only), so credentials never reach logs. The URL is held as `SecretString` in `Config`.
 
 ### D3. Two migration directories, checked for parity

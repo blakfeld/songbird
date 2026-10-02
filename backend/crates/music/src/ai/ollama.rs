@@ -250,14 +250,20 @@ mod tests {
 
     #[tokio::test]
     async fn server_down_names_the_url_and_suggests_starting_it() {
-        let server = MockServer::start().await;
-        let url = server.uri();
-        drop(server);
+        // A closed port can be reassigned to a parallel test's mock server, so hold the port
+        // and hang up on every connection instead.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                drop(socket);
+            }
+        });
         let provider = OllamaProvider::new(url.clone(), "m");
         let err = provider.check().await.unwrap_err();
         assert!(err.to_string().contains(&url));
         assert!(err.to_string().contains("ollama serve"));
         let err = provider.generate(&request()).await.unwrap_err();
-        assert!(matches!(err, ProviderError::Request(_)));
+        assert!(matches!(err, ProviderError::Request(_)), "{err:?}");
     }
 }

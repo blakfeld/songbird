@@ -147,6 +147,34 @@ describe("loading", () => {
   });
 });
 
+describe("new song", () => {
+  it("opens immediately without a dialog", async () => {
+    await renderStudio({ ...songWithDrumLoop(), name: "Existing" });
+    await userEvent.click(screen.getByRole("button", { name: "Songs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "New song" }));
+    expect(await screen.findByRole("button", { name: "Rename song Untitled song" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("4/4")).toBeInTheDocument();
+  });
+
+  it("creates one song when New song is double-clicked", async () => {
+    await renderStudio({ ...songWithDrumLoop(), name: "Existing" });
+    await userEvent.click(screen.getByRole("button", { name: "Songs" }));
+    await userEvent.dblClick(await screen.findByRole("button", { name: "New song" }));
+    await screen.findByRole("button", { name: "Rename song Untitled song" });
+    expect((await library.list()).map((e) => e.name).sort()).toEqual(["Existing", "Untitled song"]);
+  });
+
+  it("keeps default names distinct", async () => {
+    await library.create({ ...newSongWithTracks(), name: "Untitled song" });
+    await library.create({ ...newSongWithTracks(), name: "Untitled song 2" });
+    await renderStudio();
+    await userEvent.click(screen.getByRole("button", { name: "Songs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "New song" }));
+    expect(await screen.findByRole("button", { name: "Rename song Untitled song 3" })).toBeInTheDocument();
+  });
+});
+
 describe("song settings", () => {
   it("renames the song", async () => {
     await renderStudio();

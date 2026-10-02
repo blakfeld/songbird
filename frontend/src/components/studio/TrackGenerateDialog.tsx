@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { focusRing, inputClass } from "@/components/ui/classes";
 import { getSongLimits } from "@/lib/api";
 import { estimateTokens } from "@/lib/estimateTokens";
+import { isSubmitEnter } from "@/lib/isSubmitEnter";
 import { activeLoopRange, MAX_GENERATE_MEASURES } from "@/lib/song/songLoop";
 import { MEASURE_RANGE, type Song, type Track } from "@/lib/song/types";
 import { useApiResource } from "@/lib/useApiResource";
@@ -120,12 +121,22 @@ function GenerateForm({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="e.g. a walking bass that locks in with the kick"
-          aria-describedby="prompt-token-count"
+          onKeyDown={(e) => {
+            // Submitting through the form keeps the canSubmit guard in `submit` as the single decision point.
+            if (isSubmitEnter(e)) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          aria-describedby={`${id}-prompt-hint ${id}-token-count`}
           aria-invalid={overLimit}
           className={`${inputClass} h-auto w-full resize-y py-2`}
         />
       </Field>
-      <TokenCounter count={count} max={max} />
+      <p id={`${id}-prompt-hint`} className="text-xs text-zinc-600 dark:text-zinc-400">
+        Enter to generate · Shift+Enter for a new line
+      </p>
+      <TokenCounter id={`${id}-token-count`} count={count} max={max} />
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">Range</legend>
         {radio("song", `Whole song (${song.measures} ${song.measures === 1 ? "measure" : "measures"})`, wholeSongOffered)}

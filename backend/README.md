@@ -17,7 +17,13 @@ Request bodies are limited to 64 KiB; larger ones get the standard JSON
 
 ### `GET /healthz`
 
-`200 {"status":"ok"}`. Calls no external service.
+`200 {"status":"ok"}`. Calls no external service or the database, so it only
+says the process is alive.
+
+### `GET /readyz`
+
+`200 {"status":"ready"}` when a `SELECT 1` succeeds within 2 seconds, otherwise
+`503` with code `not_ready` and no database details. No authentication.
 
 ### `GET /api/v1/instruments`
 
@@ -219,6 +225,48 @@ The song document may carry a `chat` array of `{"role", "content", "track_id"?}`
 entries (at most 20, each at most 4000 characters), which the Studio saves with
 the song; export and generation ignore it.
 
+## Database
+
+The backend is chosen by the scheme of `SONGBIRD_DATABASE_URL`:
+
+| Setting | Meaning |
+|---|---|
+| unset or blank | SQLite at `./data/songbird.db`, created on first start |
+| `sqlite://path/to.db?mode=rwc` | SQLite at that path (`:memory:` is rejected) |
+| `postgres://user:password@host:5432/dbname` | Postgres (`postgresql://` also works) |
+| `SONGBIRD_DATABASE_MAX_CONNECTIONS` | pool size, 1-100, default 10 |
+
+Any other scheme stops startup with an error naming `SONGBIRD_DATABASE_URL`.
+The URL is treated as a secret and never logged; error messages show only the
+scheme, host, and database name.
+
+Pending migrations run before the server starts listening. A failed migration,
+or a database that has applied a migration this build does not know, stops
+startup and names the migration.
+
+SQLite is meant for development and single-user use. It runs in WAL mode with
+foreign keys on, and a single writer at a time. If it is used outside
+development, `/app/data` (or wherever the file lives) must be on persistent
+storage. Production should use Postgres; for a managed server add
+`?sslmode=verify-full&sslrootcert=/path/to/ca.pem` to the URL.
+
+To try Postgres locally:
+
+```sh
+just dev-pg       # starts Postgres in Docker and prints the URL
+export SONGBIRD_DATABASE_URL=postgres://songbird:songbird@localhost:5432/songbird
+just dev
+```
+
+With `docker compose`, SQLite on the `songbird-data` volume is the default. To
+use the bundled Postgres instead, run
+`SONGBIRD_COMPOSE_DATABASE_URL=postgres://songbird:songbird@postgres:5432/songbird docker compose --profile postgres up`.
+Compose reads that variable rather than `SONGBIRD_DATABASE_URL` because the
+`localhost` URL above would point the container at itself.
+
+The SQL conventions that keep one set of queries working on both backends are in
+`crates/api/src/db/README.md`.
+
 ## Choosing an AI provider
 
 Set `SONGBIRD_AI_PROVIDER`. The service checks the provider at startup and
@@ -327,6 +375,17 @@ timed each `curl`-style request end to end):
 
 `just test-backend` needs no key, server or model: Claude and Ollama are tested
 against `wiremock`, and Codex against `crates/music/tests/fixtures/fake_codex.sh`.
+
+Each integration test gets its own migrated database: a temporary SQLite file
+by default. To run them on Postgres instead, start it with `just dev-pg` and run
+
+```sh
+just test-backend-pg
+```
+
+which sets `SONGBIRD_TEST_POSTGRES_URL` and creates (then drops) one
+`songbird_test_*` database per test. Leftovers older than an hour from a
+crashed run are removed on the next run.
 
 Live tests are `#[ignore]`d and never run by `just test`:
 

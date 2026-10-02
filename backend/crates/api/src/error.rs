@@ -47,6 +47,9 @@ pub enum ApiError {
     /// Deliberately vague: the real cause may quote provider output.
     #[error("The AI provider could not produce a valid pattern. Please try again.")]
     GenerationFailed,
+    /// Deliberately vague: database errors can quote the connection URL.
+    #[error("The service is not ready to handle requests.")]
+    NotReady,
     #[error("Generation took too long and was cancelled. Please try again.")]
     GenerationTimeout,
     #[error("Too many generations are already running. Please try again shortly.")]
@@ -70,6 +73,7 @@ impl ApiError {
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
             Self::GenerationTimeout => StatusCode::GATEWAY_TIMEOUT,
             Self::GenerationBusy => StatusCode::SERVICE_UNAVAILABLE,
+            Self::NotReady => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -90,6 +94,7 @@ impl ApiError {
             Self::GenerationFailed => "generation_failed",
             Self::GenerationTimeout => "generation_timeout",
             Self::GenerationBusy => "generation_busy",
+            Self::NotReady => "not_ready",
         }
     }
 }

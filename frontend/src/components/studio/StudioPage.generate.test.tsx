@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -260,5 +260,123 @@ describe("generate a track", () => {
 
     const saved = await library.peek(song.id);
     expect(saved?.tracks.find((t) => t.instrument === "piano")?.sound).toEqual(sound);
+  });
+
+  describe("Enter in the prompt", () => {
+    const promptOf = (dialog: HTMLElement) => within(dialog).getByRole("textbox", { name: "Describe the part" });
+    // The shared fixtures have no Bass track; renaming the piano track keeps its mocked instrument.
+    const bassSong = () => {
+      const song = songOf(8);
+      song.tracks = song.tracks.map((t) => (t.instrument === "piano" ? { ...t, name: "Bass" } : t));
+      return song;
+    };
+    const closed = () =>
+      waitFor(() => expect(screen.queryByRole("textbox", { name: "Describe the part" })).not.toBeInTheDocument());
+
+    it("generates for the track with the typed prompt", async () => {
+      vi.mocked(api.generateTrack).mockResolvedValue(response());
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "walking bass{Enter}");
+      await closed();
+      await waitFor(() => expect(api.generateTrack).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(api.generateTrack).mock.calls[0][0]).toMatchObject({
+        prompt: "walking bass",
+        track_id: song.tracks.find((t) => t.name === "Bass")?.id,
+      });
+    });
+
+    it("adds a new line on Shift+Enter without generating", async () => {
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "walking bass{Shift>}{Enter}{/Shift}with fills");
+      expect(promptOf(dialog)).toHaveValue("walking bass\nwith fills");
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it("does nothing on an empty prompt", async () => {
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "{Enter}");
+      // An unchanged value shows preventDefault ran, so the guard, not a stray newline, kept the form from submitting.
+      expect(promptOf(dialog)).toHaveValue("");
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it("does nothing while the custom range is invalid", async () => {
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.click(within(dialog).getByRole("radio", { name: "Custom measures" }));
+      const start = within(dialog).getByRole("spinbutton", { name: "From measure" });
+      const end = within(dialog).getByRole("spinbutton", { name: "To measure" });
+      await userEvent.clear(start);
+      await userEvent.type(start, "5");
+      await userEvent.clear(end);
+      await userEvent.type(end, "2");
+      await userEvent.type(promptOf(dialog), "walking bass{Enter}");
+      expect(promptOf(dialog)).toHaveValue("walking bass");
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("end after the start");
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["isComposing is set", { isComposing: true }],
+      ["Safari reports keyCode 229 after compositionend", { isComposing: false, keyCode: 229 }],
+    ])("ignores the Enter that confirms IME composition when %s", async (_name, init) => {
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "walking bass");
+      // Enabled Generate means only the key handling can be what stops the submit.
+      expect(within(dialog).getByRole("button", { name: "Generate" })).toBeEnabled();
+      fireEvent.keyDown(promptOf(dialog), { key: "Enter", ...init });
+      expect(promptOf(dialog)).toHaveValue("walking bass");
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when the prompt is over the token limit", async () => {
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.click(promptOf(dialog));
+      await userEvent.paste("x".repeat(1100));
+      // "Too long" only renders once limits have loaded, so this pins the block on the token limit rather than loading.
+      expect(within(dialog).getByText(/Too long/)).toBeInTheDocument();
+      await userEvent.keyboard("{Enter}");
+      expect(promptOf(dialog)).toHaveValue("x".repeat(1100));
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it("does nothing while the limits are still loading", async () => {
+      vi.mocked(api.getSongLimits).mockReturnValue(new Promise(() => {}));
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "walking bass{Enter}");
+      expect(promptOf(dialog)).toHaveValue("walking bass");
+      expect(screen.getByRole("dialog", { name: "Generate Bass" })).toBeInTheDocument();
+      expect(api.generateTrack).not.toHaveBeenCalled();
+    });
+
+    it("submits from the To measure field", async () => {
+      vi.mocked(api.generateTrack).mockResolvedValue(response());
+      const song = bassSong();
+      await renderStudio(song);
+      const dialog = await openGenerate("Bass");
+      await userEvent.type(promptOf(dialog), "walking bass");
+      await userEvent.click(within(dialog).getByRole("radio", { name: "Custom measures" }));
+      await userEvent.type(within(dialog).getByRole("spinbutton", { name: "To measure" }), "{Enter}");
+      await closed();
+      await waitFor(() => expect(api.generateTrack).toHaveBeenCalledTimes(1));
+    });
   });
 });

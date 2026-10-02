@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
-import type { TimeSignature } from "@/generated/TimeSignature";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { Spinner } from "@/components/ui/Spinner";
@@ -9,9 +8,8 @@ import { focusRing } from "@/components/ui/classes";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import type { SongIndexEntry, SongLibrary } from "@/lib/song/songLibrary";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
-import { newSong, SONG_NAME_MAX, type Song } from "@/lib/song/types";
+import { newSong, SONG_NAME_MAX, uniqueUntitledName, type Song } from "@/lib/song/types";
 import { InlineNameInput } from "./InlineNameInput";
-import { NewSongDialog } from "./NewSongDialog";
 
 const iconButton = `inline-flex size-8 shrink-0 items-center justify-center rounded-md text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 ${focusRing}`;
 
@@ -35,7 +33,9 @@ export function SongLibraryMenu({
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // State updates lag a double click, so a ref is what actually blocks the second create.
+  const creatingRef = useRef(false);
   const [entries, setEntries] = useState<SongIndexEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -69,8 +69,28 @@ export function SongLibraryMenu({
             <h2 id={titleId} className="text-lg font-semibold">
               Songs
             </h2>
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              New song…
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={async () => {
+                if (creatingRef.current) return;
+                creatingRef.current = true;
+                setBusy(true);
+                try {
+                  // Saves are debounced and the shown list may be stale, so names come from a fresh flushed read.
+                  await library.flush();
+                  const names = (await library.list()).map((e) => e.name);
+                  const song = { ...newSong(), name: uniqueUntitledName(names) };
+                  await library.create(song);
+                  setOpen(false);
+                  onCreated(song);
+                } finally {
+                  creatingRef.current = false;
+                  setBusy(false);
+                }
+              }}
+            >
+              New song
             </Button>
           </div>
           {failed && (
@@ -171,16 +191,6 @@ export function SongLibraryMenu({
             <Button onClick={() => setOpen(false)}>Close</Button>
           </div>
         </div>
-        <NewSongDialog
-          open={creating}
-          onClose={() => setCreating(false)}
-          onCreate={async (name: string, ts: TimeSignature) => {
-            const song = { ...newSong(ts), name };
-            await library.create(song);
-            setOpen(false);
-            onCreated(song);
-          }}
-        />
         <ModalDialog
           open={deleting !== null}
           onClose={() => setDeleting(null)}

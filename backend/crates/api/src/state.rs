@@ -3,6 +3,7 @@ use std::sync::Arc;
 use music::InstrumentRegistry;
 
 use crate::config::Config;
+use crate::db::Db;
 use crate::provider::Providers;
 
 /// Handlers take everything from here so tests can swap in a fake provider
@@ -12,4 +13,5 @@ pub struct AppState {
     pub providers: Providers,
     pub instruments: InstrumentRegistry,
     pub config: Arc<Config>,
+    pub db: Db,
 }

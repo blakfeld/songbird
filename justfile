@@ -22,12 +22,21 @@ dev:
     (cd {{frontend}} && pnpm dev) &
     wait
 
+# Start a local Postgres in Docker and print the URL to export for `just dev`
+dev-pg:
+    docker compose --profile postgres up -d --wait postgres
+    @echo "export SONGBIRD_DATABASE_URL=postgres://songbird:songbird@localhost:5432/songbird"
+
 # Run all tests (Rust, Vitest, Playwright). Needs no API key.
 test: test-backend test-frontend test-e2e
 
 # Rust unit and integration tests
 test-backend:
     cd {{backend}} && cargo test --workspace
+
+# Rust tests with every database-backed test running on Postgres (needs `just dev-pg`)
+test-backend-pg:
+    cd {{backend}} && SONGBIRD_TEST_POSTGRES_URL="${SONGBIRD_TEST_POSTGRES_URL:-postgres://songbird:songbird@localhost:5432/postgres}" cargo test --workspace
 
 # Frontend unit tests (Vitest)
 test-frontend:
