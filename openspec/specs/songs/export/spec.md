@@ -133,7 +133,7 @@ The Studio page SHALL provide a "Download project" action. It SHALL save the ope
 - **THEN** a file `late-train.songbird.json` is saved whose `format` is `"songbird-song"`, whose `version` is 1, and whose `song` equals the open song
 
 ### Requirement: Project file import
-The Studio page SHALL provide an "Open project" action that accepts a `.songbird.json` file of at most 5 MB, validates it, and adds it to the browser song library as a new song, then opens it. The file SHALL be rejected, with a message stating the reason and without changing the library, when:
+The Studio page SHALL provide an "Open project" action that accepts a `.songbird.json` file of at most 5 MB, validates it, and adds it to the signed-in user's projects as a new project (see `songs/project-storage`), then opens it. The file SHALL be rejected, with a message stating the reason and without changing the library, when:
 - it is not valid JSON, or its `format` is not `"songbird-song"`;
 - its project-file `version` is newer than the version this app supports;
 - its song document cannot be opened by the song library, including when its loops and clips break the song document's rules;
@@ -144,10 +144,10 @@ A song document from an older song `version` SHALL be converted exactly as the s
 
 Fields of the song document that this app does not recognise SHALL NOT cause rejection and SHALL be kept unchanged, because later versions add optional fields without changing `version`. The `version` SHALL only increase for a change that older apps cannot read correctly.
 
-If the file's song `id` already exists in the library, the imported song SHALL receive a new id so that both are kept. No data SHALL be sent to the server for storage during import.
+The imported song SHALL always receive a new id from the server, so that it never replaces an existing project. The file SHALL be checked in the browser before anything is sent to the server. If the server then refuses the song, the import SHALL fail with the server's message, and the library SHALL be unchanged.
 
 #### Scenario: Round trip
-- **WHEN** the user downloads a project and then opens that file in another browser
+- **WHEN** the user downloads a project and then opens that file while signed in to another account
 - **THEN** the song opens with identical name, settings, tracks, loops, clips, and mixer values
 
 #### Scenario: Newer version rejected
@@ -167,5 +167,5 @@ If the file's song `id` already exists in the library, the imported song SHALL r
 - **THEN** the import is rejected with a message naming `theremin`
 
 #### Scenario: Duplicate id kept separately
-- **WHEN** the user opens a project whose song id matches a song already in the library
+- **WHEN** the user opens a project file whose song id matches a project already in their library
 - **THEN** the library contains both songs, and the imported one has a new id

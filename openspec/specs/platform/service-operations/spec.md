@@ -28,9 +28,14 @@ The service SHALL read its configuration from environment variables, optionally 
 - maximum context tokens for song track generation (`SONGBIRD_MAX_CONTEXT_TOKENS`, default 4000, allowed 0–32000);
 - allowed frontend origins;
 - the database URL (`SONGBIRD_DATABASE_URL`, optional, default SQLite at `./data/songbird.db`, treated as a secret because it may contain a password);
-- the maximum number of database connections (`SONGBIRD_DATABASE_MAX_CONNECTIONS`, default 10, allowed 1–100).
+- the maximum number of database connections (`SONGBIRD_DATABASE_MAX_CONNECTIONS`, default 10, allowed 1–100);
+- whether the session cookie is `Secure` (`SONGBIRD_COOKIE_SECURE`, default `true`);
+- the session idle lifetime in hours (`SONGBIRD_SESSION_IDLE_HOURS`, default 168, allowed 1–720);
+- whether to take the client address from `X-Forwarded-For` for login throttling (`SONGBIRD_TRUST_PROXY`, default `false`), to be enabled only when the outermost proxy replaces any client-supplied `X-Forwarded-For`;
+- the per-user limit on AI generation requests per minute (`SONGBIRD_AI_REQUESTS_PER_MINUTE`, default 10, allowed 1–600);
+- the per-user limit on AI generation requests per UTC day (`SONGBIRD_AI_REQUESTS_PER_DAY`, default 200, allowed 1–100000).
 
-Invalid or missing required configuration SHALL cause startup to fail with a message naming the offending setting. Secrets SHALL NOT be written to logs.
+Invalid or missing required configuration SHALL cause startup to fail with a message naming the offending setting. Startup SHALL also fail, naming both settings, when `SONGBIRD_COOKIE_SECURE` is `false` and any allowed frontend origin starts with `https://`, because a deployment served over https must not send its session cookie without `Secure`. When `SONGBIRD_TRUST_PROXY` is `false` and any allowed frontend origin starts with `https://`, the service SHALL log a warning at startup that login throttling will see the proxy's address for every client. Secrets SHALL NOT be written to logs.
 
 #### Scenario: Missing required setting
 - **WHEN** the service starts with an AI provider that requires an API key and the key is unset
@@ -47,6 +52,22 @@ Invalid or missing required configuration SHALL cause startup to fail with a mes
 #### Scenario: Pool size out of range
 - **WHEN** the service starts with `SONGBIRD_DATABASE_MAX_CONNECTIONS=0`
 - **THEN** the process exits non-zero and the error names `SONGBIRD_DATABASE_MAX_CONNECTIONS`
+
+#### Scenario: Session lifetime out of range
+- **WHEN** the service starts with `SONGBIRD_SESSION_IDLE_HOURS=1000`
+- **THEN** the process exits non-zero and the error names `SONGBIRD_SESSION_IDLE_HOURS`
+
+#### Scenario: Insecure cookie with an https origin
+- **WHEN** the service starts with `SONGBIRD_COOKIE_SECURE=false` and `SONGBIRD_CORS_ORIGINS=https://songbird.example`
+- **THEN** the process exits non-zero and the error names `SONGBIRD_COOKIE_SECURE` and `SONGBIRD_CORS_ORIGINS`
+
+#### Scenario: Untrusted proxy warned about
+- **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=false` and `SONGBIRD_CORS_ORIGINS=https://songbird.example`
+- **THEN** it starts, and logs a warning naming `SONGBIRD_TRUST_PROXY`
+
+#### Scenario: AI limit out of range
+- **WHEN** the service starts with `SONGBIRD_AI_REQUESTS_PER_MINUTE=0`
+- **THEN** the process exits non-zero and the error names `SONGBIRD_AI_REQUESTS_PER_MINUTE`
 
 ### Requirement: Cross-origin access for the frontend
 The service SHALL permit browser requests from configured frontend origins and SHALL reject cross-origin requests from other origins.
@@ -71,7 +92,7 @@ All API error responses SHALL be JSON of the form `{"error": {"code": "<machine_
 - **THEN** the response is `400` with error code `invalid_json` in the standard error shape
 
 ### Requirement: Request size limit
-The service SHALL reject request bodies larger than 64 KiB with status `413`, except for routes under `/api/v1/songs/` and `/api/v1/lyrics/`, which SHALL accept bodies up to 2 MiB and reject larger bodies with status `413`. Every `413` response SHALL use the standard error shape with error code `payload_too_large`.
+The service SHALL reject request bodies larger than 64 KiB with status `413`, except for routes under `/api/v1/songs/`, `/api/v1/lyrics/`, and `/api/v1/projects`, which SHALL accept bodies up to 2 MiB and reject larger bodies with status `413`. Every `413` response SHALL use the standard error shape with error code `payload_too_large`.
 
 #### Scenario: Oversized body
 - **WHEN** a client posts a 1 MiB body to `/api/v1/patterns/generate`
@@ -84,3 +105,58 @@ The service SHALL reject request bodies larger than 64 KiB with status `413`, ex
 #### Scenario: Oversized song rejected
 - **WHEN** a client posts a 3 MiB body to `/api/v1/songs/export/midi`
 - **THEN** the response is `413` with error code `payload_too_large`
+
+#### Scenario: Large project saved
+- **WHEN** a signed-in client saves a valid song of about 1.9 MiB with `PUT /api/v1/projects/{id}`
+- **THEN** the request is not rejected for size
+
+### Requirement: Per-user AI usage limits
+Every endpoint that calls an AI provider SHALL be limited per signed-in user, by the configured requests per minute and requests per UTC day. That covers `POST /api/v1/patterns/generate`, `POST /api/v1/songs/tracks/generate`, `POST /api/v1/songs/chat`, and any lyrics or chords generation endpoint added later. A request over either limit SHALL be refused with `429`, code `too_many_requests`, and a `Retry-After` header, and SHALL NOT call the provider. A request SHALL count toward the limits whether or not the provider call then succeeds. The daily count SHALL survive a service restart. One user's usage SHALL NOT affect another's.
+
+#### Scenario: Daily quota spent
+- **WHEN** a user has made as many generation requests today as `SONGBIRD_AI_REQUESTS_PER_DAY` allows and posts to `/api/v1/songs/chat`
+- **THEN** the response is `429` with code `too_many_requests` and a `Retry-After` header, and no provider is called
+
+#### Scenario: Burst limited
+- **WHEN** a user sends one more generation request within a minute than `SONGBIRD_AI_REQUESTS_PER_MINUTE` allows
+- **THEN** that request gets `429` with a `Retry-After` header
+
+#### Scenario: Quota survives a restart
+- **WHEN** a user has spent the daily quota and the service restarts the same day
+- **THEN** the user's next generation request still gets `429`
+
+#### Scenario: Users limited separately
+- **WHEN** user A has spent the daily quota and user B makes a generation request
+- **THEN** user B's request is served
+
+### Requirement: Security response headers
+Every response from `/api/v1` SHALL carry `Cache-Control: no-store`, including error responses. Every page and asset served by the frontend SHALL carry:
+- a `Content-Security-Policy` that allows scripts, styles, connections, and workers only from the site itself (plus inline scripts and styles and `blob:`/`data:` media where the app needs them), allows no plugins, and includes `frame-ancestors 'none'`;
+- `X-Frame-Options: DENY`;
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: same-origin`.
+
+These headers SHALL be set by the application, so that they apply in every way it is run, not only behind the production proxy.
+
+#### Scenario: API responses not cached
+- **WHEN** a signed-in client requests `GET /api/v1/projects`
+- **THEN** the response has `Cache-Control: no-store`
+
+#### Scenario: Pages cannot be framed
+- **WHEN** a client requests `/studio`
+- **THEN** the response has `X-Frame-Options: DENY` and a `Content-Security-Policy` containing `frame-ancestors 'none'`
+
+#### Scenario: Headers present without the production proxy
+- **WHEN** a client requests `/login` from the docker-compose stack
+- **THEN** the response has `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
+
+### Requirement: Request logging protects credentials
+Request logs SHALL NOT contain request or response headers, passwords, or session tokens. After a request is authenticated, its log records SHALL carry the user's id and SHALL NOT carry the user's email. A failed login SHALL be logged with the client address and a one-way hash of the normalised email instead of the email itself.
+
+#### Scenario: Authenticated request traced by user id
+- **WHEN** a signed-in user requests `GET /api/v1/projects` while logs are captured
+- **THEN** the request's log records include that user's id and do not include their email
+
+#### Scenario: Failed login logged without the email
+- **WHEN** a login for `ana@example.com` fails while logs are captured
+- **THEN** a log line records the failure with the client address, and no log line contains `ana@example.com` or the submitted password
