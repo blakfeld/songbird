@@ -52,7 +52,7 @@ Prerequisite: `add-user-accounts` (and so `add-database-foundation`) is merged. 
 
 ## 8. Frontend
 
-- [ ] 8.1 Get a `ui-designer` spec for the `/settings/ai-keys` page, the `AiKeyGate` notice, and the error action link. Verify that the spec is recorded in the PR description.
+- [x] 8.1 Get a `ui-designer` spec for the `/settings/ai-keys` page, the `AiKeyGate` notice, and the error action link. Verify that the spec is recorded in the PR description.
 - [x] 8.2 Add the `lib/api.ts` calls and messages (D10): `getAiKeys`, `saveAiKey`, `removeAiKey`, `setAiProvider`, the new `USER_MESSAGES`, and the readable codes. Verify with `api.test.ts` cases for each code's message.
 - [x] 8.3 Add the `AiKeysProvider` context, and call `refresh()` on any `api_key_*` error in `useTrackGeneration`, `useChat`, and `PromptForm`. Verify with Vitest that a mocked `api_key_required` response triggers a summary refetch.
 - [x] 8.4 Add `AiKeyGate` around Generate in `PromptForm`, track generation in `TrackGenerateDialog`, and send in `AssistantPanel`. Add an `action` link to `ErrorAlert`. Verify with Vitest for each control: disabled with a settings link when keys are required and none is active, and enabled when `keys_required` is false.
@@ -67,5 +67,5 @@ Prerequisite: `add-user-accounts` (and so `add-database-foundation`) is merged. 
 ## 10. Docs and deployment follow-up
 
 - [x] 10.1 Document per-user keys in the README: `SONGBIRD_ENV`, generating and storing the keyring separately from database backups, rotate and purge, master-key loss (A6), and backup retention of ciphertext (A7). Verify that the documented commands run as written against a local SQLite database.
-- [ ] 10.2 Leave a follow-up for `add-vps-deployment`, as a PR note or issue, without editing that change. It needs to: drop `ANTHROPIC_API_KEY` and `SONGBIRD_AI_PROVIDER` from the deploy `.env.example` and D8 env list; add `SONGBIRD_MASTER_KEYS` and `SONGBIRD_OPENAI_MODEL`; hard-set `SONGBIRD_ENV: production` under the backend's compose `environment:`; and replace the "Anthropic spend limit" README section with the per-user key note and a step to revoke the old operator key. Verify that the note is filed and linked from this change's PR.
+- [x] 10.2 Leave a follow-up for `add-vps-deployment`, as a PR note or issue, without editing that change. It needs to: drop `ANTHROPIC_API_KEY` and `SONGBIRD_AI_PROVIDER` from the deploy `.env.example` and D8 env list; add `SONGBIRD_MASTER_KEYS` and `SONGBIRD_OPENAI_MODEL`; hard-set `SONGBIRD_ENV: production` under the backend's compose `environment:`; and replace the "Anthropic spend limit" README section with the per-user key note and a step to revoke the old operator key. Verify that the note is filed and linked from this change's PR.
 - [x] 10.3 Run `just lint` and `just test`, then run `code-reviewer` on the full branch, and verify that both commands pass and that no review findings are left open.
