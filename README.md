@@ -144,6 +144,65 @@ addresses, so you can open it from another device on your LAN. To reach it by
 another hostname, such as a tunnel, list it in `SONGBIRD_DEV_ORIGINS`
 (comma-separated).
 
+## Recording audio in the Studio
+
+An audio track can record a microphone or an audio interface as well as play
+imported samples. Add one from **Add track**, then select it and press
+**Record**: Songbird counts in one bar (if Count-in is on), records until you
+press Record again, and puts the take on the track as a clip. Recording needs
+HTTPS or `localhost`, and a current Chrome, Edge, Firefox, or Safari. Undo
+removes a whole take in one step.
+
+**Choosing an input.** The third row of an audio track's header starts with the
+input button, named `Input for <track>`. Before the browser has been asked, it
+reads **Allow mic**; opening it (or pressing Record) shows the browser's
+permission prompt. Once allowed, it lists your devices:
+
+- **Device**: the system default, or a specific microphone or interface. The
+  choice is remembered for that track in this browser only, never in the song.
+  If a remembered device is unplugged, the track uses the default input and
+  says so, and goes back to the device when you plug it in.
+- **Channels**: **Mono** records input 1; **Stereo** records inputs 1 and 2.
+  Stereo is unavailable on a one-channel input.
+- The level meter beside the button shows the input while the track is
+  selected. If the input ever reaches full scale, the small indicator beside
+  it stays lit until you click it. Turn down the gain on your microphone or
+  interface when it lights.
+
+If the browser says **Blocked**, microphone access was refused for this site.
+In Chrome, click the site settings icon at the left of the address bar, set
+**Microphone** to **Allow**, then choose **Try again** in the input popover. In
+Safari, open **Safari > Settings > Websites > Microphone** (or **Settings for
+This Website** in the same menu), set this site to **Allow**, then choose
+**Try again**. Everything except recording keeps working while it is blocked.
+
+**Monitoring.** The headphones button (**Monitor**) plays your input back
+through the track's effects, volume, and pan, even while stopped; Mute silences
+it. The first time you turn it on, Songbird asks you to wear headphones:
+through speakers, the microphone hears itself and feeds back loudly. The take
+you record is always the dry input, without the track's effects.
+
+**Recording offset.** Browsers report how late audio arrives, and Songbird
+compensates for it, but a particular setup can still land a little early or
+late. The input popover has a **Recording offset** setting, from -200 to +200
+ms, that applies to every track. To set it:
+
+1. Wearing headphones, turn on the Metronome and record a few claps exactly on
+   the beat.
+2. Zoom in on the clip's waveform and see how far each clap sits from the beat
+   line. If the claps are late, raise the offset by that many milliseconds; if
+   they are early, lower it.
+3. Record again to check, and repeat until the claps sit on the beat.
+
+Changing the offset only affects new takes. Takes you have already recorded do
+not move.
+
+**Takes.** Each recording is kept as a take. With looping on, every pass of the
+loop is its own take, and the clip plays the last one. Select a clip to see the
+track's takes in its panel: switch the clip to another take, rename a take,
+delete takes no clip uses, or add a take to the Samples library to use it in
+other songs.
+
 ## Importing the MIDI file into Logic Pro
 
 Click **Download MIDI**, then drag the `.mid` file onto the Logic Pro tracks

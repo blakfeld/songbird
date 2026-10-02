@@ -11,7 +11,19 @@ export type Sample = {
  */
 id: string, name: string, sample_rate: number, channels: number, length_samples: number, 
 /**
- * Open on purpose so later changes can add origins such as recordings
- * without a document version bump; `"import"` is the only one so far.
+ * Open on purpose so later changes can add origins without a document
+ * version bump; `"import"` and `"recording"` are the ones so far.
  */
-origin: string, };
+origin: string, 
+/**
+ * Names the audio track a take was recorded on, so a track's takes can be
+ * listed and capped. Only recordings carry it; an import belongs to the
+ * song, and allowing it there would make the document ambiguous.
+ */
+track_id?: string, 
+/**
+ * Song position of the take's first frame, so a take swapped onto a clip
+ * can play what was recorded at the clip's own song time. Only
+ * recordings carry it; an import has no song position.
+ */
+recorded_at_ticks?: number, };

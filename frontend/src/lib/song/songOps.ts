@@ -7,8 +7,15 @@ import type { Note } from "@/generated/Note";
 import type { TrackSound } from "@/generated/TrackSound";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
-import { TICKS_PER_SECOND_PER_BPM, TICKS_PER_SIXTEENTH, clipEndMeasure, clipsOverlap, sampleMap } from "./audioTiming";
-import { usesDrumTone } from "./sampler";
+import {
+  RECORDING_ORIGIN,
+  TICKS_PER_SECOND_PER_BPM,
+  TICKS_PER_SIXTEENTH,
+  clipEndMeasure,
+  clipsOverlap,
+  sampleMap,
+} from "./audioTiming";
+import { samplerSampleIds, usesDrumTone } from "./sampler";
 import { songLoop, withSongLoop } from "./songLoop";
 import {
   LOOP_NAME_MAX,
@@ -161,9 +168,21 @@ export function addChatTrack(
   return { song: normalizeSong({ ...song, tracks: [...song.tracks, track] }), trackId: track.id };
 }
 
+// A take names the track it was recorded on, and a song whose take names a missing track is rejected whole. So the
+// takes go with their track unless a clip or pad on another track still uses one, which then becomes a plain sample.
 export function deleteTrack(song: Song, trackId: string): Song {
   if (!song.tracks.some((t) => t.id === trackId)) return song;
-  return normalizeSong({ ...song, tracks: song.tracks.filter((t) => t.id !== trackId) });
+  const tracks = song.tracks.filter((t) => t.id !== trackId);
+  const used = new Set(tracks.flatMap((t) => [...(t.audio_clips ?? []).map((c) => c.sample_id), ...samplerSampleIds(t)]));
+  const samples = song.samples?.flatMap((s) => {
+    if (s.origin !== RECORDING_ORIGIN || s.track_id !== trackId) return [s];
+    if (!used.has(s.id)) return [];
+    const kept: Record<string, unknown> = { ...s, origin: "import" };
+    delete kept.track_id;
+    delete kept.recorded_at_ticks;
+    return [kept as unknown as typeof s];
+  });
+  return normalizeSong({ ...song, tracks, ...(samples ? { samples } : {}) });
 }
 
 export function moveTrack(song: Song, trackId: string, toIndex: number): Song {

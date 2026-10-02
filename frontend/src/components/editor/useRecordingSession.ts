@@ -7,8 +7,8 @@ import { useMetronomeSettings } from "@/lib/audio/useMetronomeSettings";
 import type { LoopSetting } from "@/lib/loopRegion";
 import type { MidiAccess } from "@/lib/midi/access";
 import { createInputRouter, type InputRouter, type LiveTarget } from "@/lib/recording/router";
-import type { TakeTarget } from "@/lib/recording/take";
-import { SOUND_BLOCKED, takeEndedMessage, takeStartedMessage } from "./recordingMessages";
+import type { AudioTakeOutcome, TakeTarget } from "@/lib/recording/take";
+import { SOUND_BLOCKED, audioTakeMessage, takeEndedMessage, takeStartedMessage } from "./recordingMessages";
 import { useMidiState } from "./useMidiState";
 import { useRecordControl, type RecordingState } from "./useRecordControl";
 
@@ -20,11 +20,16 @@ interface Options {
   stepsPerMeasure: number;
   // Must be referentially stable between real changes: a new object re-prepares the live voice.
   liveTarget: LiveTarget | null;
-  // Called when a take starts, so a page can pick its target (such as the selected track) at that moment.
-  createTarget: () => TakeTarget | null;
+  // Called when a take starts, so a page can pick its target (such as the selected track) at that moment. An audio
+  // take is asynchronous because opening its input may need the user's permission, and a refusal carries its reason.
+  createTarget: () => TakeTarget | null | Promise<{ target: TakeTarget } | { reason: string }>;
   onAnnounce: (msg: string) => void;
   midi?: MidiAccess;
   blockedReason?: string | null;
+  needsMidi?: boolean;
+  // Cleared when a take starts, so an old failure does not outlive the next attempt.
+  onError?: (message: string | null) => void;
+  onBlocked?: (reason: string) => void;
   // From useTakeFinalizer; lets the take end before the page's other teardown runs.
   finalizer?: RefObject<(() => void) | null>;
 }
@@ -50,6 +55,8 @@ export function useRecordingSession(options: Options) {
   // Read when the engine plays, because starting consumes a pending seek and the announcement must still name its bar.
   const plannedBar = useRef(1);
   const soundHinted = useRef(false);
+  // Bumped whenever the router is torn down, so a take prepared before that is never started on a new one.
+  const epoch = useRef(0);
   // Play loads asynchronously, so "not playing" only means "ended" once it has been seen playing.
   const sawPlaying = useRef(false);
   const lastStep = useRef<number | null>(null);
@@ -81,6 +88,7 @@ export function useRecordingSession(options: Options) {
     const { finalizer } = latest.current;
     if (finalizer) finalizer.current = () => void created.endTake();
     return () => {
+      epoch.current += 1;
       if (finalizer) finalizer.current = null;
       // Disposing commits the take, so the phase has to leave "recording" with it or a new router inherits a take it never began.
       created.dispose();
@@ -114,10 +122,9 @@ export function useRecordingSession(options: Options) {
     };
   }, [engine, liveTarget, granted]);
 
-  const begin = useCallback((): boolean => {
-    const { createTarget, loop, measures, stepsPerMeasure } = latest.current;
-    const target = createTarget();
-    if (!target || !router.current) return false;
+  const begin = useCallback((target: TakeTarget): boolean => {
+    const { loop, measures, stepsPerMeasure } = latest.current;
+    if (!router.current) return false;
     const region = loop.enabled ? loop.region : null;
     router.current.startTake(target, {
       range: {
@@ -132,6 +139,16 @@ export function useRecordingSession(options: Options) {
   const finish = useCallback(() => {
     const summary = router.current?.endTake() ?? { recorded: 0, dropped: {} };
     setPhase("idle");
+    if (summary.settled) {
+      // Storing the audio outlasts the take, so the result is announced when it lands.
+      void summary.settled.then((outcome: AudioTakeOutcome) => {
+        const message = audioTakeMessage(outcome);
+        latest.current.onAnnounce(message);
+        // A failed save loses a performance, which a line in the status region is too easy to miss.
+        if (outcome.kind === "failed") latest.current.onError?.(message);
+      });
+      return;
+    }
     const clipLimit = summary.dropped["clip-limit"];
     const loopLimit = summary.dropped["loop-limit"];
     const noRoom = summary.dropped["no-room"];
@@ -150,13 +167,21 @@ export function useRecordingSession(options: Options) {
     engine.stop();
   }, [abandon, engine]);
 
-  const start = useCallback(() => {
+  const go = useCallback((target: TakeTarget) => {
     const { onAnnounce, playback: pb, countIn: wantCountIn, stepsPerMeasure } = latest.current;
-    plannedBar.current = engine.startMeasure();
-    const current = phase.current;
-    if (current === "counting-in") return cancel();
-    if (current === "recording") return finish();
-    if (!begin()) return;
+    if (!begin(target)) {
+      // An audio target already holds the microphone, which only discarding gives back.
+      target.discard();
+      return;
+    }
+    latest.current.onError?.(null);
+    // A take that hits a limit cannot stop the transport itself, so it asks here and keeps what it recorded.
+    target.onLimit?.((limit) => {
+      if (phase.current === "idle") return;
+      finish();
+      // A seek ends the take but not the playback the user just moved.
+      if (limit !== "seek") engine.stop();
+    });
     if (pb.isPlaying) {
       sawPlaying.current = true;
       setPhase("recording");
@@ -174,7 +199,32 @@ export function useRecordingSession(options: Options) {
       onAnnounce(takeStartedMessage(plannedBar.current));
       void engine.play();
     }
-  }, [begin, cancel, finish, engine, setPhase]);
+  }, [begin, finish, engine, setPhase]);
+
+  const preparing = useRef(false);
+  const start = useCallback(() => {
+    plannedBar.current = engine.startMeasure();
+    const current = phase.current;
+    if (current === "counting-in") return cancel();
+    if (current === "recording") return finish();
+    const created = latest.current.createTarget();
+    if (!created) return;
+    if (!("then" in created)) return go(created);
+    // A second press while the browser asks for the microphone must not start a second take.
+    if (preparing.current) return;
+    preparing.current = true;
+    const mine = epoch.current;
+    void created
+      .then((result) => {
+        if ("reason" in result) return latest.current.onAnnounce(result.reason);
+        // The page may have gone, or its router been replaced, while the browser asked for the microphone.
+        if (mine !== epoch.current) result.target.discard();
+        else go(result.target);
+      })
+      .finally(() => {
+        preparing.current = false;
+      });
+  }, [cancel, finish, go, engine]);
 
   useEffect(
     () =>
@@ -228,6 +278,8 @@ export function useRecordingSession(options: Options) {
     onAnnounce: options.onAnnounce,
     midi: options.midi,
     blockedReason: options.blockedReason,
+    needsMidi: options.needsMidi,
+    onBlocked: options.onBlocked,
   });
 
   return {

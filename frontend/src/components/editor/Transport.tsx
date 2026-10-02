@@ -56,6 +56,9 @@ interface Props {
   // Injectable so tests can drive a fake; defaults to the shared browser singleton.
   midi?: MidiAccess;
   recordBlockedReason?: string | null;
+  // False for a track that records from an audio input, so Record does not wait for a keyboard.
+  recordNeedsMidi?: boolean;
+  onRecordBlocked?: (reason: string) => void;
 }
 
 function PositionReadout({
@@ -109,6 +112,8 @@ export function Transport({
   onAnnounce,
   midi,
   recordBlockedReason,
+  recordNeedsMidi,
+  onRecordBlocked,
 }: Props) {
   const id = useId();
   const loading = playback.status === "loading";
@@ -120,6 +125,8 @@ export function Transport({
     onAnnounce,
     midi,
     blockedReason: recordBlockedReason,
+    needsMidi: recordNeedsMidi,
+    onBlocked: onRecordBlocked,
   });
   const counting = recording === "counting-in";
   const armed = recording !== "idle";

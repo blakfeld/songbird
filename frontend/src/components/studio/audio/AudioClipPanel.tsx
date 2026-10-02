@@ -22,6 +22,7 @@ import { loopColour } from "../loopPalette";
 import type { AudioActions } from "../useAudioActions";
 import { AudioClipMenuItems } from "./AudioClipMenu";
 import { canDuplicate } from "./AudioClipLane";
+import { TakesList } from "./TakesList";
 
 const MAX_KNOB_FADE_S = 30;
 const MIN_FADE_S = 0.001;
@@ -141,6 +142,7 @@ export function AudioClipPanel({
           >
             {(close) => (
               <AudioClipMenuItems
+                song={song}
                 trackId={track.id}
                 clip={clip}
                 actions={actions}
@@ -232,6 +234,7 @@ export function AudioClipPanel({
           Replace sample…
         </Button>
       </div>
+      <TakesList song={song} track={track} clip={clip} actions={actions} />
     </div>
   );
 }

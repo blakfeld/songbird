@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Sample } from "@/generated/Sample";
 import * as ops from "./audioClipOps";
+import { addSamplerTrack, assignPad } from "./samplerOps";
 import { clipSampleName } from "@/lib/audio/sampleLibrary";
 import { toSample } from "@/components/studio/useAudioActions";
 import { audioProblem } from "./audioValidation";
-import { addTrack, setSound, setTempo, setTimeSignature } from "./songOps";
+import { addTrack, deleteTrack, setSound, setTempo, setTimeSignature } from "./songOps";
 import { createSongStore } from "./songStore";
 import { newSong, type Song } from "./types";
 
@@ -37,6 +38,151 @@ const done = (r: ops.AudioOpResult) => {
 };
 
 const clipOf = (song: Song, id: string) => song.tracks[0].audio_clips!.find((c) => c.id === id)!;
+
+describe("replacing a span", () => {
+  it("Punch in over an earlier take: keeps the audio on both sides of the punch", () => {
+    const { song, trackId } = start();
+    const placed = place(song, trackId, sample("take", 8), 1);
+    const r = done(ops.replaceSpan(placed.song, trackId, 2 * MEASURE, 4 * MEASURE));
+    const clips = r.song!.tracks[0].audio_clips!;
+    expect(clips).toHaveLength(2);
+    expect(clips[0]).toMatchObject({ id: placed.id, start_ticks: 0, offset_samples: 0, length_samples: 2 * M_SAMPLES, slice_samples: 2 * M_SAMPLES });
+    expect(clips[1]).toMatchObject({
+      start_ticks: 4 * MEASURE,
+      offset_samples: 4 * M_SAMPLES,
+      length_samples: 4 * M_SAMPLES,
+      slice_samples: 4 * M_SAMPLES,
+    });
+    expect(clips[1].id).not.toBe(placed.id);
+  });
+
+  it("removes a clip the span covers and trims one it only overlaps", () => {
+    const { song, trackId } = start();
+    const a = place(song, trackId, sample("a"), 2);
+    const b = place(a.song, trackId, sample("b", 2), 3);
+    const r = done(ops.replaceSpan(b.song, trackId, MEASURE, 3 * MEASURE));
+    const clips = r.song!.tracks[0].audio_clips!;
+    expect(clips.map((c) => c.id)).toEqual([b.id]);
+    expect(clips[0]).toMatchObject({ start_ticks: 3 * MEASURE, offset_samples: M_SAMPLES, length_samples: M_SAMPLES });
+  });
+
+  it("leaves clips outside the span, touching ones included", () => {
+    const { song, trackId } = start();
+    const a = place(song, trackId, sample("a"), 1);
+    expect(done(ops.replaceSpan(a.song, trackId, MEASURE, 2 * MEASURE)).song).toBe(a.song);
+  });
+});
+
+describe("takes", () => {
+  const take = (id: string, trackId: string): Sample => ({ ...sample(id, 1, `Take ${id}`), origin: "recording", track_id: trackId, recorded_at_ticks: 0 });
+
+  function withTakes() {
+    const { song, trackId } = start();
+    const samples = [take("a", trackId), take("b", trackId), sample("imported")];
+    const placed = place({ ...song, samples }, trackId, samples[1], 1);
+    return { song: placed.song, trackId, clipId: placed.id };
+  }
+
+  it("lists a track's takes newest first and leaves imports out", () => {
+    const { song, trackId } = withTakes();
+    expect(ops.takesOf(song, trackId).map((s) => s.id)).toEqual(["b", "a"]);
+    expect(ops.usesOf(song, "b")).toEqual({ clips: 1, pads: 0 });
+    expect(ops.usesOf(song, "a")).toEqual({ clips: 0, pads: 0 });
+  });
+
+  it("deletes unused takes only, and refuses the whole request when a clip plays one", () => {
+    const { song, trackId } = withTakes();
+    expect(ops.deleteTakes(song, trackId, ["a", "b"])).toEqual({ song: null, reason: "in-use" });
+    const done = ops.deleteTakes(song, trackId, ["a"]);
+    expect(done.song?.samples?.map((s) => s.id)).toEqual(["b", "imported"]);
+    expect(ops.deleteTakes(song, trackId, ["imported"])).toEqual({ song: null, reason: "not-found" });
+  });
+
+  it("Delete a track with takes: its unused takes go, one a clip elsewhere plays becomes an import, and the song stays valid", () => {
+    const { song, trackId } = withTakes();
+    const other = addTrack(song, { id: "audio", name: "Audio" }, "Other");
+    const otherId = other.tracks[1].id;
+    // Take "b" is played by the clip on the first track; move that clip to the other track.
+    const clip = song.tracks[0].audio_clips![0];
+    const moved = {
+      ...other,
+      tracks: [{ ...other.tracks[0], audio_clips: [] }, { ...other.tracks[1], audio_clips: [clip] }],
+    };
+    const after = deleteTrack(moved, trackId);
+    expect(after.tracks.map((t) => t.id)).toEqual([otherId]);
+    expect(after.samples!.map((s) => s.id)).toEqual(["b", "imported"]);
+    const b = after.samples![0];
+    expect(b.origin).toBe("import");
+    expect("track_id" in b).toBe(false);
+    expect("recorded_at_ticks" in b).toBe(false);
+    expect(audioProblem(JSON.parse(JSON.stringify(after)))).toBeNull();
+    // Without the fix the dangling track_id is what the validator rejects.
+    expect(audioProblem(JSON.parse(JSON.stringify({ ...moved, tracks: moved.tracks.slice(1) })))?.kind).toBe("sample_track");
+  });
+
+  it("counts a sampler pad as a use: a take on a pad is kept by Delete unused, and survives its track going", () => {
+    const { song, trackId } = withTakes();
+    const sampler = addSamplerTrack(song, "pads")!;
+    // The take "a" is added to the library and put on a pad, which is the same sample id.
+    const padded = assignPad(sampler.song, sampler.trackId, "pad-1", song.samples![0]).song!;
+    expect(ops.usesOf(padded, "a")).toEqual({ clips: 0, pads: 1 });
+    expect(ops.deleteTakes(padded, trackId, ["a"])).toEqual({ song: null, reason: "in-use" });
+
+    const after = deleteTrack(padded, trackId);
+    const kept = after.samples!.find((s) => s.id === "a")!;
+    expect(kept.origin).toBe("import");
+    expect("track_id" in kept).toBe(false);
+    expect(audioProblem(JSON.parse(JSON.stringify(after)))).toBeNull();
+  });
+
+  it("restores the track and its takes with one undo", () => {
+    const { song, trackId } = withTakes();
+    const store = createSongStore(song);
+    store.getState().deleteTrack(trackId);
+    expect(store.getState().song!.samples!.map((s) => s.id)).toEqual(["imported"]);
+    store.getState().undo();
+    expect(store.getState().song).toBe(song);
+  });
+
+  it("Switch keeps song time: the clip plays the chosen take from the point that matches where it sits", () => {
+    const { song: base, trackId } = start();
+    // Take a covers measures 1-4 of the song, take b measures 3-6, both recorded on the same track.
+    const a = { ...take("a", trackId), length_samples: 4 * M_SAMPLES, recorded_at_ticks: 0 };
+    const b = { ...take("b", trackId), length_samples: 4 * M_SAMPLES, recorded_at_ticks: 2 * MEASURE };
+    const song = { ...base, samples: [a, b] };
+    // The clip sits at measure 3 and plays a, which is therefore entered two measures in.
+    const placed = place(song, trackId, a, 3);
+    const clipA = clipOf(placed.song, placed.id);
+    const withOffset = {
+      ...placed.song,
+      tracks: [{ ...placed.song.tracks[0], audio_clips: [{ ...clipA, offset_samples: 2 * M_SAMPLES, slice_samples: 2 * M_SAMPLES, length_samples: 2 * M_SAMPLES }] }],
+    };
+
+    // Measure 3 is where b began, so b is entered at its own start.
+    const toB = clipOf(done(ops.switchTake(withOffset, trackId, placed.id, b)).song!, placed.id);
+    expect(toB).toMatchObject({ sample_id: "b", start_ticks: 2 * MEASURE, offset_samples: 0, length_samples: 2 * M_SAMPLES });
+
+    // And back: a clip at measure 3 on b goes to a two measures in, and is shortened to what a still holds.
+    const onB = ops.switchTake({ ...withOffset, samples: [a, b] }, trackId, placed.id, b).song!;
+    const backToA = clipOf(done(ops.switchTake(onB, trackId, placed.id, a)).song!, placed.id);
+    expect(backToA).toMatchObject({ sample_id: "a", offset_samples: 2 * M_SAMPLES, slice_samples: 2 * M_SAMPLES, length_samples: 2 * M_SAMPLES });
+  });
+
+  it("starts a take recorded without a position, or on another track, from the top", () => {
+    const { song, trackId } = withTakes();
+    const clipId = song.tracks[0].audio_clips![0].id;
+    const noPosition = { ...take("c", trackId), recorded_at_ticks: undefined } as Sample;
+    const withC = { ...song, samples: [...song.samples!, noPosition] };
+    expect(clipOf(done(ops.switchTake(withC, trackId, clipId, noPosition)).song!, clipId).offset_samples).toBe(0);
+  });
+
+  it("renames a sample, trimmed and cut to the name limit", () => {
+    const { song } = withTakes();
+    expect(ops.renameSample(song, "a", "  Best  ").song?.samples?.find((s) => s.id === "a")?.name).toBe("Best");
+    expect(ops.renameSample(song, "a", "x".repeat(200)).song?.samples?.find((s) => s.id === "a")?.name).toHaveLength(80);
+    expect(ops.renameSample(song, "a", "   ")).toEqual({ song: null, reason: "not-found" });
+  });
+});
 
 describe("placing samples", () => {
   it("drags a sample to a lane at measure 5 with defaults and records the sample", () => {

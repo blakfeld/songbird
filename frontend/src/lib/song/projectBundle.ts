@@ -9,8 +9,10 @@ import {
   floatWavBytes,
   parseFloatWavHeader,
 } from "../audio/wavFloat";
+import { RECORDING_ORIGIN } from "./audioTiming";
 import { samplerSampleIds } from "./sampler";
 import { LOW_STORAGE_BYTES } from "../audio/sampleImport";
+import { pinSample } from "../audio/sampleGc";
 import { addToLibrary, getLibraryEntry, removeFromLibrary } from "../audio/sampleLibrary";
 import { hasSample, putSample, readSamplePcm } from "../audio/sampleStore";
 import {
@@ -58,7 +60,8 @@ const fail = (message: string): ProjectParse => ({ error: message, kind: "bundle
 // no longer plays it.
 export function usedSamples(song: Song): Sample[] {
   const used = new Set(song.tracks.flatMap((t) => [...(t.audio_clips?.map((c) => c.sample_id) ?? []), ...samplerSampleIds(t)]));
-  return (song.samples ?? []).filter((s) => used.has(s.id));
+  // A take is kept even when no clip plays it, because the Takes list still offers it for switching back to.
+  return (song.samples ?? []).filter((s) => used.has(s.id) || s.origin === RECORDING_ORIGIN);
 }
 
 // Saved from the stored audio, so what is written is what plays. A sample the browser has lost cannot be bundled,
@@ -230,6 +233,8 @@ export async function readProjectBundle(
     }
 
     const remap = new Map<string, string>();
+    const pins: (() => void)[] = [];
+    const release = () => pins.forEach((unpin) => unpin());
     // Samples this open adds to the library, so a failure part-way can take them back out again.
     const added: string[] = [];
     try {
@@ -245,6 +250,12 @@ export async function readProjectBundle(
           // Same id means the audio is already stored and nothing is written; a different id means the bundle's
           // author hashed differently, so the song is pointed at the id the audio really has.
           const { id } = await putSample(pcm, async (stored) => {
+            // A take reaches the library only when the user adds it from the Takes list, so until the song that
+            // names it is saved nothing else would stop a cleanup pass from freeing it.
+            if (sample.origin === RECORDING_ORIGIN) {
+              pins.push(pinSample(stored));
+              return;
+            }
             if (!(await getLibraryEntry(stored))) added.push(stored);
             await addToLibrary({
               id: stored,
@@ -258,14 +269,15 @@ export async function readProjectBundle(
           if (id !== sample.id) remap.set(sample.id, id);
         },
       );
-      if (!remap.size) return { ok: parsed.ok };
+      if (!remap.size) return pins.length ? { ok: parsed.ok, release } : { ok: parsed.ok };
       // Re-checked because two samples may turn out to be the same audio, which leaves a duplicate id the
       // song's own rules reject.
       const rewritten = parseProjectFile(serializeProject(remapSamples(parsed.ok, remap)), instruments);
       if ("error" in rewritten) throw new BundleError(rewritten.error);
-      return rewritten;
+      return pins.length ? { ...rewritten, release } : rewritten;
     } catch (e) {
       // Stored audio with no library entry is collected as garbage, so removing the entries is the whole undo.
+      release();
       for (const id of added) await removeFromLibrary(id);
       throw e;
     }

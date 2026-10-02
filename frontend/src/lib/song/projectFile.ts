@@ -65,7 +65,8 @@ export type ProjectErrorKind =
   | AudioErrorKind
   | SamplerErrorKind;
 
-export type ProjectParse = { ok: Song } | { error: string; kind: ProjectErrorKind };
+// `release` is given by a bundle open, which pins the takes it stores until the caller has saved the song.
+export type ProjectParse = { ok: Song; release?: () => void } | { error: string; kind: ProjectErrorKind };
 
 interface Problem {
   kind: ProjectErrorKind;

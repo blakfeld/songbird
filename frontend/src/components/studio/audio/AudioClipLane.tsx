@@ -23,6 +23,7 @@ import { draggedSample, dragKind, readDrop, type SampleDrop } from "../samples/u
 import type { AudioActions } from "../useAudioActions";
 import { AudioClipBlock } from "./AudioClipBlock";
 import { AudioClipMenuItems } from "./AudioClipMenu";
+import { LaneRecording } from "./RecordingOverlay";
 
 const DRAG_THRESHOLD_PX = 4;
 export const AUDIO_CLIP_KEYS_HELP_ID = "audio-clip-keys-help";
@@ -417,6 +418,7 @@ export function AudioClipLane({
           />
         );
       })}
+      <LaneRecording trackId={track.id} tempoBpm={song.tempo_bpm} />
       {hover && draggedAsSample && (
         <div
           aria-hidden="true"
@@ -476,6 +478,7 @@ export function AudioClipLane({
         >
           {(close) => (
             <AudioClipMenuItems
+              song={song}
               trackId={track.id}
               clip={menuClip}
               actions={actions}

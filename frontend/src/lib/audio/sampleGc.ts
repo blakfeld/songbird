@@ -32,6 +32,21 @@ const defaultSources = (): GcSources => ({
   openSongs: () => openSongs(),
 });
 
+// A recording is stored before the song that will name it exists, so without a pin a pass in that gap would free
+// audio the user just performed. Counted because two passes can hash to the same silence.
+const pins = new Map<string, number>();
+export function pinSample(id: string): () => void {
+  pins.set(id, (pins.get(id) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (pins.get(id) ?? 1) - 1;
+    if (left > 0) pins.set(id, left);
+    else pins.delete(id);
+  };
+}
+
 export async function collectGarbage(sources: GcSources = defaultSources()): Promise<string[]> {
   return runExclusive(async () => {
     // Every source is read before any delete, so a failed read aborts the pass instead of freeing audio that is in use.
@@ -39,6 +54,7 @@ export async function collectGarbage(sources: GcSources = defaultSources()): Pro
       ...(await sources.libraryIds()),
       ...(await sources.savedSongSampleIds()),
       ...sources.openSongs().flatMap(songSampleIds),
+      ...pins.keys(),
     ]);
     const freed: string[] = [];
     for (const id of await listStoredSampleIds()) {
