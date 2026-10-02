@@ -1,5 +1,6 @@
 import type { Row } from "@/generated/Row";
 import type { SamplerSettings } from "@/generated/SamplerSettings";
+import { MEASURE_RANGE } from "@/lib/song/types";
 import { stepToSeconds } from "@/lib/timing";
 import { createAudioTrackSource, type AudioTrackSource } from "./audioTrackSource";
 import { clipLengthSeconds, TICKS_PER_STEP } from "./clipSchedule";
@@ -8,6 +9,7 @@ import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { getSoundSourceFactory } from "./registry";
 import { sharedSampleBuffers, type SampleBufferCache } from "./sampleBuffers";
 import { createInsertChain, type InsertChain } from "./insertChain";
+import type { TapSource } from "./recorder/recorderTap";
 import { DEFAULT_VOICE_SOUND, type VoiceSound } from "./voiceSound";
 import type {
   LoopRange,
@@ -59,6 +61,14 @@ interface VoiceChannel {
   sound: VoiceSound;
   // The assignments the source was last given, compared by reference against the model's.
   sampler?: SamplerSettings;
+}
+
+// The live input of one track, feeding the track's own chain so it is heard through the same effects and mixer.
+interface Monitor {
+  source: TapSource;
+  gain: InstanceType<ToneModule["Gain"]>;
+  chain: InsertChain;
+  open: boolean;
 }
 
 // A preview is routed through its track's chain, so it only owns the source and the mixer-faithful channel.
@@ -123,6 +133,37 @@ export interface StepPosition {
   stepSeconds: number;
 }
 
+// A take is placed from these: the frame clock to song time pair, and the latencies the player heard it through.
+export interface TakeMark {
+  contextTime: number;
+  transportSeconds: number;
+  // Null until a bar is scheduled, since the song position is only known from the bars.
+  songSeconds: number | null;
+  sampleRate: number;
+  outputLatency: number;
+  baseLatency: number;
+}
+
+// Tone's context rather than the raw one, because only its nodes can be wired into the insert chain; the recorder
+// alone goes native, for the reason given in nativeContext.ts.
+export interface InputAudioContext {
+  sampleRate: number;
+  rawContext: unknown;
+  createMediaStreamSource(stream: MediaStream): MediaStreamAudioSourceNode;
+}
+
+export interface LoopWrap {
+  // "start" is the first real bar of a run, which is where a take began from stopped; it is the one moment that
+  // maps context time to song time when the take started before the transport did.
+  // "seek" is a jump with looping off, which is not a pass of anything and so ends a take rather than splitting it.
+  kind: "start" | "wrap" | "seek";
+  // Context time the first bar of the new pass starts sounding at the engine's scheduling clock, ahead of the
+  // time it is heard; multiply by the sample rate for the frame to cut a capture at.
+  contextTime: number;
+  songSeconds: number;
+  measure: number;
+}
+
 const DEFAULT_BEAT_STEPS = 4;
 
 // Tempo and swing are frozen per bar so step times within a bar stay
@@ -166,6 +207,22 @@ export interface PlaybackEngine extends Playback {
   // Output latency separates what was scheduled from what the player heard, so the step is the heard one.
   stepAt(domTimeStamp: number): StepPosition | null;
   setMetronome(enabled: boolean): void;
+  // A take can be longer than the song it is recorded onto, which only grows once the take is saved, so the run
+  // must not stop at the song's last bar. Each take holds its own claim, so one finishing cannot end another's run.
+  // `settle` is called when the take stops recording: the claim then lasts only for the run it was recording in,
+  // which is the one the song is still being extended under, and never for a Play started afterwards.
+  claimOpenEnded(): { settle(): void; release(): void };
+  // Started here rather than at Play because an input is opened, metered and monitored while stopped, and the
+  // context only runs after a user gesture such as the press that asks for this.
+  prepareInput(): Promise<InputAudioContext>;
+  markTake(): TakeMark | null;
+  // Fires at each wrap to a new pass, which a take splits at. With looping off a jump is reported as kind "seek"
+  // instead, which ends a take rather than splitting it. The count-in is not song time and never fires; a run's
+  // first real bar fires once with kind "start".
+  subscribeLoopWrap(cb: (wrap: LoopWrap) => void): () => void;
+  // Routed through the track's effects, volume and pan, so it needs no transport. `source` is only needed to start
+  // or move monitoring; the track must be an audio track and the audio context started.
+  setMonitoring(trackId: string, on: boolean, source?: TapSource): boolean;
   // Beats remaining in the count-in bar (4, 3, 2, 1), then null. Driven by animation frames, so it only suits display.
   subscribeCountIn(cb: (beatsLeft: number | null) => void): () => void;
   // Fires from the transport, not from frames, so a take can start recording even when frames are throttled.
@@ -204,9 +261,16 @@ export function createPlaybackEngine(
   const positionListeners = new Set<(step: number | null) => void>();
   const countInListeners = new Set<(beatsLeft: number | null) => void>();
   const countInEndListeners = new Set<() => void>();
+  const wrapListeners = new Set<(wrap: LoopWrap) => void>();
+  // Kept apart from `channels` because monitoring outlives playback and is owned by the input, not the song.
+  const monitors = new Map<string, Monitor>();
 
   let loop: LoopRange | null = null;
   let looping = true;
+  // Set while an audio take runs, because the song may be shorter than the take and is only extended once it is saved.
+  // `endedIn` is null while the take is recording, then the run it stopped in, so it cannot outlive that run.
+  const openEndedClaims = new Set<{ endedIn: number | null }>();
+  const isOpenEnded = () => [...openEndedClaims].some((c) => c.endedIn === null || c.endedIn === session);
   // Transport time the last scheduled note stops sounding, so a play-once run can end after its tail.
   let lastNoteEnd = 0;
   // Consumed by the next bar so a seek lands on a bar boundary, and survives until Play when idle.
@@ -293,7 +357,8 @@ export function createPlaybackEngine(
   // counter) keeps a loop-range change mid-play landing inside the new range.
   const nextMeasure = (timing: PlaybackTiming, current: number | null) => {
     if (!looping) {
-      return current === null ? 1 : Math.min(current + 1, timing.measures);
+      if (current === null) return 1;
+      return Math.min(current + 1, isOpenEnded() ? MEASURE_RANGE.max : timing.measures);
     }
     const start = Math.min(Math.max(loop?.start ?? 1, 1), timing.measures);
     const end = Math.min(
@@ -304,7 +369,7 @@ export function createPlaybackEngine(
     return current + 1;
   };
 
-  const startBar = (timing: PlaybackTiming) => {
+  const startBar = (timing: PlaybackTiming, audioNow: number) => {
     // The count-in bar (measure 0) is not a position, so the first real bar starts the run.
     const previous = bars.at(-1)?.measure || null;
     const afterPreRoll = bars.at(-1)?.measure === 0;
@@ -315,6 +380,7 @@ export function createPlaybackEngine(
       : jumpTo === null
         ? nextMeasure(timing, previous)
         : Math.min(Math.max(jumpTo, 1), timing.measures);
+    const seeking = !preRoll && jumpTo !== null;
     if (!preRoll) jumpTo = null;
     const entered = !preRoll && (previous === null || measure !== previous + 1);
     const steps = timing.stepsPerMeasure;
@@ -336,6 +402,15 @@ export function createPlaybackEngine(
         entered,
       },
     ].slice(-BARS_KEPT);
+    if (!preRoll && (previous === null || measure !== previous + 1)) {
+      const wrap: LoopWrap = {
+        kind: previous === null ? "start" : seeking && !looping ? "seek" : "wrap",
+        contextTime: audioNow + (nextBarStart - tickTime),
+        songSeconds: (measure - 1) * duration,
+        measure,
+      };
+      wrapListeners.forEach((cb) => cb(wrap));
+    }
     if (afterPreRoll && tone) {
       const startedSession = session;
       // Deferred because Tone warns about transport changes made inside a scheduled callback.
@@ -421,7 +496,25 @@ export function createPlaybackEngine(
     entry.sampler = voice.sampler;
   };
 
+  const disposeMonitor = (trackId: string) => {
+    const monitor = monitors.get(trackId);
+    if (!monitor) return;
+    monitors.delete(trackId);
+    monitor.source.disconnect(monitor.gain.input);
+    monitor.gain.dispose();
+  };
+
+  // The channel's mute floor already silences a monitor, but the gain follows audibility too so a muted
+  // input is cut at the source of the signal rather than relying on the floor being exactly silent.
+  const updateMonitor = (voice: Voice, at?: number) => {
+    const monitor = monitors.get(voice.key);
+    if (!monitor || monitor.open === voice.audible) return;
+    monitor.open = voice.audible;
+    monitor.gain.gain.rampTo(voice.audible ? 1 : 0, MIXER_RAMP_SECONDS, at);
+  };
+
   const applyMixer = (entry: VoiceChannel, voice: Voice, at?: number) => {
+    updateMonitor(voice, at);
     const db = targetDb(voice);
     if (entry.volumeDb !== db) {
       entry.channel.volume.rampTo(db, MIXER_RAMP_SECONDS, at);
@@ -582,6 +675,7 @@ export function createPlaybackEngine(
     const keys = new Set(voices.map((v) => v.key));
     for (const [key, entry] of channels) {
       if (keys.has(key)) continue;
+      disposeMonitor(key);
       disposeVoice(entry);
       channels.delete(key);
       const preview = previews.get(key);
@@ -676,7 +770,7 @@ export function createPlaybackEngine(
 
   // A pending seek still wins so a jump requested during the last bar is honoured rather than ended.
   const isLastBarOfRun = (bar: ScheduledBar, timing: PlaybackTiming) =>
-    !looping && jumpTo === null && bar.measure >= timing.measures;
+    !looping && jumpTo === null && bar.measure >= (isOpenEnded() ? MEASURE_RANGE.max : timing.measures);
 
   // Tone fires scheduled callbacks up to its lookahead before their time, so the padding keeps the
   // transport and UI reset from landing before the last note's tail has finished.
@@ -723,7 +817,7 @@ export function createPlaybackEngine(
         finishAfterTail(mySession);
         return;
       }
-      if (atBoundary) startBar(timing);
+      if (atBoundary) startBar(timing, audioNow);
       const current = bars.at(-1)!;
       scheduleStep(
         syncVoices(t, model.getVoices(), audioNow),
@@ -993,6 +1087,65 @@ export function createPlaybackEngine(
     setMetronome(enabled) {
       metronomeOn = enabled;
     },
+    claimOpenEnded() {
+      const claim = { endedIn: null as number | null };
+      openEndedClaims.add(claim);
+      return {
+        settle: () => {
+          claim.endedIn = session;
+        },
+        release: () => void openEndedClaims.delete(claim),
+      };
+    },
+    async prepareInput() {
+      const t = (tone ??= await loadTone());
+      await t.start();
+      return t.getContext() as unknown as InputAudioContext;
+    },
+    markTake() {
+      if (!tone) return null;
+      const ctx = tone.getContext();
+      const raw = ctx.rawContext as { outputLatency?: number; baseLatency?: number; sampleRate?: number };
+      const contextTime = ctx.currentTime;
+      const transportSeconds = tone.getTransport().getSecondsAtTime(contextTime);
+      // The first real bar that has not finished, so a mark taken during the count-in, or just before the first
+      // bar is scheduled, projects back from that bar rather than reporting no position.
+      const bar = bars.find((b) => b.measure > 0 && transportSeconds < b.transportStart + b.duration);
+      return {
+        contextTime,
+        transportSeconds,
+        songSeconds: bar ? (bar.measure - 1) * bar.duration + (transportSeconds - bar.transportStart) : null,
+        sampleRate: raw.sampleRate ?? ctx.sampleRate,
+        outputLatency: raw.outputLatency ?? 0,
+        baseLatency: raw.baseLatency ?? 0,
+      };
+    },
+    subscribeLoopWrap(cb) {
+      wrapListeners.add(cb);
+      return () => wrapListeners.delete(cb);
+    },
+    setMonitoring(trackId, on, source) {
+      if (!tone) return false;
+      if (!on) {
+        disposeMonitor(trackId);
+        return true;
+      }
+      const voice = model.getVoices().find((v) => v.key === trackId);
+      if (!voice || voice.kind !== "audio") return false;
+      const track = ensureVoice(tone, voice, tempoOf());
+      const existing = monitors.get(trackId);
+      // Connected once per track: toggling or re-calling with the same input must not stack a second path, which
+      // would double the level.
+      if (existing && existing.chain === track.chain && (!source || existing.source === source)) return true;
+      const input = source ?? existing?.source;
+      if (!input) return false;
+      disposeMonitor(trackId);
+      const gain = new tone.Gain(voice.audible ? 1 : 0);
+      input.connect(gain.input);
+      gain.connect(track.chain.input);
+      monitors.set(trackId, { source: input, gain, chain: track.chain, open: voice.audible });
+      return true;
+    },
     subscribeCountIn(cb) {
       countInListeners.add(cb);
       return () => countInListeners.delete(cb);
@@ -1009,6 +1162,7 @@ export function createPlaybackEngine(
       if (!tone) return;
       const tempo = tempoOf();
       for (const voice of model.getVoices()) {
+        updateMonitor(voice);
         const entry = channels.get(voice.key);
         if (!entry) continue;
         applySound(entry, voice, tempo);
@@ -1019,6 +1173,7 @@ export function createPlaybackEngine(
     },
     dispose() {
       stop();
+      for (const id of [...monitors.keys()]) disposeMonitor(id);
       for (const entry of channels.values()) disposeVoice(entry, true);
       channels.clear();
       for (const entry of previews.values()) disposePreview(entry, true);

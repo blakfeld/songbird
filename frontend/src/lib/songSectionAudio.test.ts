@@ -4,6 +4,7 @@ import type { Sample } from "@/generated/Sample";
 import { audioProblem } from "./song/audioValidation";
 import { addTrack, normalizeSong } from "./song/songOps";
 import { newSong, type Section, type Song } from "./song/types";
+import * as audioOps from "./song/audioClipOps";
 import * as ops from "./songSectionOps";
 
 // At 120 BPM and 48 kHz a 4/4 measure is 3840 ticks and 96000 samples.
@@ -82,6 +83,26 @@ describe("audio follows a section edit", () => {
     expect([head.fade_in_samples, head.fade_out_samples]).toEqual([M_SAMPLES, 0]);
     expect([tail.fade_in_samples, tail.fade_out_samples]).toEqual([0, 2 * M_SAMPLES]);
     valid(ok(ops.insertSection(song, { kind: "verse", measures: 2 }, "x", "after")));
+  });
+
+  it("splits and copies clips of a recorded take without touching the take's sample", () => {
+    const take: Sample = { ...sample(8), id: "take", name: "Vocals Take 1", origin: "recording", recorded_at_ticks: 0 };
+    const base = songWith([], [section("x", "A", 4), section("y", "B", 4)], take);
+    const trackId = base.tracks[0].id;
+    const song = {
+      ...base,
+      tracks: [{ ...base.tracks[0], audio_clips: [clip("a", 3, { sample_id: "take", length_samples: 4 * M_SAMPLES })] }],
+      samples: [{ ...take, track_id: trackId }],
+    };
+    const next = ok(ops.duplicateSection(song, "y"));
+    expect(audio(next).length).toBeGreaterThan(2);
+    expect(audio(next).every((c) => c.sample_id === "take")).toBe(true);
+    expect(next.samples).toEqual(song.samples);
+    // Every piece still counts as a use, so the take cannot be deleted from under them.
+    expect(audioOps.deleteTakes(next, trackId, ["take"])).toMatchObject({ song: null, reason: "in-use" });
+    // Deleting both sections' clips frees it.
+    const emptied = { ...next, tracks: [{ ...next.tracks[0], audio_clips: [] }] };
+    expect(audioOps.deleteTakes(emptied, trackId, ["take"]).song).not.toBeNull();
   });
 
   it("moves later audio and leaves earlier audio", () => {

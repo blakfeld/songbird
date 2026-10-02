@@ -7,7 +7,7 @@ import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { createServerSongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore } from "@/lib/song/songStore";
 import { newTrack, type Song } from "@/lib/song/types";
-import { collectGarbage, setOpenSongSource, type GcSources } from "./sampleGc";
+import { collectGarbage, pinSample, setOpenSongSource, type GcSources } from "./sampleGc";
 import { addToLibrary, listLibrary, removeFromLibrary } from "./sampleLibrary";
 import { getSampleOverview, listStoredSampleIds, putSample, readSamplePcm } from "./sampleStore";
 
@@ -177,6 +177,19 @@ describe("collectGarbage", () => {
     await removeFromLibrary(id);
     expect(await collectGarbage(sources(lib))).toEqual([id]);
     expect(await listStoredSampleIds()).toEqual([]);
+  });
+
+  it("keeps audio pinned while a recording is on its way into the song, and frees it once unpinned", async () => {
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
+    let release = () => {};
+    // The pin is taken inside the write's own exclusive section, so no pass can run between store and pin.
+    const { id } = await putSample(pcm(0.7), async (stored) => {
+      release = pinSample(stored);
+    });
+    expect(await collectGarbage(sources(lib))).toEqual([]);
+    expect(await listStoredSampleIds()).toEqual([id]);
+    release();
+    expect(await collectGarbage(sources(lib))).toEqual([id]);
   });
 
   it("aborts without deleting when a source cannot be read", async () => {

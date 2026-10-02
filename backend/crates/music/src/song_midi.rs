@@ -462,6 +462,8 @@ mod tests {
             channels: 2,
             length_samples: 1000,
             origin: "import".into(),
+            track_id: None,
+            recorded_at_ticks: None,
         }];
         s.tracks[1].audio_clips = vec![AudioClip {
             id: "a1".into(),

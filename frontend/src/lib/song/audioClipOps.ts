@@ -4,15 +4,19 @@ import {
   CLIP_GAIN_DB_RANGE,
   MAX_AUDIO_CLIPS,
   MAX_SAMPLES,
+  RECORDING_ORIGIN,
+  SAMPLE_NAME_MAX,
   TICKS_PER_SECOND_PER_BPM,
   TICKS_PER_SIXTEENTH,
   AUDIO_INSTRUMENT_ID,
   clipEndTicks,
   cutUtf16,
   sampleMap,
+  scaledEnd,
   scaledMeasure,
   ticksToSamples,
 } from "./audioTiming";
+import { samplerSampleIds } from "./sampler";
 import { lengthLimit, normalizeSong, uniqueTrackName } from "./songOps";
 import { MAX_TRACKS, MEASURE_RANGE, TRACK_NAME_MAX, newId, newTrack, type Song, type Track } from "./types";
 
@@ -24,7 +28,8 @@ export type AudioFailure =
   | "section-limit"
   | "clip-limit"
   | "sample-limit"
-  | "track-limit";
+  | "track-limit"
+  | "in-use";
 
 // `clipId` names the clip to select afterwards. A success may return the same song reference, which the store
 // treats as a no-op, so a drag that ends where it began adds no undo step.
@@ -316,6 +321,128 @@ export function duplicateClip(song: Song, trackId: string, clipId: string): Audi
   return ok(normalizeSong({ ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) }), copy.id);
 }
 
+// A recorded take replaces what was there only for the span it covers, so earlier takes survive on both sides of a
+// punch-in. Clips of unknown samples are left alone because their end cannot be measured.
+export function replaceSpan(song: Song, trackId: string, startTicks: number, endTicks: number): AudioOpResult {
+  const track = song.tracks.find((t) => t.id === trackId);
+  if (!track || !isAudio(track)) return fail("not-found");
+  if (endTicks <= startTicks) return ok(song);
+  const rates = sampleMap(song.samples);
+  const unit = TICKS_PER_SECOND_PER_BPM * song.tempo_bpm;
+  const pieces: AudioClip[] = [];
+  let changed = false;
+  for (const clip of clips(track)) {
+    const rate = rates.get(clip.sample_id)?.sample_rate;
+    if (rate === undefined || scaledEnd(clip, rate, song.tempo_bpm) <= startTicks * rate || clip.start_ticks >= endTicks) {
+      pieces.push(clip);
+      continue;
+    }
+    changed = true;
+    const splits = clip.start_ticks < startTicks && scaledEnd(clip, rate, song.tempo_bpm) > endTicks * rate;
+    if (clip.start_ticks < startTicks) {
+      const length = Math.floor(((startTicks - clip.start_ticks) * rate) / unit);
+      if (length >= 1) {
+        pieces.push(
+          fitFades({ ...clip, length_samples: length, slice_samples: clip.loop ? clip.slice_samples : length, fade_out_samples: 0 }),
+        );
+      }
+    }
+    if (scaledEnd(clip, rate, song.tempo_bpm) > endTicks * rate) {
+      // Rounded up from the span's end, then the start tick rounded down, so the piece can only end earlier and
+      // never runs into the clip after it.
+      const delta = Math.max(0, Math.ceil(((endTicks - clip.start_ticks) * rate) / unit));
+      const length = clip.length_samples - delta;
+      if (length >= 1) {
+        const start = Math.floor((clip.start_ticks * rate + delta * unit) / rate);
+        // A loop's phase cannot be carried into a later start, so it restarts rather than shrinking its region.
+        const sliced = clip.loop ? {} : { offset_samples: clip.offset_samples + delta, slice_samples: clip.slice_samples - delta };
+        pieces.push(
+          fitFades({
+            ...clip,
+            ...sliced,
+            id: splits ? newId() : clip.id,
+            start_ticks: start,
+            length_samples: length,
+            fade_in_samples: 0,
+          }),
+        );
+      }
+    }
+  }
+  if (!changed) return ok(song);
+  if (pieces.length > MAX_AUDIO_CLIPS) return fail("clip-limit");
+  const next: Track = { ...track, audio_clips: pieces.sort(byStart) };
+  return ok(normalizeSong({ ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) }));
+}
+
+export interface TakeClip {
+  sampleId: string;
+  startTicks: number;
+  offsetSamples: number;
+  lengthSamples: number;
+}
+
+// One call for a whole recording session so the samples, the cut and the clip land in a single history entry.
+// Every pass becomes a sample, but only the clip's own pass is played; the rest stay reachable as takes.
+export function recordTake(song: Song, trackId: string, takes: Sample[], clip: TakeClip): AudioOpResult {
+  const track = song.tracks.find((t) => t.id === trackId);
+  if (!track || !isAudio(track)) return fail("not-found");
+  const known = new Set((song.samples ?? []).map((s) => s.id));
+  const fresh = takes.filter((s, i) => !known.has(s.id) && takes.findIndex((o) => o.id === s.id) === i);
+  if ((song.samples ?? []).length + fresh.length > MAX_SAMPLES) return fail("sample-limit");
+  const sample = takes.find((s) => s.id === clip.sampleId) ?? sampleMap(song.samples).get(clip.sampleId);
+  if (!sample) return fail("not-found");
+  const withSamples: Song = { ...song, samples: [...(song.samples ?? []), ...fresh] };
+  const placed: AudioClip = {
+    ...fullClip(sample, Math.max(0, Math.round(clip.startTicks))),
+    offset_samples: clip.offsetSamples,
+    slice_samples: clip.lengthSamples,
+    length_samples: clip.lengthSamples,
+  };
+  const end = clipEndTicks(placed, sample.sample_rate, song.tempo_bpm);
+  if (maxLength(song, placed.start_ticks, sample.sample_rate, songLimit(song, sample.sample_rate)) < placed.length_samples)
+    return fail(limitReason(song));
+  const cut = replaceSpan(withSamples, trackId, placed.start_ticks, end);
+  if (!cut.song) return cut;
+  const cutTrack = cut.song.tracks.find((t) => t.id === trackId)!;
+  if (clips(cutTrack).length >= MAX_AUDIO_CLIPS) return fail("clip-limit");
+  const next: Track = { ...cutTrack, audio_clips: [...clips(cutTrack), placed].sort(byStart) };
+  return ok(normalizeSong({ ...cut.song, tracks: cut.song.tracks.map((t) => (t === cutTrack ? next : t)) }), placed.id);
+}
+
+// Newest first, which is the order the Takes list shows; samples are appended as they are recorded.
+export const takesOf = (song: Song, trackId: string): Sample[] =>
+  (song.samples ?? []).filter((s) => s.origin === RECORDING_ORIGIN && s.track_id === trackId).reverse();
+
+// Counted over every track because a clip or a sampler pad may name any sample in the song, whatever track it was
+// recorded on: a take added to the library and put on a pad is the same sample id.
+export const usesOf = (song: Song, sampleId: string): { clips: number; pads: number } => ({
+  clips: song.tracks.reduce((n, t) => n + clips(t).filter((c) => c.sample_id === sampleId).length, 0),
+  pads: song.tracks.reduce((n, t) => n + samplerSampleIds(t).filter((id) => id === sampleId).length, 0),
+});
+export const isUsed = (song: Song, sampleId: string): boolean => {
+  const { clips: c, pads } = usesOf(song, sampleId);
+  return c + pads > 0;
+};
+
+export function renameSample(song: Song, sampleId: string, name: string): AudioOpResult {
+  const next = cutUtf16(name.trim(), SAMPLE_NAME_MAX);
+  const sample = (song.samples ?? []).find((s) => s.id === sampleId);
+  if (!sample || !next) return fail("not-found");
+  if (sample.name === next) return ok(song);
+  return ok({ ...song, samples: (song.samples ?? []).map((s) => (s === sample ? { ...s, name: next } : s)) });
+}
+
+// A take a clip or pad uses cannot go, so a delete never leaves one pointing at nothing; refusing all of them keeps one
+// undo step from meaning "some of what you asked for".
+export function deleteTakes(song: Song, trackId: string, sampleIds: string[]): AudioOpResult {
+  const takes = new Set(takesOf(song, trackId).map((s) => s.id));
+  const doomed = new Set(sampleIds.filter((id) => takes.has(id)));
+  if (doomed.size === 0) return fail("not-found");
+  if ([...doomed].some((id) => isUsed(song, id))) return fail("in-use");
+  return ok({ ...song, samples: (song.samples ?? []).filter((s) => !doomed.has(s.id)) });
+}
+
 export function deleteClip(song: Song, trackId: string, clipId: string): AudioOpResult {
   const track = song.tracks.find((t) => t.id === trackId);
   if (!track || !clips(track).some((c) => c.id === clipId)) return fail("not-found");
@@ -352,6 +479,33 @@ export function replaceSample(song: Song, trackId: string, clipId: string, sampl
     t === track ? { ...track, audio_clips: clips(track).map((c) => (c === clip ? next : c)) } : t,
   );
   return ok(normalizeSong({ ...song, samples: withSample(song, sample), tracks }), clip.id);
+}
+
+// Choosing a take on the same track keeps what the clip played at each song position: the take is entered at the
+// point of its own recording that matches where the clip sits, not from its start. Takes recorded without a
+// position, or on another track, start from the top as any replaced sample does.
+export function switchTake(song: Song, trackId: string, clipId: string, take: Sample): AudioOpResult {
+  const replaced = replaceSample(song, trackId, clipId, take);
+  const ctx = locate(song, trackId, clipId);
+  if (!replaced.song || !ctx || take.track_id !== trackId || take.recorded_at_ticks === undefined) return replaced;
+  const { clip } = ctx;
+  const into = Math.round(ticksToSamples(clip.start_ticks - take.recorded_at_ticks, take.sample_rate, song.tempo_bpm));
+  // Before the take began there is nothing to play, and the end of the take leaves at least one sample for the clip.
+  const offset = clamp(into, 0, take.length_samples - 1);
+  const placed = replaced.song.tracks.find((t) => t.id === trackId)?.audio_clips?.find((c) => c.id === clipId);
+  if (!placed || offset === 0) return replaced;
+  const slice = take.length_samples - offset;
+  const next = fitFades({
+    ...placed,
+    offset_samples: offset,
+    slice_samples: slice,
+    length_samples: placed.loop ? placed.length_samples : Math.min(placed.length_samples, slice),
+  });
+  const track = replaced.song.tracks.find((t) => t.id === trackId)!;
+  const tracks = replaced.song.tracks.map((t) =>
+    t === track ? { ...track, audio_clips: clips(track).map((c) => (c.id === clipId ? next : c)) } : t,
+  );
+  return ok(normalizeSong({ ...replaced.song, tracks }), clipId);
 }
 
 export type SequenceResult =

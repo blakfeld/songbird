@@ -39,7 +39,7 @@
 ### D2. Caddy as the only public service
 `deploy/compose.yaml` defines:
 - `caddy`: `caddy:2`, ports 80 and 443, volumes `caddy-data` and `caddy-config`, and `Caddyfile` mounted read-only;
-- `frontend` and `backend`: GHCR images pinned by `${SONGBIRD_TAG}`, on an internal network, with no `ports:`. The backend's environment uses `SONGBIRD_DATABASE_URL: ${SONGBIRD_DATABASE_URL:?}`, so compose refuses to start without it. Otherwise the foundation's default would put a SQLite file inside the container, and every deploy would silently discard its data. This guard and the read-only `certs/` mount for the database CA certificate are added in the deploy that first sets the URL (Migration Plan step 5); before the foundation ships, the backend has no database. No data volume is mounted.
+- `frontend` and `backend`: GHCR images pinned by `${SONGBIRD_TAG}`, on an internal network, with no `ports:`. The backend's environment uses `SONGBIRD_DATABASE_URL: ${SONGBIRD_DATABASE_URL:?}`, so compose refuses to start without it. Otherwise the foundation's default would put a SQLite file inside the container, and every deploy would silently discard its data. This guard and the read-only `certs/` mount for the database CA certificate are added in the deploy that first sets the URL (Migration Plan step 5); before the foundation ships, the backend has no database. No data volume is mounted. The backend's `environment:` also hard-sets `SONGBIRD_ENV: production`. `environment:` overrides `env_file`, so editing `.env` on the server cannot switch the service to development mode, where operator AI providers are allowed (`add-user-api-keys`).
 
 Every service uses `restart: unless-stopped` and the `json-file` log driver with `max-size: 10m, max-file: 3`, so logs can't fill the disk.
 
@@ -70,7 +70,7 @@ The `Caddyfile`:
 - The bcrypt hash is generated with `docker run caddy caddy hash-password` and stored in `/opt/songbird/.env`. Browsers cache the credentials per origin and send them on same-origin `fetch` automatically, so the SPA and the API calls work without code changes.
 - `SONGBIRD_GATE=off` disables the gate once `add-user-accounts` is live. Its session cookie and basic auth would otherwise both prompt.
 - *Alternative:* Cloudflare Access (free for up to 50 users). It gives SSO and email login, but requires moving DNS to Cloudflare and proxying through it. It is documented as an optional upgrade, not the default, because basic auth needs no third party.
-- *Spend control:* the README also tells the operator to set a monthly spend limit in the Anthropic console. That is the real backstop for API cost.
+- *Spend control:* AI requests run on each user's own key (D8), so leaked gate credentials cost the operator no AI spend. The gate protects the unauthenticated endpoints, not a provider bill.
 
 ### D4. Release workflow: build once, deploy by SHA
 `.github/workflows/release.yml`:
@@ -132,7 +132,10 @@ Docker publishes ports by writing iptables rules that bypass `ufw`. Only Caddy p
 - `SONGBIRD_DOMAIN`
 - `SONGBIRD_GATE`
 - `SONGBIRD_BASIC_AUTH_USER` / `_HASH`
-- `SONGBIRD_AI_PROVIDER`, `SONGBIRD_AI_MODEL`, and `ANTHROPIC_API_KEY`
+- `SONGBIRD_AI_MODEL` (Anthropic) and, optionally, `SONGBIRD_OPENAI_MODEL` (defaults to `gpt-4.1-mini`)
+- `SONGBIRD_MASTER_KEYS` (secret): the keyring that encrypts users' stored provider keys. Generate an entry with `api keys generate-master-key` from the backend image. It lives only in this file, never in the repository or alongside database backups, so a backup alone never exposes users' keys. The VPS itself is not backed up, and the operator keeps a separate offline copy.
+
+`ANTHROPIC_API_KEY` and `SONGBIRD_AI_PROVIDER` are deliberately absent. Production defaults the provider to `user` and rejects any other value, and it refuses to start with a non-blank `ANTHROPIC_API_KEY`, so a leftover operator key is a startup failure, not a dormant liability.
 - `SONGBIRD_CORS_ORIGINS=https://<domain>`. Once `add-user-accounts` ships, its Origin check accepts only configured origins, so this must be the exact public origin.
 - `SONGBIRD_DATABASE_URL` (secret, D6) and `SONGBIRD_DATABASE_MAX_CONNECTIONS`
 - `SONGBIRD_TRUST_PROXY=true`, once `add-user-accounts` ships. It is set on this server only, because here Caddy is the outermost proxy and replaces `X-Forwarded-For` (D2). Without it, login throttling would see Caddy's address for every client, and one stranger's failures would throttle everyone. Everywhere else it stays at its default, false. *(Default chosen pending user confirmation.)*
@@ -155,17 +158,19 @@ Compose reads it through `env_file` per service, so each container sees only wha
 - [The GHCR images are public] → They contain no secrets, because all configuration is runtime env. If the repository goes private, switch to private packages plus a read-only token (README).
 - [Docker bypassing `ufw`] → Only Caddy publishes ports, and the external port scan in the smoke test verifies it.
 - [Restart gap on deploy] → A few seconds of 502s. Acceptable, and it is noted in the README.
-- [Runaway AI cost if credentials leak] → The basic-auth gate, a strong generated password, and the Anthropic console spend limit (README step).
+- [Lost master key] → Every stored user key becomes unreadable. The operator installs a new keyring entry and runs `api keys purge --version <lost>`, and affected users re-enter their keys. Songs are unaffected. The offline copy (D8) makes this unlikely.
+- [Backups keep encrypted user keys] → Managed Postgres backups keep the ciphertext of deleted users' keys until they age out. It is useless without the master key, which is never stored with backups. The README says so.
 - [A Rust build in CI on each merge is slow] → GitHub Actions layer cache and `Swatinem/rust-cache` style caching in the Docker build via cache mounts (`--mount=type=cache,target=/usr/local/cargo/registry` and `/src/target`).
 
 ## Migration Plan
 
 1. Buy or point a domain, create the VPS with `deploy/cloud-init.yaml`, and add the `A` and `AAAA` records.
-2. Create `/opt/songbird/.env` on the server (D8).
+2. Create `/opt/songbird/.env` on the server (D8), including a master key from `api keys generate-master-key`. Announce that AI actions stay disabled for each user until they add their own key at `/settings/ai-keys`.
 3. Add the GitHub secrets (`DEPLOY_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`) and the `production` environment.
 4. Merge this change. The release workflow builds and deploys it, and the gate is on.
 5. When `add-database-foundation` merges: create the managed Postgres in the VPS's region, confirm that automated backups and point-in-time restore are on, create the `songbird_app` role, limit trusted sources to the VPS, install the CA certificate, set `SONGBIRD_DATABASE_URL`, rehearse a point-in-time restore into a scratch instance, then deploy.
 6. When `add-user-accounts` merges: take a provider snapshot, then set `SONGBIRD_GATE=off`, `SONGBIRD_COOKIE_SECURE=true` (its default), and `SONGBIRD_TRUST_PROXY=true`. The last is valid only because Caddy is the outermost proxy and replaces `X-Forwarded-For` (D2, D8).
+7. After the first deploy on per-user keys succeeds: revoke the old operator Anthropic key in the Anthropic console, so any copy left behind is dead.
 
 Rollback: run the workflow by hand with an earlier SHA, or use `deploy.sh <sha>` on the server. When the release being rolled back applied a migration, first restore the database from the provider snapshot or by point-in-time restore to the time in `deploys.log`, then deploy the earlier SHA.
 

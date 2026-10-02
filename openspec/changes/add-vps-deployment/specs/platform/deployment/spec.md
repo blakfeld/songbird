@@ -103,6 +103,25 @@ When the service stores data, production SHALL use a Postgres database managed b
 - **WHEN** production is started without the database URL set
 - **THEN** the stack does not start, and the error names the missing setting
 
+### Requirement: Per-user AI keys in production
+Production SHALL serve AI requests only with each requesting user's own provider key.
+- **Fixed mode:** the production compose file SHALL set the backend's environment mode to production in a way the server's `.env` cannot override.
+- **No operator key:** the server configuration SHALL NOT contain an operator AI credential or select an operator AI provider.
+- **Master key:** the key that encrypts users' stored provider keys SHALL be stored only on the server. It SHALL NOT appear in the repository, CI configuration or logs, the images, or database backups.
+- **Old key revoked:** after the first deploy on per-user keys, the operator Anthropic key used before SHALL be revoked at the provider.
+
+#### Scenario: Server env cannot switch modes
+- **WHEN** the server's `.env` sets `SONGBIRD_ENV=development`
+- **THEN** the backend still runs in production mode
+
+#### Scenario: Leftover operator key stops the backend
+- **WHEN** production is started with a non-blank `ANTHROPIC_API_KEY` in the server's environment
+- **THEN** the backend refuses to start, and the error names the setting
+
+#### Scenario: User without a key
+- **WHEN** a signed-in user who has not added a provider key opens the Studio
+- **THEN** AI actions are disabled, with a link to `/settings/ai-keys`
+
 ### Requirement: Reproducible server setup
 A fresh Ubuntu LTS server SHALL be made ready for deploys by applying the repository's cloud-init file and following the deploy README. After setup:
 - only ports 22, 80, and 443 SHALL accept connections;

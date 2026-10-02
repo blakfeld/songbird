@@ -54,10 +54,10 @@ While MIDI access is granted, a note-on message from the chosen input SHALL play
 - **THEN** nothing sounds and nothing is recorded
 
 ### Requirement: Recording a take
-The transport SHALL offer a Record toggle. The `R` key SHALL activate it when focus is not in a text field and no dialog is open. Record SHALL be disabled until MIDI access is granted.
+The transport SHALL offer a Record toggle. The `R` key SHALL activate it when focus is not in a text field and no dialog is open. Record SHALL be disabled until MIDI access is granted, except in the Studio while the selected track is an audio track, where Record records audio from the track's input (see `songs/audio-recording`) and needs microphone access instead.
 - **Starting from stopped:** starting Record while the transport is stopped SHALL start the count-in first, if it is on (see `patterns/playback` "Metronome and count-in"). It SHALL then start playback and recording together, at the measure where Play would start.
 - **Punching in:** starting Record while playing SHALL begin recording at once.
-- **Ending the take:** turning Record off SHALL end the take and leave playback running. Stop SHALL end the take and stop playback. With looping off, the take SHALL end when playback stops by itself at the end.
+- **Ending the take:** turning Record off SHALL end the take and leave playback running. Stop SHALL end the take and stop playback. With looping off, the take SHALL end when playback stops by itself at the end, except for an audio take in the Studio, which keeps playing and recording past the end of the song (see `songs/audio-recording`, "Recording audio takes").
 - **Showing the state:** while recording, the Record control SHALL show that it is recording, and the page SHALL announce the start and end of the take to assistive technology.
 - **Quantizing:** each recorded note's `step` SHALL be the sixteenth step whose playback time is closest to the note-on. Swing SHALL be taken into account. Its `length_steps` SHALL be the number of steps from that start to the step closest to the note-off, and at least 1. On a one-shot instrument, `length_steps` SHALL be 1. `velocity` SHALL be the note-on velocity.
 - **Wrapping at the end of the loop:** a note that ends past the end of the range being played SHALL be shortened to end there. A note-on that rounds to the step just after the end of the range SHALL be recorded on the region's first step while looping is on, and SHALL be discarded while looping is off.
@@ -106,3 +106,7 @@ The transport SHALL offer a Record toggle. The `R` key SHALL activate it when fo
 #### Scenario: Stop during count-in
 - **WHEN** the user presses Stop during the count-in
 - **THEN** nothing is recorded and playback does not start
+
+#### Scenario: Record on an audio track without MIDI
+- **WHEN** MIDI access has not been granted and the selected Studio track is an audio track
+- **THEN** Record is enabled and records audio

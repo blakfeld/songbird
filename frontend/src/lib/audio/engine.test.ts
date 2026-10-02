@@ -9,6 +9,7 @@ import type { AudioClip } from "@/generated/AudioClip";
 import { drums } from "@/test/fixtures";
 import { stepToSeconds } from "@/lib/timing";
 import { createPlaybackEngine } from "./engine";
+import { createRecorderTap } from "./recorder/recorderTap";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { createSongPlaybackModel } from "./songPlaybackModel";
 import { registerSoundSource } from "./registry";
@@ -160,6 +161,8 @@ vi.mock("tone", () => {
     }
   }
   class Gain extends MockToneNode {
+    // Tone's Gain exposes its native input, which a native source connects to directly.
+    input: unknown = this;
     node: { value: number };
     gain!: MockParam;
     constructor(value: number) {
@@ -1191,6 +1194,53 @@ describe("play-once ending", () => {
     expect(engine.status).toBe("idle");
   });
 
+  it("runs on past the last measure while open-ended, and stops at the end again once it is released", async () => {
+    const { engine } = setup(makePattern({ measures: 4, notes: perMeasure(4) }));
+    engine.setLooping(false);
+    const claim = engine.claimOpenEnded();
+    await start(engine);
+    // Four 2 s measures end at 8 s; a play-once run would have finished by now.
+    advanceTo(11);
+    expect(engine.isPlaying).toBe(true);
+
+    claim.release();
+    advanceTo(20);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+  });
+
+  it("keeps a run open-ended for the take still recording when another take finishes", async () => {
+    const { engine } = setup(makePattern({ measures: 4, notes: perMeasure(4) }));
+    engine.setLooping(false);
+    const first = engine.claimOpenEnded();
+    const second = engine.claimOpenEnded();
+    await start(engine);
+    advanceTo(5);
+    first.settle();
+    first.release();
+    advanceTo(11);
+    expect(engine.isPlaying).toBe(true);
+    second.release();
+    advanceTo(20);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+  });
+
+  it("does not make a Play started after a take stopped open-ended, whatever is still being saved", async () => {
+    const { engine } = setup(makePattern({ measures: 4, notes: perMeasure(4) }));
+    engine.setLooping(false);
+    const saving = engine.claimOpenEnded();
+    await start(engine);
+    advanceTo(3);
+    saving.settle();
+    engine.stop();
+    // The saving is still pending, as it is for a moment after Stop, and the user presses Play again.
+    h.state.seconds = 0;
+    h.state.events = [];
+    await start(engine);
+    advanceTo(9);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    saving.release();
+  });
+
   it("loops the whole pattern when looping is on with no range", async () => {
     const { engine } = setup(makePattern({ notes: perMeasure(4) }));
     engine.setLoop(null);
@@ -1817,6 +1867,196 @@ describe("metronome and count-in", () => {
     advanceTo(1);
     expect(engine.stepAt(1000)).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe("input monitoring", () => {
+  type Wired = { connections: unknown[]; connect(d: unknown): unknown; disconnect(d?: unknown): void };
+  const wired = (): Wired => ({
+    connections: [],
+    connect(d) {
+      this.connections.push(d);
+      return d;
+    },
+    disconnect(d) {
+      this.connections = d === undefined ? [] : this.connections.filter((c) => c !== d);
+    },
+  });
+
+  const audioVoice = (over: Partial<Voice> = {}): Voice => ({
+    key: "mic",
+    kind: "audio",
+    instrument: "audio",
+    rows: [],
+    notes: [],
+    clips: [],
+    volumeDb: 0,
+    pan: 0,
+    audible: true,
+    ...over,
+  });
+
+  function setup(initial: Voice) {
+    let voice = initial;
+    const model: PlaybackModel = {
+      getTiming: () => ({ tempo: 120, swing: 0, stepsPerMeasure: 16, measures: 1 }),
+      getVoices: () => [voice],
+    };
+    const engine = createPlaybackEngine(model, {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      sampleBuffers: { load: async () => {}, get: () => undefined, acquire: () => {}, release: () => {} },
+    });
+    return { engine, setVoice: (v: Voice) => (voice = v) };
+  }
+
+  const reverbOn = (): Voice["sound"] => ({
+    tone: {},
+    effects: { ...EFFECT_DEFAULTS, reverb: { ...EFFECT_DEFAULTS.reverb, enabled: true } },
+  });
+
+  async function tapped(source: Wired) {
+    const node = { ...wired(), port: { onmessage: null, postMessage: () => {} } };
+    await createRecorderTap(
+      { sampleRate: 48000, audioWorklet: { addModule: async () => {} } },
+      source,
+      1,
+      { createNode: () => node },
+    );
+    return node;
+  }
+
+  it("Hear yourself with reverb: the input reaches the track's reverb and channel, and the recorder taps it dry", async () => {
+    const { engine } = setup(audioVoice({ sound: reverbOn() }));
+    await start(engine);
+    const source = wired();
+    const recorder = await tapped(source);
+
+    expect(engine.setMonitoring("mic", true, source)).toBe(true);
+
+    const [reverb] = h.state.nodes.filter((n) => n.type === "Reverb");
+    const [monitor] = source.connections.filter((c) => c !== recorder);
+    expect(source.connections).toHaveLength(2);
+    expect(reaches(monitor, reverb)).toBe(true);
+    expect(reaches(monitor, h.state.channels[0])).toBe(true);
+    // Connected straight from the source, with nothing between it and the capture node, and no path onward.
+    expect(source.connections).toContain(recorder);
+    expect(reaches(recorder, reverb)).toBe(false);
+    expect(reaches(recorder, h.state.channels[0])).toBe(false);
+  });
+
+  it("connects once per track however often monitoring is switched on", async () => {
+    const { engine } = setup(audioVoice());
+    await start(engine);
+    const source = wired();
+    engine.setMonitoring("mic", true, source);
+    engine.setMonitoring("mic", true, source);
+    expect(source.connections).toHaveLength(1);
+    engine.setMonitoring("mic", false);
+    expect(source.connections).toHaveLength(0);
+  });
+
+  it("works while the transport is stopped", async () => {
+    const { engine } = setup(audioVoice());
+    await engine.prepareInput();
+    const source = wired();
+    expect(engine.isPlaying).toBe(false);
+    expect(engine.setMonitoring("mic", true, source)).toBe(true);
+    expect(source.connections).toHaveLength(1);
+  });
+
+  it("Monitor muted: the monitor gain closes when the track is muted and reopens on unmute", async () => {
+    const { engine, setVoice } = setup(audioVoice());
+    await start(engine);
+    const source = wired();
+    engine.setMonitoring("mic", true, source);
+    const monitor = source.connections[0] as { params: { gain: { ramps: [number, number][] } } };
+
+    setVoice(audioVoice({ audible: false }));
+    engine.syncSound();
+    expect(monitor.params.gain.ramps.at(-1)).toEqual([0, 0.02]);
+
+    setVoice(audioVoice({ audible: true }));
+    engine.syncSound();
+    expect(monitor.params.gain.ramps.at(-1)).toEqual([1, 0.02]);
+  });
+
+  it("starts silent when the track is already muted", async () => {
+    const { engine } = setup(audioVoice({ audible: false }));
+    await start(engine);
+    const source = wired();
+    engine.setMonitoring("mic", true, source);
+    expect((source.connections[0] as { opts: { value: number } }).opts.value).toBe(0);
+  });
+
+  it("refuses a track that is not an audio track", async () => {
+    const { engine } = setup(audioVoice({ kind: "instrument" }));
+    await engine.prepareInput();
+    expect(engine.setMonitoring("mic", true, wired())).toBe(false);
+  });
+});
+
+describe("take marks and loop wraps", () => {
+  it("reports the song position of a mark taken mid-bar and the wrap's context time", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLoop({ start: 1, end: 2 });
+    const wraps: { kind: string; contextTime: number; songSeconds: number; measure: number }[] = [];
+    engine.subscribeLoopWrap((w) => wraps.push(w));
+    await start(engine);
+    advanceTo(0.5);
+    h.state.now = 0.5 + AUDIO_OFFSET;
+    h.state.seconds = 0.5;
+    const mark = engine.markTake()!;
+    expect(mark.songSeconds).toBeCloseTo(0.5, 9);
+    expect(mark.contextTime).toBe(0.5 + AUDIO_OFFSET);
+    expect(wraps.map((w) => w.kind)).toEqual(["start"]);
+    expect(wraps[0].contextTime).toBeCloseTo(AUDIO_OFFSET, 9);
+
+    advanceTo(4.1);
+    expect(wraps.map((w) => w.kind)).toEqual(["start", "wrap"]);
+    expect(wraps[1].measure).toBe(1);
+    expect(wraps[1].songSeconds).toBe(0);
+    // Two 2 s bars played, so the second pass starts at transport 4 s.
+    expect(wraps[1].contextTime).toBeCloseTo(4 + AUDIO_OFFSET, 9);
+  });
+});
+
+describe("open-ended runs and seeks", () => {
+  it("stops at measure 128 instead of repeating it, so a take there is not split by a bogus wrap", async () => {
+    const { engine } = setup(makePattern({ measures: 4 }));
+    engine.setLooping(false);
+    engine.claimOpenEnded();
+    const kinds: string[] = [];
+    engine.subscribeLoopWrap((w) => kinds.push(w.kind));
+    await start(engine);
+    // 128 two-second measures end at 256 s.
+    advanceTo(270);
+    await vi.waitFor(() => expect(engine.isPlaying).toBe(false));
+    expect(kinds).toEqual(["start"]);
+  });
+
+  it("reports a jump with looping off as a seek, and with looping on as a wrap", async () => {
+    const off = setup(makePattern({ measures: 4 }));
+    off.engine.setLooping(false);
+    const kinds: string[] = [];
+    off.engine.subscribeLoopWrap((w) => kinds.push(w.kind));
+    await start(off.engine);
+    advanceTo(1);
+    off.engine.seek?.(4);
+    advanceTo(4);
+    expect(kinds).toEqual(["start", "seek"]);
+    off.engine.stop();
+
+    const on = setup(makePattern({ measures: 4 }));
+    on.engine.setLooping(true);
+    const looped: string[] = [];
+    on.engine.subscribeLoopWrap((w) => looped.push(w.kind));
+    await start(on.engine);
+    advanceTo(1);
+    on.engine.seek?.(3);
+    advanceTo(4);
+    expect(looped).toContain("wrap");
+    expect(looped).not.toContain("seek");
   });
 });
 

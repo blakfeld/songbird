@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Sample } from "@/generated/Sample";
-import { clipSampleName, type SampleLibraryEntry } from "@/lib/audio/sampleLibrary";
+import { addToLibrary, clipSampleName, type SampleLibraryEntry } from "@/lib/audio/sampleLibrary";
+import { notifyLibraryChanged } from "@/lib/audio/useSampleLibrary";
 import * as ops from "@/lib/song/audioClipOps";
 import type { AudioFailure } from "@/lib/song/audioClipOps";
 import { formatPosition, spanLabel } from "@/lib/song/audioTime";
@@ -41,6 +42,11 @@ export interface AudioActions {
     startTicks: number,
     source: "library" | "import",
   ): boolean;
+  // A take is a recorded sample, so these edit the song's samples; each is one undo step.
+  switchTake(trackId: string, clipId: string, sampleId: string): void;
+  renameTake(sampleId: string, name: string): void;
+  deleteTakes(trackId: string, sampleIds: string[]): boolean;
+  addTakeToLibrary(sampleId: string): Promise<void>;
   beginGesture(): void;
   endGesture(): void;
   cancelGesture(): void;
@@ -67,6 +73,8 @@ export function refusal(reason: AudioFailure | "generating", where: string, song
       return `a song can have at most ${MAX_TRACKS} tracks.`;
     case "generating":
       return "that track is being generated.";
+    case "in-use":
+      return "a clip still plays it.";
     default:
       void song;
       return "that clip is no longer there.";
@@ -208,6 +216,60 @@ export function useAudioActions(
         announce(
           `Replaced ${before.sample?.name ?? "the sample"} with ${sample.name}.${shortened ? " Clip shortened to fit." : ""}`,
         );
+      },
+      switchTake: (trackId, clipId, sampleId) => {
+        const before = find(trackId, clipId);
+        const take = (state().song?.samples ?? []).find((s) => s.id === sampleId);
+        if (!before.clip || !take) return;
+        const failure = edit(trackId, (s) => ops.switchTake(s, trackId, clipId, take));
+        if (failure) {
+          announce(`Couldn't switch take: ${refusal(failure, "after this clip", state().song!)}`);
+          return;
+        }
+        const after = find(trackId, clipId);
+        const shortened = !!before.clip && !!after.clip && after.clip.length_samples < before.clip.length_samples && !after.clip.loop;
+        announce(`Clip now plays ${take.name}.${shortened ? " Shortened to fit the take." : ""}`);
+      },
+      renameTake: (sampleId, name) => {
+        const song = state().song;
+        const owner = song?.samples?.find((s) => s.id === sampleId)?.track_id;
+        if (!owner) return;
+        // Not routed through a track's edit lock: a name is no part of what generation writes.
+        state().audioEdit(owner, (s) => ops.renameSample(s, sampleId, name));
+      },
+      deleteTakes: (trackId, sampleIds) => {
+        const song = state().song;
+        const names = (song?.samples ?? []).filter((s) => sampleIds.includes(s.id)).map((s) => s.name);
+        const failure = edit(trackId, (s) => ops.deleteTakes(s, trackId, sampleIds));
+        if (failure === "in-use") {
+          announce("Couldn't delete: a clip still plays that take.");
+          return false;
+        }
+        if (failure) return false;
+        announce(
+          names.length === 1
+            ? `Deleted ${names[0]}. Undo restores it.`
+            : `Deleted ${names.length} unused takes. Undo restores them.`,
+        );
+        return true;
+      },
+      addTakeToLibrary: async (sampleId) => {
+        const sample = state().song?.samples?.find((s) => s.id === sampleId);
+        if (!sample) return;
+        try {
+          await addToLibrary({
+            id: sample.id,
+            name: clipSampleName(sample.name) || "Take",
+            sampleRate: sample.sample_rate,
+            channels: sample.channels,
+            length: sample.length_samples,
+            importedAt: Date.now(),
+          });
+          notifyLibraryChanged();
+          announce(`Added ${sample.name} to Samples.`);
+        } catch {
+          announce(`Couldn't add ${sample.name} to Samples.`);
+        }
       },
       placeMany: (trackId, entries, startTicks, source) => {
         if (entries.length === 0) return false;

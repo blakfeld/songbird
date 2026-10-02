@@ -11,7 +11,14 @@ import { useShortcuts } from "@/components/editor/useEditorShortcuts";
 import { useRecordingSession, useTakeFinalizer } from "@/components/editor/useRecordingSession";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import type { MidiAccess } from "@/lib/midi/access";
+import { defaultAudioStore, prepareAudioTake } from "@/lib/recording/audioTake";
 import { createSongTake } from "@/lib/recording/songTake";
+import { audioRecordBlockedReason, needsMidi, refusalMessage } from "@/components/editor/useRecordControl";
+import { useMicPermission } from "@/components/editor/useMicPermission";
+import { AudioInputProvider } from "./audio/AudioInputContext";
+import { openRecordingInput } from "@/lib/audio/recorder/recordingInput";
+import { inputOwner, type InputOwner } from "@/lib/audio/recorder/trackInput";
+import { RECORD_AUDIO_UNSUPPORTED, RECORD_MIC_BLOCKED } from "@/components/editor/useRecordControl";
 import { defaultLoop, type LoopSetting } from "@/lib/loopRegion";
 import { MAX_GENERATE_MEASURES, songLoop } from "@/lib/song/songLoop";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
@@ -68,7 +75,6 @@ const MIN_ARRANGEMENT_PX = 192;
 const HANDLE_PX = 8;
 
 const RECORD_NEEDS_TRACK = "Add a track to record onto.";
-const RECORD_NOT_ON_AUDIO = "Select an instrument track to record onto. Audio tracks only play samples.";
 const parseOpen = (raw: string) => (raw === "true" ? true : raw === "false" ? false : null);
 
 const NOTES_ASIDE_ID = "section-notes-column";
@@ -96,10 +102,13 @@ const DOCK_ID = "studio-editor";
 export function StudioPage({
   library: provided,
   midi,
+  inputs = inputOwner,
 }: {
   library?: SongLibrary;
   // Injectable so tests can drive a fake; defaults to the shared browser singleton.
   midi?: MidiAccess;
+  // Injectable for the same reason: the real one opens the microphone.
+  inputs?: InputOwner;
 }) {
   const library = provided ?? getSongLibrary();
   const [store] = useState(() => createSongStore());
@@ -320,16 +329,37 @@ export function StudioPage({
     [liveTrackId, liveRows, liveOneShot],
   );
   // Read from the store at start so the take stays on that track even if the selection moves later.
+  const { permission } = useMicPermission(inputs);
+  // A refused Record asks the track's input popover to open, so the user lands on the explanation.
+  const [popoverRequest, setPopoverRequest] = useState<{ trackId: string; nonce: number } | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
   const createTarget = useCallback(() => {
     const { song: current, selectedTrackId: id } = store.getState();
-    const trackId = current?.tracks.find((t) => t.id === id)?.id ?? current?.tracks[0]?.id;
-    return trackId ? createSongTake(store, trackId) : null;
-  }, [store]);
+    const track = current?.tracks.find((t) => t.id === id) ?? current?.tracks[0];
+    if (!track) return null;
+    if (track.instrument !== "audio") return createSongTake(store, track.id);
+    return prepareAudioTake(store, defaultAudioStore, track.id, playback.engine, {
+      openInput: (engine, trackId) => openRecordingInput(engine, trackId, inputs),
+    }).then((result) => {
+      if (!("reason" in result)) return result;
+      if (result.reason === "denied" || result.reason === "no-input")
+        setPopoverRequest({ trackId: track.id, nonce: Date.now() });
+      return { reason: refusalMessage(result.reason, track.name) };
+    });
+  }, [store, playback.engine, inputs]);
+  const onRecordBlocked = useCallback(
+    (reason: string) => {
+      if (reason !== RECORD_MIC_BLOCKED && reason !== RECORD_AUDIO_UNSUPPORTED) return;
+      const id = store.getState().selectedTrackId;
+      if (id) setPopoverRequest({ trackId: id, nonce: Date.now() });
+    },
+    [store],
+  );
   const recordBlockedReason =
     song && song.tracks.length === 0
       ? RECORD_NEEDS_TRACK
-      : liveTrack?.instrument === "audio"
-        ? RECORD_NOT_ON_AUDIO
+      : song && liveTrack?.instrument === "audio"
+        ? audioRecordBlockedReason(song, liveTrack, permission)
         : null;
   const session = useRecordingSession({
     engine: playback.engine,
@@ -343,6 +373,9 @@ export function StudioPage({
     midi,
     finalizer,
     blockedReason: recordBlockedReason,
+    needsMidi: needsMidi(liveTrack),
+    onError: setRecordError,
+    onBlocked: onRecordBlocked,
   });
 
   const { guardEdit } = session;
@@ -726,6 +759,9 @@ export function StudioPage({
   }
 
   return (
+    <AudioInputProvider
+      value={{ owner: inputs, engine: playback.engine, store, announce: setStatus, popoverRequest }}
+    >
     <main
       ref={mainRef}
       style={
@@ -833,8 +869,15 @@ export function StudioPage({
                 onAnnounce={setStatus}
                 midi={midi}
                 recordBlockedReason={recordBlockedReason}
+                recordNeedsMidi={needsMidi(liveTrack)}
+                onRecordBlocked={onRecordBlocked}
               />
             </div>
+            {recordError && (
+              <div className="px-4 pb-3 sm:px-6">
+                <ErrorAlert message={recordError} onDismiss={() => setRecordError(null)} />
+              </div>
+            )}
           </>
         ) : (
           <div aria-hidden="true" className="flex flex-col gap-3 px-4 py-4 sm:px-6">
@@ -1110,5 +1153,6 @@ export function StudioPage({
         />
       )}
     </main>
+    </AudioInputProvider>
   );
 }
