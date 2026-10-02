@@ -1,3 +1,5 @@
+mod common;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,7 +91,11 @@ impl PatternProvider for Unusable {
     }
 }
 
-fn app_with(provider: impl PatternProvider + 'static, extra: &[(&str, &str)]) -> axum::Router {
+async fn app_with(
+    provider: impl PatternProvider + 'static,
+    extra: &[(&str, &str)],
+) -> axum::Router {
+    let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| {
         if k == AI_PROVIDER {
             return Some("mock".into());
@@ -100,11 +106,13 @@ fn app_with(provider: impl PatternProvider + 'static, extra: &[(&str, &str)]) ->
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    api::app(AppState {
+    let router = api::app(AppState {
         providers: Providers::with_patterns(provider),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
-    })
+        db: db.clone(),
+    });
+    db.keep_alive_with(router)
 }
 
 fn counted_mock() -> (Counting<MockProvider>, Arc<AtomicUsize>) {
@@ -144,7 +152,7 @@ async fn get(app: axum::Router, uri: &str) -> (StatusCode, Value) {
 async fn generates_with_defaults() {
     let (provider, calls) = counted_mock();
     let (status, body) = generate(
-        app_with(provider, &[]),
+        app_with(provider, &[]).await,
         json!({"instrument": "drums", "prompt": "four on the floor house beat", "measures": 4}),
     )
     .await;
@@ -160,7 +168,7 @@ async fn generates_with_defaults() {
 
 #[tokio::test]
 async fn rows_and_channel_equal_the_instruments_listing() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, instruments) = get(app.clone(), "/api/v1/instruments").await;
     let (_, pattern) = generate(
         app,
@@ -174,7 +182,7 @@ async fn rows_and_channel_equal_the_instruments_listing() {
 #[tokio::test]
 async fn explicit_tempo_is_honored() {
     let (status, body) = generate(
-        app_with(MockProvider, &[]),
+        app_with(MockProvider, &[]).await,
         json!({"instrument": "drums", "prompt": "trap hats", "measures": 8, "tempo_bpm": 140}),
     )
     .await;
@@ -186,7 +194,7 @@ async fn explicit_tempo_is_honored() {
 async fn every_allowed_length_produces_a_pattern_of_that_length() {
     for measures in [4, 8, 12, 16, 32] {
         let (status, body) = generate(
-            app_with(MockProvider, &[]),
+            app_with(MockProvider, &[]).await,
             json!({"instrument": "drums", "prompt": "boom bap", "measures": measures}),
         )
         .await;
@@ -240,7 +248,7 @@ async fn validation_errors_are_422_and_never_call_the_provider() {
     ];
     for (body, code) in cases {
         let (provider, calls) = counted_mock();
-        let (status, response) = generate(app_with(provider, &[]), body.clone()).await;
+        let (status, response) = generate(app_with(provider, &[]).await, body.clone()).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
         assert_eq!(response["error"]["code"], code, "{body}");
         assert!(response["error"]["message"]
@@ -253,7 +261,7 @@ async fn validation_errors_are_422_and_never_call_the_provider() {
 #[tokio::test]
 async fn prompt_limit_comes_from_configuration() {
     let (provider, calls) = counted_mock();
-    let app = app_with(provider, &[(MAX_INPUT_TOKENS, "128")]);
+    let app = app_with(provider, &[(MAX_INPUT_TOKENS, "128")]).await;
     let (status, _) = generate(
         app.clone(),
         json!({"instrument": "drums", "prompt": "a".repeat(512), "measures": 4}),
@@ -276,7 +284,7 @@ async fn malformed_body_is_invalid_json() {
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from("{oops"))
         .unwrap();
-    let (status, body) = call(app_with(MockProvider, &[]), req).await;
+    let (status, body) = call(app_with(MockProvider, &[]).await, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"]["code"], "invalid_json");
 }
@@ -284,7 +292,7 @@ async fn malformed_body_is_invalid_json() {
 #[tokio::test]
 async fn provider_failure_is_502_without_leaking_details() {
     let (status, body) = generate(
-        app_with(Failing, &[]),
+        app_with(Failing, &[]).await,
         json!({"instrument": "drums", "prompt": "x", "measures": 4}),
     )
     .await;
@@ -301,7 +309,7 @@ async fn unusable_drafts_twice_are_502_after_exactly_one_retry() {
         calls: calls.clone(),
     };
     let (status, body) = generate(
-        app_with(provider, &[]),
+        app_with(provider, &[]).await,
         json!({"instrument": "drums", "prompt": "x", "measures": 4}),
     )
     .await;
@@ -310,10 +318,14 @@ async fn unusable_drafts_twice_are_502_after_exactly_one_retry() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn slow_provider_times_out_with_504() {
+    let app = app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]).await;
+    // Paused only after setup: the pool's connect timeout would otherwise fire
+    // instantly against real file I/O.
+    tokio::time::pause();
     let (status, body) = generate(
-        app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]),
+        app,
         json!({"instrument": "drums", "prompt": "x", "measures": 4}),
     )
     .await;
@@ -324,7 +336,7 @@ async fn slow_provider_times_out_with_504() {
 #[tokio::test]
 async fn limits_reflect_configuration() {
     let (status, body) = get(
-        app_with(MockProvider, &[(MAX_INPUT_TOKENS, "128")]),
+        app_with(MockProvider, &[(MAX_INPUT_TOKENS, "128")]).await,
         "/api/v1/patterns/limits",
     )
     .await;
@@ -337,7 +349,7 @@ async fn limits_reflect_configuration() {
 
 #[tokio::test]
 async fn instruments_lists_the_full_catalog_in_order() {
-    let (status, body) = get(app_with(MockProvider, &[]), "/api/v1/instruments").await;
+    let (status, body) = get(app_with(MockProvider, &[]).await, "/api/v1/instruments").await;
     assert_eq!(status, StatusCode::OK);
     let list = body.as_array().unwrap();
     let listed: Vec<&str> = list.iter().map(|i| i["id"].as_str().unwrap()).collect();
@@ -401,7 +413,7 @@ async fn instruments_lists_the_full_catalog_in_order() {
 
 #[tokio::test]
 async fn generates_a_piano_pattern_with_all_rows_and_program_one() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, instruments) = get(app.clone(), "/api/v1/instruments").await;
     let (status, pattern) = generate(
         app,
@@ -427,7 +439,7 @@ async fn generates_a_piano_pattern_with_all_rows_and_program_one() {
 
 #[tokio::test]
 async fn piano_pattern_exports_to_a_parseable_midi_with_its_program() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, mut pattern) = generate(
         app.clone(),
         json!({"instrument": "piano", "prompt": "gentle ballad", "measures": 4}),
@@ -470,7 +482,7 @@ async fn piano_pattern_exports_to_a_parseable_midi_with_its_program() {
 
 #[tokio::test]
 async fn drums_pattern_without_midi_program_exports_without_program_change() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, mut pattern) = generate(
         app.clone(),
         json!({"instrument": "drums", "prompt": "rock", "measures": 4}),
@@ -508,7 +520,7 @@ async fn export(
 
 #[tokio::test]
 async fn export_returns_a_midi_file_matching_the_pattern() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, mut pattern) = generate(
         app.clone(),
         json!({"instrument": "drums", "prompt": "boom bap", "measures": 4, "tempo_bpm": 90}),
@@ -560,7 +572,7 @@ async fn export_returns_a_midi_file_matching_the_pattern() {
 
 #[tokio::test]
 async fn export_rejects_an_unknown_row_with_422() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, mut pattern) = generate(
         app.clone(),
         json!({"instrument": "drums", "prompt": "rock", "measures": 4}),
@@ -575,7 +587,7 @@ async fn export_rejects_an_unknown_row_with_422() {
 
 #[tokio::test]
 async fn export_rejects_out_of_range_numbers_without_panicking() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, pattern) = generate(
         app.clone(),
         json!({"instrument": "drums", "prompt": "rock", "measures": 4}),
@@ -608,7 +620,8 @@ async fn export_rejects_out_of_range_numbers_without_panicking() {
 
 #[tokio::test]
 async fn export_rejects_a_non_pattern_body_as_invalid_json() {
-    let (status, _, bytes) = export(app_with(MockProvider, &[]), &json!({"measures": 10})).await;
+    let (status, _, bytes) =
+        export(app_with(MockProvider, &[]).await, &json!({"measures": 10})).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["error"]["code"], "invalid_json");
@@ -616,7 +629,7 @@ async fn export_rejects_a_non_pattern_body_as_invalid_json() {
 
 #[tokio::test]
 async fn every_new_instrument_generates_a_pattern_matching_its_listing() {
-    let app = app_with(MockProvider, &[]);
+    let app = app_with(MockProvider, &[]).await;
     let (_, instruments) = get(app.clone(), "/api/v1/instruments").await;
     let instruments = instruments.as_array().unwrap();
 
