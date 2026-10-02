@@ -4,10 +4,13 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use std::ops::ControlFlow;
+
+use super::sse::SseParser;
 use super::{
-    http_client, probe_models, read_error_fields, read_json_capped, retry_after_secs,
-    transport_error, ErrorFields, KeyCheckError, ProviderError, StructuredProvider,
-    StructuredRequest, DEFAULT_REQUEST_TIMEOUT,
+    http_client, probe_models, read_error_fields, read_json_capped, read_stream_capped,
+    retry_after_secs, transport_error, ErrorFields, KeyCheckError, ProviderError,
+    StructuredProvider, StructuredRequest, TextSink, DEFAULT_REQUEST_TIMEOUT,
 };
 
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -102,6 +105,149 @@ impl ClaudeProvider {
     }
 }
 
+impl ClaudeProvider {
+    /// Shared by both paths so status handling cannot drift between them.
+    async fn send(
+        &self,
+        request: &StructuredRequest,
+        stream: bool,
+    ) -> Result<reqwest::Response, ProviderError> {
+        // Forcing the tool call is what makes the model return schema-shaped JSON.
+        let mut body = json!({
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": request.system,
+            "messages": [{"role": "user", "content": request.user}],
+            "tools": [{
+                "name": request.tool_name,
+                "description": request.tool_description,
+                "input_schema": request.schema,
+            }],
+            "tool_choice": {"type": "tool", "name": request.tool_name},
+        });
+        if stream {
+            body["stream"] = json!(true);
+        }
+        let response = self
+            .client
+            .post(format!("{}/v1/messages", self.base_url))
+            .header("x-api-key", self.api_key.expose_secret())
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| transport_error("Anthropic", &e))?;
+
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+        let retry_after = retry_after_secs(response.headers());
+        let fields = read_error_fields(response).await;
+        // The body text is dropped: it may echo request content.
+        Err(
+            classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
+                ProviderError::Request(format!("the Anthropic API returned HTTP {status}"))
+            }),
+        )
+    }
+}
+
+/// The forced tool call's input only exists as fragments until `message_stop`, so it is
+/// rebuilt here and parsed once, which keeps streaming and buffered results identical.
+struct ToolStream<'a> {
+    tool_name: &'a str,
+    tool_block: Option<u64>,
+    json: String,
+    stopped: bool,
+}
+
+impl<'a> ToolStream<'a> {
+    fn new(tool_name: &'a str) -> Self {
+        Self {
+            tool_name,
+            tool_block: None,
+            json: String::new(),
+            stopped: false,
+        }
+    }
+
+    fn handle(
+        &mut self,
+        data: &str,
+        text: &TextSink<'_>,
+    ) -> Result<ControlFlow<()>, ProviderError> {
+        // Anthropic repeats the event type inside the data, so the SSE `event:` line is not read.
+        let event: Value = serde_json::from_str(data)
+            .map_err(|_| ProviderError::InvalidOutput("stream event is not JSON".into()))?;
+        match event["type"].as_str() {
+            Some("content_block_start") => {
+                let block = &event["content_block"];
+                if block["type"] == "tool_use" && block["name"] == self.tool_name {
+                    self.tool_block = event["index"].as_u64();
+                }
+            }
+            Some("content_block_delta") => {
+                let delta = &event["delta"];
+                let in_tool_block =
+                    self.tool_block.is_some() && event["index"].as_u64() == self.tool_block;
+                if in_tool_block && delta["type"] == "input_json_delta" {
+                    if let Some(fragment) = delta["partial_json"].as_str() {
+                        self.json.push_str(fragment);
+                        text.emit(fragment);
+                    }
+                }
+            }
+            Some("message_stop") => {
+                self.stopped = true;
+                return Ok(ControlFlow::Break(()));
+            }
+            Some("error") => return Err(stream_error(&event["error"])),
+            _ => {}
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn finish(self) -> Result<Value, ProviderError> {
+        if !self.stopped {
+            return Err(ProviderError::Request(
+                "the Anthropic stream ended before the response finished".into(),
+            ));
+        }
+        if self.tool_block.is_none() {
+            return Err(ProviderError::InvalidOutput(format!(
+                "response contained no {} tool call",
+                self.tool_name
+            )));
+        }
+        // A tool call with no input streams no fragments; the buffered API reports `{}` then.
+        if self.json.is_empty() {
+            return Ok(json!({}));
+        }
+        serde_json::from_str(&self.json)
+            .map_err(|e| ProviderError::InvalidOutput(format!("tool input is not JSON: {e}")))
+    }
+}
+
+/// Maps a mid-stream error to the error its HTTP status would have produced, because the
+/// status line was already sent as 200 by then. Only the machine-readable type is read.
+fn stream_error(error: &Value) -> ProviderError {
+    let fields: ErrorFields = serde_json::from_value(error.clone()).unwrap_or_default();
+    let status = match fields.kind.as_deref() {
+        Some("authentication_error") => 401,
+        Some("permission_error") => 403,
+        Some("billing_error") => 402,
+        Some("rate_limit_error") => 429,
+        Some("overloaded_error") => 529,
+        _ => 500,
+    };
+    classify_error(status, &fields, None).unwrap_or_else(|| {
+        ProviderError::Request(format!(
+            "the Anthropic API returned HTTP {status} mid-stream"
+        ))
+    })
+}
+
 impl std::fmt::Debug for ClaudeProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClaudeProvider")
@@ -118,40 +264,7 @@ impl StructuredProvider for ClaudeProvider {
     }
 
     async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
-        // Forcing the tool call is what makes the model return schema-shaped JSON.
-        let body = json!({
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": request.system,
-            "messages": [{"role": "user", "content": request.user}],
-            "tools": [{
-                "name": request.tool_name,
-                "description": request.tool_description,
-                "input_schema": request.schema,
-            }],
-            "tool_choice": {"type": "tool", "name": request.tool_name},
-        });
-        let response = self
-            .client
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", self.api_key.expose_secret())
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| transport_error("Anthropic", &e))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let retry_after = retry_after_secs(response.headers());
-            let fields = read_error_fields(response).await;
-            // The body text is dropped: it may echo request content.
-            return Err(
-                classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
-                    ProviderError::Request(format!("the Anthropic API returned HTTP {status}"))
-                }),
-            );
-        }
+        let response = self.send(request, false).await?;
         let payload = read_json_capped(response).await?;
         payload["content"]
             .as_array()
@@ -167,6 +280,26 @@ impl StructuredProvider for ClaudeProvider {
                     request.tool_name
                 ))
             })
+    }
+
+    async fn generate_streaming(
+        &self,
+        request: &StructuredRequest,
+        text: &TextSink<'_>,
+    ) -> Result<Value, ProviderError> {
+        let response = self.send(request, true).await?;
+        let mut parser = SseParser::new();
+        let mut stream = ToolStream::new(&request.tool_name);
+        read_stream_capped(response, |chunk| {
+            for event in parser.push(chunk) {
+                if stream.handle(&event.data, text)?.is_break() {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+            Ok(ControlFlow::Continue(()))
+        })
+        .await?;
+        stream.finish()
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -421,5 +554,223 @@ mod tests {
     fn debug_never_shows_the_key() {
         let p = ClaudeProvider::new(SecretString::from("sk-very-secret"), "m");
         assert!(!format!("{p:?}").contains("sk-very-secret"));
+    }
+
+    mod streaming {
+        use super::*;
+        use std::sync::Mutex;
+
+        fn sse(events: &[(&str, Value)]) -> String {
+            events
+                .iter()
+                .map(|(name, data)| format!("event: {name}\ndata: {data}\n\n"))
+                .collect()
+        }
+
+        fn tool_events(fragments: &[&str]) -> Vec<(&'static str, Value)> {
+            let mut events = vec![
+                ("message_start", json!({"type": "message_start"})),
+                (
+                    "content_block_start",
+                    json!({"type": "content_block_start", "index": 0,
+                        "content_block": {"type": "text", "text": ""}}),
+                ),
+                (
+                    "content_block_delta",
+                    json!({"type": "content_block_delta", "index": 0,
+                        "delta": {"type": "text_delta", "text": "thinking"}}),
+                ),
+                ("ping", json!({"type": "ping"})),
+                (
+                    "content_block_start",
+                    json!({"type": "content_block_start", "index": 1,
+                        "content_block": {"type": "tool_use", "id": "t", "name": "emit_pattern", "input": {}}}),
+                ),
+            ];
+            for fragment in fragments {
+                events.push((
+                    "content_block_delta",
+                    json!({"type": "content_block_delta", "index": 1,
+                        "delta": {"type": "input_json_delta", "partial_json": fragment}}),
+                ));
+            }
+            events.push((
+                "content_block_stop",
+                json!({"type": "content_block_stop", "index": 1}),
+            ));
+            events.push(("message_stop", json!({"type": "message_stop"})));
+            events
+        }
+
+        fn stream_response(body: String) -> ResponseTemplate {
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+
+        async fn run(response: ResponseTemplate) -> (Result<Value, ProviderError>, Vec<String>) {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/messages"))
+                .respond_with(response)
+                .mount(&server)
+                .await;
+            let seen = Mutex::new(Vec::new());
+            let push = |fragment: &str| seen.lock().unwrap().push(fragment.to_string());
+            let result = provider(&server)
+                .generate_streaming(&request(), &TextSink::new(&push))
+                .await;
+            (result, seen.into_inner().unwrap())
+        }
+
+        #[tokio::test]
+        async fn fragments_reach_the_sink_in_order_and_the_value_matches_the_buffered_result() {
+            let fragments = ["{\"na", "me\":\"o", "k\"}"];
+            let (result, seen) = run(stream_response(sse(&tool_events(&fragments)))).await;
+            assert_eq!(seen, fragments);
+            assert_eq!(result.unwrap(), json!({"name": "ok"}));
+
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "content": [{"type": "tool_use", "name": "emit_pattern", "input": {"name": "ok"}}]
+                })))
+                .mount(&server)
+                .await;
+            let buffered = provider(&server).generate(&request()).await.unwrap();
+            assert_eq!(buffered, json!({"name": "ok"}));
+        }
+
+        #[tokio::test]
+        async fn the_request_asks_for_a_stream() {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(stream_response(sse(&tool_events(&["{}"]))))
+                .mount(&server)
+                .await;
+            provider(&server)
+                .generate_streaming(&request(), &TextSink::discard())
+                .await
+                .unwrap();
+            let sent: Value = server.received_requests().await.unwrap()[0]
+                .body_json()
+                .unwrap();
+            assert_eq!(sent["stream"], true);
+            assert_eq!(
+                sent["tool_choice"],
+                json!({"type": "tool", "name": "emit_pattern"})
+            );
+        }
+
+        #[tokio::test]
+        async fn text_blocks_are_not_forwarded() {
+            let (_, seen) = run(stream_response(sse(&tool_events(&["{}"])))).await;
+            assert_eq!(seen, ["{}"]);
+        }
+
+        #[tokio::test]
+        async fn http_errors_map_as_they_do_without_streaming() {
+            let cases = [
+                (
+                    401,
+                    anthropic_error("authentication_error"),
+                    None,
+                    ProviderError::Unauthorized,
+                ),
+                (
+                    429,
+                    anthropic_error("rate_limit_error"),
+                    Some("20"),
+                    ProviderError::RateLimited {
+                        retry_after: Some(20),
+                    },
+                ),
+            ];
+            for (status, body, retry_after, expected) in cases {
+                let mut response = ResponseTemplate::new(status).set_body_json(body);
+                if let Some(value) = retry_after {
+                    response = response.insert_header("retry-after", value);
+                }
+                let (result, seen) = run(response).await;
+                assert_eq!(result.unwrap_err(), expected);
+                assert!(seen.is_empty());
+            }
+            let (result, _) =
+                run(ResponseTemplate::new(529).set_body_string("secret upstream detail")).await;
+            let err = result.unwrap_err();
+            assert!(matches!(err, ProviderError::Request(_)));
+            assert!(err.to_string().contains("529"));
+            assert!(!err.to_string().contains("secret upstream detail"));
+        }
+
+        #[tokio::test]
+        async fn a_mid_stream_error_maps_like_the_matching_status_without_the_body() {
+            for (kind, expected) in [
+                ("authentication_error", ProviderError::Unauthorized),
+                (
+                    "rate_limit_error",
+                    ProviderError::RateLimited { retry_after: None },
+                ),
+                ("billing_error", ProviderError::QuotaExhausted),
+            ] {
+                let mut events = tool_events(&["{\"na"]);
+                events.truncate(6);
+                events.push(("error", anthropic_error_event(kind)));
+                let (result, seen) = run(stream_response(sse(&events))).await;
+                assert_eq!(result.unwrap_err(), expected, "{kind}");
+                assert_eq!(seen, ["{\"na"]);
+            }
+            let mut events = tool_events(&[]);
+            events.truncate(5);
+            events.push(("error", anthropic_error_event("overloaded_error")));
+            let (result, _) = run(stream_response(sse(&events))).await;
+            let err = result.unwrap_err();
+            assert!(matches!(err, ProviderError::Request(_)), "{err}");
+            assert!(!err.to_string().contains("SECRET-BODY-TEXT"));
+        }
+
+        fn anthropic_error_event(kind: &str) -> Value {
+            json!({"type": "error", "error": {"type": kind, "message": "SECRET-BODY-TEXT"}})
+        }
+
+        #[tokio::test]
+        async fn a_stream_that_ends_early_is_a_request_error() {
+            let mut events = tool_events(&["{\"na"]);
+            events.pop();
+            let (result, _) = run(stream_response(sse(&events))).await;
+            assert!(matches!(result.unwrap_err(), ProviderError::Request(_)));
+        }
+
+        #[tokio::test]
+        async fn a_stream_without_the_tool_call_is_invalid_output() {
+            let events = vec![
+                ("message_start", json!({"type": "message_start"})),
+                ("message_stop", json!({"type": "message_stop"})),
+            ];
+            let (result, _) = run(stream_response(sse(&events))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+        }
+
+        #[tokio::test]
+        async fn incomplete_tool_json_is_invalid_output() {
+            let (result, _) = run(stream_response(sse(&tool_events(&["{\"na"])))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+        }
+
+        #[tokio::test]
+        async fn an_oversize_stream_is_rejected() {
+            let padding = "x".repeat(5 * 1024 * 1024);
+            let events = tool_events(&[padding.as_str()]);
+            let (result, _) = run(stream_response(sse(&events))).await;
+            assert!(
+                matches!(result.unwrap_err(), ProviderError::Request(m) if m.contains("limit"))
+            );
+        }
     }
 }

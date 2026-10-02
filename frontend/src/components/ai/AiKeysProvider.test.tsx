@@ -19,7 +19,7 @@ vi.mock("@/lib/api", async (orig) => ({
   getAiKeys: vi.fn(),
   generateTrack: vi.fn(),
   generatePattern: vi.fn(),
-  sendChat: vi.fn(),
+  streamChat: vi.fn(),
 }));
 
 afterEach(() => vi.resetAllMocks());
@@ -92,7 +92,7 @@ describe("refetching the summary on api_key_* errors", () => {
 
   it("useChat refetches on api_key_invalid and offers a Replace key link", async () => {
     vi.mocked(api.getAiKeys).mockResolvedValue(withKey);
-    vi.mocked(api.sendChat).mockRejectedValue(keyError("api_key_invalid"));
+    vi.mocked(api.streamChat).mockRejectedValue(keyError("api_key_invalid"));
     const store = createSongStore(newSongWithTracks());
     const { result } = renderHook(() => ({ chat: useChat(store, vi.fn()), keys: useAiKeys() }), { wrapper });
     await waitFor(() => expect(result.current.keys.status).toBe("ready"));
@@ -105,7 +105,7 @@ describe("refetching the summary on api_key_* errors", () => {
 
   it("useChat gives no link for api_key_rate_limited", async () => {
     vi.mocked(api.getAiKeys).mockResolvedValue(withKey);
-    vi.mocked(api.sendChat).mockRejectedValue(new api.ApiError("api_key_rate_limited", "Anthropic is rate limiting you.", 429, 30_000));
+    vi.mocked(api.streamChat).mockRejectedValue(new api.ApiError("api_key_rate_limited", "Anthropic is rate limiting you.", 429, 30_000));
     const store = createSongStore(newSongWithTracks());
     const { result } = renderHook(() => ({ chat: useChat(store, vi.fn()), keys: useAiKeys() }), { wrapper });
     await waitFor(() => expect(result.current.keys.status).toBe("ready"));

@@ -6,15 +6,16 @@ mod common;
 use common::{request, request_for, FakeCodex, BAD_DRAFT, BAD_PIANO_DRAFT};
 use music::ai::lyrics::lyrics_schema;
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, OpenAiProvider,
-    SchemaLyricsProvider, SchemaProvider,
+    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, OpenAiProvider, ProviderError,
+    SchemaLyricsProvider, SchemaProvider, StructuredProvider, StructuredRequest, TextSink,
 };
 use music::generate::generate_pattern;
 use music::lyrics::assist_lyrics;
 use music::GenerateRequest;
 use secrecy::SecretString;
 use serde_json::{json, Value};
-use wiremock::matchers::{method, path};
+use std::sync::Arc;
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn draft_value(draft: &str) -> Value {
@@ -249,4 +250,189 @@ async fn ollama_and_codex_serve_the_same_lyrics_response() {
     let fake = FakeCodex::new("ok", LYRICS_DRAFT);
     let codex = SchemaLyricsProvider::new(CodexCliProvider::new(fake.bin(), None));
     assert_lyrics_response(&assist_lyrics(&codex, &lyrics_request()).await.unwrap());
+}
+
+const FRAGMENT_CHARS: usize = 7;
+
+fn fragments_of(draft: &str) -> Vec<String> {
+    let chars: Vec<char> = draft.chars().collect();
+    chars
+        .chunks(FRAGMENT_CHARS)
+        .map(|c| c.iter().collect())
+        .collect()
+}
+
+fn structured_request() -> StructuredRequest {
+    StructuredRequest {
+        system: "s".into(),
+        user: "u".into(),
+        schema: json!({"type": "object"}),
+        tool_name: "emit_pattern".into(),
+        tool_description: "d".into(),
+    }
+}
+
+fn claude_stream_body(fragments: &[String]) -> String {
+    let event = |name: &str, data: Value| format!("event: {name}\ndata: {data}\n\n");
+    let mut body = event(
+        "content_block_start",
+        json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "tool_use", "id": "t", "name": "emit_pattern", "input": {}}}),
+    );
+    for fragment in fragments {
+        body += &event(
+            "content_block_delta",
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "input_json_delta", "partial_json": fragment}}),
+        );
+    }
+    body + &event("message_stop", json!({"type": "message_stop"}))
+}
+
+fn openai_stream_body(fragments: &[String]) -> String {
+    let chunk = |delta: Value, finish: Value| {
+        format!(
+            "data: {}\n\n",
+            json!({"choices": [{"delta": delta, "finish_reason": finish}]})
+        )
+    };
+    let mut body: String = fragments
+        .iter()
+        .map(|f| chunk(json!({"content": f}), Value::Null))
+        .collect();
+    body += &chunk(json!({}), json!("stop"));
+    body + "data: [DONE]\n\n"
+}
+
+fn ollama_stream_body(fragments: &[String]) -> String {
+    let line = |content: &str, done: bool| {
+        format!(
+            "{}\n",
+            json!({"message": {"role": "assistant", "content": content}, "done": done})
+        )
+    };
+    let body: String = fragments.iter().map(|f| line(f, false)).collect();
+    body + &line("", true)
+}
+
+/// Both methods are served by one fake so a transport cannot pass by agreeing with itself
+/// on only one of them.
+async fn both_methods(transport: &dyn StructuredProvider, expected_text: &str) -> (Value, Value) {
+    let buffered = transport.generate(&structured_request()).await.unwrap();
+    let seen = std::sync::Mutex::new(String::new());
+    let push = |fragment: &str| seen.lock().unwrap().push_str(fragment);
+    let streamed = transport
+        .generate_streaming(&structured_request(), &TextSink::new(&push))
+        .await
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), expected_text);
+    (buffered, streamed)
+}
+
+/// Routes the buffered entry point through the streaming one, so the whole pattern pipeline
+/// can be compared across both methods.
+struct ViaStreaming<T>(T);
+
+#[async_trait::async_trait]
+impl<T: StructuredProvider> StructuredProvider for ViaStreaming<T> {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+
+    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+        self.0
+            .generate_streaming(request, &TextSink::discard())
+            .await
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        self.0.check().await
+    }
+}
+
+#[tokio::test]
+async fn every_transport_gives_the_same_value_from_generate_and_generate_streaming() {
+    let fragments = fragments_of(BAD_DRAFT);
+    let value = draft_value(BAD_DRAFT);
+    let expected_text = fragments.concat();
+    let stream_only = || body_partial_json(json!({"stream": true}));
+
+    let claude_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(stream_only())
+        .respond_with(ResponseTemplate::new(200).set_body_string(claude_stream_body(&fragments)))
+        .mount(&claude_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "content": [{"type": "tool_use", "name": "emit_pattern", "input": value}]
+        })))
+        .mount(&claude_server)
+        .await;
+    let claude =
+        ClaudeProvider::new(SecretString::from("k"), "m").with_base_url(claude_server.uri());
+
+    let openai_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(stream_only())
+        .respond_with(ResponseTemplate::new(200).set_body_string(openai_stream_body(&fragments)))
+        .mount(&openai_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{"message": {"role": "assistant", "content": BAD_DRAFT}, "finish_reason": "stop"}]
+        })))
+        .mount(&openai_server)
+        .await;
+    let openai =
+        OpenAiProvider::new(SecretString::from("k"), "m").with_base_url(openai_server.uri());
+
+    let ollama_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .and(stream_only())
+        .respond_with(ResponseTemplate::new(200).set_body_string(ollama_stream_body(&fragments)))
+        .mount(&ollama_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "message": {"role": "assistant", "content": BAD_DRAFT}
+        })))
+        .mount(&ollama_server)
+        .await;
+    let ollama = OllamaProvider::new(ollama_server.uri(), "m");
+
+    let transports: [Arc<dyn StructuredProvider>; 3] =
+        [Arc::new(claude), Arc::new(openai), Arc::new(ollama)];
+    let req = request("messy", 4);
+    let mut patterns = Vec::new();
+    for transport in transports {
+        let (buffered, streamed) = both_methods(transport.as_ref(), &expected_text).await;
+        assert_eq!(buffered, value, "{}", transport.name());
+        assert_eq!(streamed, value, "{}", transport.name());
+        let direct = generate_pattern(&SchemaProvider::new(transport.clone()), &req)
+            .await
+            .unwrap();
+        let via_stream =
+            generate_pattern(&SchemaProvider::new(ViaStreaming(transport.clone())), &req)
+                .await
+                .unwrap();
+        assert_eq!(direct, via_stream, "{}", transport.name());
+        patterns.push(direct);
+    }
+    assert!(patterns.windows(2).all(|w| w[0] == w[1]));
+}
+
+#[tokio::test]
+async fn a_transport_that_cannot_stream_emits_no_text_but_returns_the_same_value() {
+    let fake = FakeCodex::new("ok", BAD_DRAFT);
+    let codex = CodexCliProvider::new(fake.bin(), None);
+    let (buffered, streamed) = both_methods(&codex, "").await;
+    assert_eq!(buffered, draft_value(BAD_DRAFT));
+    assert_eq!(streamed, buffered);
 }

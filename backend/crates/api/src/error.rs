@@ -195,7 +195,7 @@ impl ApiError {
         }
     }
 
-    fn retry_after(&self) -> Option<u64> {
+    pub fn retry_after(&self) -> Option<u64> {
         match self {
             Self::TooManyRequests { retry_after } | Self::ServerBusy { retry_after } => {
                 Some(*retry_after)

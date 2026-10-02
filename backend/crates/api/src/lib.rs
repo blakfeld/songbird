@@ -2,6 +2,7 @@ pub mod ai_access;
 pub mod ai_keys;
 pub mod ai_limits;
 pub mod auth;
+pub mod chat_queue;
 pub mod cli;
 pub mod clock;
 pub mod config;

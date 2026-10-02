@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChatEvent } from "@/generated/ChatEvent";
 import type { Pattern } from "@/generated/Pattern";
 import type { Song } from "@/generated/Song";
 import {
@@ -13,9 +14,12 @@ import {
   getSongLimits,
   removeAiKey,
   saveAiKey,
-  sendChat,
   setAiProvider,
+  streamChat,
 } from "./api";
+import { signOutLocally } from "./auth/signOut";
+
+vi.mock("./auth/signOut", () => ({ signOutLocally: vi.fn(async () => undefined) }));
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -183,7 +187,7 @@ describe("api client", () => {
     expect(err.code).toBe("network_error");
   });
 
-  it("sendChat posts the history and range as JSON", async () => {
+  it("streamChat posts the history and range as JSON", async () => {
     const response = { reply: "Added a Bass track.", track: null };
     const fn = mockFetch(json(response));
     const body = {
@@ -191,7 +195,9 @@ describe("api client", () => {
       messages: [{ role: "user" as const, content: "now the bass" }],
       range: { start_measure: 1, end_measure: 8 },
     };
-    expect(await sendChat(body)).toEqual(response);
+    const onEvent = vi.fn();
+    await streamChat(body, { onEvent });
+    expect(onEvent).toHaveBeenCalledWith({ event: "result", data: response });
     const [url, init] = fn.mock.calls[0];
     expect(url).toBe("/api/v1/songs/chat");
     expect(init!.method).toBe("POST");
@@ -206,18 +212,18 @@ describe("api client", () => {
     [400, "prompt_too_long", "too long"],
     [400, "invalid_instrument", "not supported"],
     [400, "invalid_range", "measure range"],
-  ])("sendChat maps a %s %s error", async (status, code, fragment) => {
+  ])("streamChat maps a %s %s error", async (status, code, fragment) => {
     mockFetch(json(errorBody(code), status));
-    const err = await sendChat({ song: {} as unknown as Song, messages: [] }).catch((e) => e);
+    const err = await streamChat({ song: {} as unknown as Song, messages: [] }, { onEvent: vi.fn() }).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(code);
     expect(err.message).toContain(fragment);
   });
 
-  it("sendChat surfaces the server's reason for a 400 invalid_song or invalid_prompt", async () => {
+  it("streamChat surfaces the server's reason for a 400 invalid_song or invalid_prompt", async () => {
     for (const code of ["invalid_song", "invalid_prompt"]) {
       mockFetch(json(errorBody(code, `reason for ${code}`), 400));
-      const err = await sendChat({ song: {} as unknown as Song, messages: [] }).catch((e) => e);
+      const err = await streamChat({ song: {} as unknown as Song, messages: [] }, { onEvent: vi.fn() }).catch((e) => e);
       expect(err.message).toBe(`reason for ${code}`);
     }
   });
@@ -306,4 +312,246 @@ describe("assistLyrics", () => {
       expect(err.message).toBe("the selection is outside the lyrics");
     },
   );
+});
+
+describe("streamChat", () => {
+  const body = { song: {} as unknown as Song, messages: [] };
+  const encoder = new TextEncoder();
+  const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const result = { reply: "done", track: null };
+
+  function sseResponse(chunks: string[], onCancel?: () => void) {
+    return new Response(
+      new ReadableStream({
+        start(c) {
+          for (const chunk of chunks) c.enqueue(encoder.encode(chunk));
+          // Left open after a terminal event, as a live connection would be, so only a cancel can release it.
+          if (!onCancel) c.close();
+        },
+        cancel: onCancel,
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  }
+
+  // Stays open until the test pushes, closes or aborts it, so idleness is the only other way it ends.
+  function openStream(signal?: AbortSignal) {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    let cancelled = false;
+    const res = new Response(
+      new ReadableStream({
+        start: (c) => void (controller = c),
+        cancel: () => void (cancelled = true),
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+    // A real fetch body errors when its signal aborts; the mock has to do the same.
+    signal?.addEventListener("abort", () => controller.error(signal.reason));
+    return { res, push: (t: string) => controller.enqueue(encoder.encode(t)), wasCancelled: () => cancelled };
+  }
+
+  it("sends an event-stream Accept header and delivers events in order", async () => {
+    const fn = mockFetch(
+      sseResponse([
+        ": keepalive\n\n",
+        frame("progress", { stage: "planning" }),
+        frame("reply_delta", { text: "Hi" }),
+        frame("result", result),
+      ]),
+    );
+    const events: ChatEvent[] = [];
+    await streamChat(body, { onEvent: (e) => events.push(e) });
+    expect(events).toEqual([
+      { event: "progress", data: { stage: "planning" } },
+      { event: "reply_delta", data: { text: "Hi" } },
+      { event: "result", data: result },
+    ]);
+    const init = fn.mock.calls[0][1]!;
+    expect((init.headers as Record<string, string>).Accept).toBe("text/event-stream");
+  });
+
+  it("maps a non-2xx response through toApiError", async () => {
+    mockFetch(json(errorBody("generation_busy"), 503));
+    const err = await streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe("generation_busy");
+  });
+
+  it("treats a 2xx JSON response as a single result", async () => {
+    mockFetch(json(result));
+    const events: ChatEvent[] = [];
+    await streamChat(body, { onEvent: (e) => events.push(e) });
+    expect(events).toEqual([{ event: "result", data: result }]);
+  });
+
+  it("turns an error event into an ApiError with retry_after", async () => {
+    mockFetch(
+      sseResponse([
+        frame("error", { code: "api_key_rate_limited", message: "Anthropic is rate limiting", retry_after: 30 }),
+      ]),
+    );
+    const err = await streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe("api_key_rate_limited");
+    expect(err.message).toBe("Anthropic is rate limiting");
+    expect(err.retryAfterMs).toBe(30_000);
+  });
+
+  it("signs out on an unauthenticated error event", async () => {
+    vi.mocked(signOutLocally).mockClear();
+    mockFetch(sseResponse([frame("error", { code: "unauthenticated", message: "x" })]));
+    await streamChat(body, { onEvent: vi.fn() }).catch(() => undefined);
+    expect(signOutLocally).toHaveBeenCalledOnce();
+  });
+
+  it("signs out on an unauthenticated HTTP response", async () => {
+    vi.mocked(signOutLocally).mockClear();
+    mockFetch(json(errorBody("unauthenticated"), 401));
+    await streamChat(body, { onEvent: vi.fn() }).catch(() => undefined);
+    expect(signOutLocally).toHaveBeenCalledOnce();
+  });
+
+  it("fails with network_error when the stream ends without a result", async () => {
+    mockFetch(sseResponse([frame("progress", { stage: "planning" }), "event: result\ndata: {"]));
+    const err = await streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe("network_error");
+  });
+
+  it("propagates an exception thrown by onEvent unchanged", async () => {
+    mockFetch(sseResponse([frame("progress", { stage: "planning" }), frame("result", result)]));
+    const bug = new Error("handler bug");
+    const err = await streamChat(body, {
+      onEvent: () => {
+        throw bug;
+      },
+    }).catch((e) => e);
+    expect(err).toBe(bug);
+  });
+
+  it("ignores unknown events and the default message event", async () => {
+    mockFetch(
+      sseResponse([
+        frame("message", { a: 1 }),
+        frame("mystery", { b: 2 }),
+        frame("progress", { stage: "planning" }),
+        frame("result", result),
+      ]),
+    );
+    const events: ChatEvent[] = [];
+    await streamChat(body, { onEvent: (e) => events.push(e) });
+    expect(events.map((e) => e.event)).toEqual(["progress", "result"]);
+  });
+
+  describe("cleanup", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("cancels the body and leaves no timers after a result", async () => {
+      vi.useFakeTimers();
+      let cancelled = false;
+      mockFetch(sseResponse([frame("result", result)], () => void (cancelled = true)));
+      await streamChat(body, { onEvent: vi.fn() });
+      expect(cancelled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("leaves no timers after an error event", async () => {
+      vi.useFakeTimers();
+      let cancelled = false;
+      mockFetch(sseResponse([frame("error", { code: "generation_failed", message: "x" })], () => void (cancelled = true)));
+      await streamChat(body, { onEvent: vi.fn() }).catch(() => undefined);
+      expect(cancelled).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("leaves no timers when the stream ends without a result", async () => {
+      vi.useFakeTimers();
+      mockFetch(sseResponse([frame("progress", { stage: "planning" })]));
+      await streamChat(body, { onEvent: vi.fn() }).catch(() => undefined);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("cancels the body and leaves no timers after an idle timeout", async () => {
+      vi.useFakeTimers();
+      const stream = openStream();
+      mockFetch(stream.res);
+      const pending = streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(45_000);
+      await pending;
+      expect(stream.wasCancelled()).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("leaves no timers after an abort", async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      mockFetch(openStream(controller.signal).res);
+      const pending = streamChat(body, { signal: controller.signal, onEvent: vi.fn() }).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(1_000);
+      controller.abort();
+      await pending;
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  it("fails with network_error when fetch rejects", async () => {
+    mockFetch(new TypeError("offline"));
+    const err = await streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+    expect(err.code).toBe("network_error");
+  });
+
+  describe("idle timeout", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("fails with network_error after 45 s without bytes", async () => {
+      vi.useFakeTimers();
+      mockFetch(openStream().res);
+      const pending = streamChat(body, { onEvent: vi.fn() }).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(45_000);
+      const err = await pending;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.code).toBe("network_error");
+    });
+
+    it("counts keepalive comments as bytes", async () => {
+      vi.useFakeTimers();
+      const { res, push } = openStream();
+      mockFetch(res);
+      const events: ChatEvent[] = [];
+      const pending = streamChat(body, { onEvent: (e) => events.push(e) }).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(40_000);
+      push(": keepalive\n\n");
+      await vi.advanceTimersByTimeAsync(40_000);
+      push(frame("result", result));
+      expect(await pending).toBeUndefined();
+      expect(events).toEqual([{ event: "result", data: result }]);
+    });
+  });
+
+  describe("abort", () => {
+    it("rethrows the AbortError when aborted before the response", async () => {
+      const controller = new AbortController();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          controller.abort();
+          throw init!.signal!.reason;
+        }),
+      );
+      const err = await streamChat(body, { signal: controller.signal, onEvent: vi.fn() }).catch((e) => e);
+      expect(err).not.toBeInstanceOf(ApiError);
+      expect(err.name).toBe("AbortError");
+    });
+
+    it("rethrows the AbortError when aborted mid-stream", async () => {
+      const controller = new AbortController();
+      mockFetch(openStream(controller.signal).res);
+      const pending = streamChat(body, { signal: controller.signal, onEvent: vi.fn() }).catch((e) => e);
+      await Promise.resolve();
+      controller.abort();
+      const err = await pending;
+      expect(err).not.toBeInstanceOf(ApiError);
+      expect(err.name).toBe("AbortError");
+    });
+  });
 });

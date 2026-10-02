@@ -19,7 +19,10 @@ pub mod timing;
 pub mod tokens;
 pub mod track_generation;
 
-pub use chat::{ChatBody, ChatMessage, ChatRequestError, ChatResponse, ChatTrack};
+pub use chat::{
+    ChatBody, ChatEvent, ChatMessage, ChatProgress, ChatReplyDelta, ChatReplyReset,
+    ChatRequestError, ChatResponse, ChatStreamError, ChatTrack, PlanEvent,
+};
 pub use draft::{DraftError, NormalizedDraft, PatternDraft};
 pub use expand::build_pattern;
 pub use instruments::{Instrument, InstrumentInfo, InstrumentRegistry};

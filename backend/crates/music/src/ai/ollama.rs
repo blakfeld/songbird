@@ -3,9 +3,11 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use std::ops::ControlFlow;
+
 use super::{
-    http_client, read_json_capped, ProviderError, StructuredProvider, StructuredRequest,
-    DEFAULT_REQUEST_TIMEOUT,
+    http_client, read_json_capped, read_stream_capped, ProviderError, StructuredProvider,
+    StructuredRequest, TextSink, DEFAULT_REQUEST_TIMEOUT,
 };
 
 /// Matches the Claude provider's output cap.
@@ -41,18 +43,18 @@ impl OllamaProvider {
     }
 }
 
-#[async_trait]
-impl StructuredProvider for OllamaProvider {
-    fn name(&self) -> &'static str {
-        "ollama"
-    }
-
-    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+impl OllamaProvider {
+    /// Shared by both paths so status handling cannot drift between them.
+    async fn send(
+        &self,
+        request: &StructuredRequest,
+        stream: bool,
+    ) -> Result<reqwest::Response, ProviderError> {
         // `format` makes Ollama constrain decoding to the schema, which keeps
         // small local models on-format.
         let body = json!({
             "model": self.model,
-            "stream": false,
+            "stream": stream,
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
@@ -84,12 +86,114 @@ impl StructuredProvider for OllamaProvider {
                 "Ollama returned HTTP {status}"
             )));
         }
+        Ok(response)
+    }
+}
+
+/// Splits the NDJSON body on newlines at the byte level, because a chunk can end inside a
+/// multi-byte character.
+#[derive(Default)]
+struct LineBuffer(Vec<u8>);
+
+impl LineBuffer {
+    fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+        self.0.extend_from_slice(chunk);
+        let mut lines = Vec::new();
+        while let Some(end) = self.0.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.0.drain(..=end).collect();
+            let line = String::from_utf8_lossy(&line[..end]).trim().to_string();
+            if !line.is_empty() {
+                lines.push(line);
+            }
+        }
+        lines
+    }
+}
+
+#[derive(Default)]
+struct ChatStream {
+    content: String,
+    done: bool,
+}
+
+impl ChatStream {
+    fn handle(
+        &mut self,
+        line: &str,
+        text: &TextSink<'_>,
+    ) -> Result<ControlFlow<()>, ProviderError> {
+        let chunk: Value = serde_json::from_str(line)
+            .map_err(|_| ProviderError::InvalidOutput("stream line is not JSON".into()))?;
+        if chunk.get("error").is_some() {
+            // The message is dropped: it may echo request content.
+            return Err(ProviderError::Request(
+                "Ollama reported an error during the response".into(),
+            ));
+        }
+        if let Some(fragment) = chunk["message"]["content"]
+            .as_str()
+            .filter(|c| !c.is_empty())
+        {
+            self.content.push_str(fragment);
+            text.emit(fragment);
+        }
+        if chunk["done"].as_bool() == Some(true) {
+            self.done = true;
+            return Ok(ControlFlow::Break(()));
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn finish(self) -> Result<Value, ProviderError> {
+        if !self.done {
+            return Err(ProviderError::Request(
+                "the Ollama stream ended before the response finished".into(),
+            ));
+        }
+        if self.content.is_empty() {
+            return Err(ProviderError::InvalidOutput(
+                "response had no message content".into(),
+            ));
+        }
+        serde_json::from_str(&self.content)
+            .map_err(|e| ProviderError::InvalidOutput(format!("message is not JSON: {e}")))
+    }
+}
+
+#[async_trait]
+impl StructuredProvider for OllamaProvider {
+    fn name(&self) -> &'static str {
+        "ollama"
+    }
+
+    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+        let response = self.send(request, false).await?;
         let payload = read_json_capped(response).await?;
         let content = payload["message"]["content"].as_str().ok_or_else(|| {
             ProviderError::InvalidOutput("response had no message content".into())
         })?;
         serde_json::from_str(content)
             .map_err(|e| ProviderError::InvalidOutput(format!("message is not JSON: {e}")))
+    }
+
+    async fn generate_streaming(
+        &self,
+        request: &StructuredRequest,
+        text: &TextSink<'_>,
+    ) -> Result<Value, ProviderError> {
+        let response = self.send(request, true).await?;
+        let mut lines = LineBuffer::default();
+        let mut stream = ChatStream::default();
+        read_stream_capped(response, |chunk| {
+            for line in lines.push(chunk) {
+                if stream.handle(&line, text)?.is_break() {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+            Ok(ControlFlow::Continue(()))
+        })
+        .await?;
+        stream.finish()
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -265,5 +369,145 @@ mod tests {
         assert!(err.to_string().contains("ollama serve"));
         let err = provider.generate(&request()).await.unwrap_err();
         assert!(matches!(err, ProviderError::Request(_)), "{err:?}");
+    }
+
+    mod streaming {
+        use super::*;
+        use std::sync::Mutex;
+
+        fn line(content: &str, done: bool) -> String {
+            format!(
+                "{}\n",
+                json!({"message": {"role": "assistant", "content": content}, "done": done})
+            )
+        }
+
+        fn ndjson(fragments: &[&str]) -> String {
+            let mut body: String = fragments.iter().map(|f| line(f, false)).collect();
+            body += &line("", true);
+            body
+        }
+
+        async fn run(response: ResponseTemplate) -> (Result<Value, ProviderError>, Vec<String>) {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/api/chat"))
+                .respond_with(response)
+                .mount(&server)
+                .await;
+            let seen = Mutex::new(Vec::new());
+            let push = |fragment: &str| seen.lock().unwrap().push(fragment.to_string());
+            let result = OllamaProvider::new(server.uri(), "m")
+                .generate_streaming(&request(), &TextSink::new(&push))
+                .await;
+            (result, seen.into_inner().unwrap())
+        }
+
+        #[tokio::test]
+        async fn fragments_reach_the_sink_in_order_and_the_value_matches_the_buffered_result() {
+            let fragments = ["{\"na", "me\":\"o", "k\"}"];
+            let (result, seen) =
+                run(ResponseTemplate::new(200).set_body_string(ndjson(&fragments))).await;
+            assert_eq!(seen, fragments);
+
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "message": {"role": "assistant", "content": "{\"name\":\"ok\"}"}
+                })))
+                .mount(&server)
+                .await;
+            let buffered = OllamaProvider::new(server.uri(), "m")
+                .generate(&request())
+                .await
+                .unwrap();
+            assert_eq!(result.unwrap(), buffered);
+        }
+
+        #[tokio::test]
+        async fn the_request_asks_for_a_stream_with_the_schema_format() {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_string(ndjson(&["{}"])))
+                .mount(&server)
+                .await;
+            OllamaProvider::new(server.uri(), "m")
+                .generate_streaming(&request(), &TextSink::discard())
+                .await
+                .unwrap();
+            let sent: Value = server.received_requests().await.unwrap()[0]
+                .body_json()
+                .unwrap();
+            assert_eq!(sent["stream"], true);
+            assert_eq!(sent["format"], json!({"type": "object"}));
+        }
+
+        #[tokio::test]
+        async fn a_line_split_across_chunks_and_a_multibyte_character_are_reassembled() {
+            let mut buffer = LineBuffer::default();
+            let full = line("h\u{e9}llo", false);
+            let bytes = full.as_bytes();
+            let cut = full.find('\u{e9}').unwrap() + 1;
+            assert!(buffer.push(&bytes[..cut]).is_empty());
+            let lines = buffer.push(&bytes[cut..]);
+            assert_eq!(lines.len(), 1);
+            assert!(lines[0].contains("h\u{e9}llo"));
+        }
+
+        #[tokio::test]
+        async fn http_errors_stay_generic_without_the_body() {
+            for status in [401, 429, 500] {
+                let (result, seen) =
+                    run(ResponseTemplate::new(status).set_body_string("secret upstream detail"))
+                        .await;
+                let err = result.unwrap_err();
+                assert!(matches!(err, ProviderError::Request(_)));
+                assert!(err.to_string().contains(&status.to_string()));
+                assert!(!err.to_string().contains("secret upstream detail"));
+                assert!(seen.is_empty());
+            }
+        }
+
+        #[tokio::test]
+        async fn a_mid_stream_error_is_a_request_error_without_the_body() {
+            let body = line("{\"na", false) + "{\"error\":\"SECRET-BODY-TEXT\"}\n";
+            let (result, seen) = run(ResponseTemplate::new(200).set_body_string(body)).await;
+            let err = result.unwrap_err();
+            assert!(matches!(err, ProviderError::Request(_)));
+            assert!(!err.to_string().contains("SECRET-BODY-TEXT"));
+            assert_eq!(seen, ["{\"na"]);
+        }
+
+        #[tokio::test]
+        async fn a_stream_without_done_is_a_request_error() {
+            let (result, _) =
+                run(ResponseTemplate::new(200).set_body_string(line("{}", false))).await;
+            assert!(matches!(result.unwrap_err(), ProviderError::Request(_)));
+        }
+
+        #[tokio::test]
+        async fn empty_and_non_json_content_are_invalid_output() {
+            let (result, _) = run(ResponseTemplate::new(200).set_body_string(ndjson(&[]))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+            let (result, _) =
+                run(ResponseTemplate::new(200).set_body_string(ndjson(&["nope"]))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+        }
+
+        #[tokio::test]
+        async fn an_oversize_stream_is_rejected() {
+            let padding = "x".repeat(5 * 1024 * 1024);
+            let (result, _) =
+                run(ResponseTemplate::new(200).set_body_string(ndjson(&[padding.as_str()]))).await;
+            assert!(
+                matches!(result.unwrap_err(), ProviderError::Request(m) if m.contains("limit"))
+            );
+        }
     }
 }

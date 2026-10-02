@@ -9,7 +9,10 @@ pub mod ollama;
 pub mod openai;
 pub mod plan;
 pub mod prompt;
+pub mod reply_stream;
+pub mod sse;
 
+use std::ops::ControlFlow;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -25,7 +28,7 @@ pub use lyrics::{LyricsProvider, LyricsRequest, MockLyricsProvider, SchemaLyrics
 pub use mock::MockProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAiProvider;
-pub use plan::{MockPlanProvider, PlanProvider, SchemaPlanProvider};
+pub use plan::{MockPlanProvider, PlanProvider, SchemaPlanProvider, StreamingMockPlanProvider};
 /// Re-exported so callers can share one pooled client without depending on reqwest.
 pub use reqwest::Client as HttpClient;
 
@@ -169,6 +172,63 @@ pub fn http_client(timeout: Duration) -> reqwest::Client {
         .expect("static client configuration is valid")
 }
 
+/// A transport that cannot stream never calls the sink, so callers treat "no text" as "no
+/// streaming" rather than as an error.
+#[derive(Clone, Copy)]
+pub struct TextSink<'a> {
+    emit: &'a (dyn Fn(&str) + Send + Sync),
+}
+
+fn ignore_text(_: &str) {}
+
+impl<'a> TextSink<'a> {
+    pub fn new(emit: &'a (dyn Fn(&str) + Send + Sync)) -> Self {
+        Self { emit }
+    }
+
+    pub fn discard() -> TextSink<'static> {
+        TextSink { emit: &ignore_text }
+    }
+
+    pub fn emit(&self, fragment: &str) {
+        (self.emit)(fragment);
+    }
+}
+
+/// Keeps a streamed body under the same cap as a buffered one, so streaming cannot be used
+/// to get past the memory bound; the accumulated text is a subset of these bytes.
+pub(crate) async fn read_stream_capped(
+    response: reqwest::Response,
+    on_chunk: impl FnMut(&[u8]) -> Result<ControlFlow<()>, ProviderError>,
+) -> Result<(), ProviderError> {
+    read_stream_capped_at(response, MAX_RESPONSE_BYTES, on_chunk).await
+}
+
+async fn read_stream_capped_at(
+    mut response: reqwest::Response,
+    limit: usize,
+    mut on_chunk: impl FnMut(&[u8]) -> Result<ControlFlow<()>, ProviderError>,
+) -> Result<(), ProviderError> {
+    let mut total = 0usize;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| ProviderError::Request("could not read the response".into()))?
+    {
+        total += chunk.len();
+        if total > limit {
+            // Request rather than InvalidOutput for the same reason as the buffered read.
+            return Err(ProviderError::Request(format!(
+                "response exceeds the {limit} byte limit"
+            )));
+        }
+        if on_chunk(&chunk)?.is_break() {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn read_json_capped(response: reqwest::Response) -> Result<Value, ProviderError> {
     read_json_capped_at(response, MAX_RESPONSE_BYTES).await
 }
@@ -204,6 +264,16 @@ pub trait StructuredProvider: Send + Sync {
 
     async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError>;
 
+    /// Lets the planner's reply reach the user before the whole plan exists. The default keeps
+    /// transports that cannot stream working with no code: their text arrives with the value.
+    async fn generate_streaming(
+        &self,
+        request: &StructuredRequest,
+        _text: &TextSink<'_>,
+    ) -> Result<Value, ProviderError> {
+        self.generate(request).await
+    }
+
     /// Run at startup so a misconfigured provider fails fast instead of on the
     /// first user request.
     async fn check(&self) -> Result<(), ProviderError>;
@@ -219,6 +289,14 @@ impl<T: StructuredProvider + ?Sized> StructuredProvider for std::sync::Arc<T> {
 
     async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
         (**self).generate(request).await
+    }
+
+    async fn generate_streaming(
+        &self,
+        request: &StructuredRequest,
+        text: &TextSink<'_>,
+    ) -> Result<Value, ProviderError> {
+        (**self).generate_streaming(request, text).await
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -381,5 +459,60 @@ mod redirect_tests {
         let result = claude::check_key(&client, &origin.uri(), &key, Duration::from_secs(5)).await;
         assert_eq!(result, Err(KeyCheckError::Rejected));
         assert!(target.received_requests().await.unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod streaming_default_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct BufferedOnly;
+
+    #[async_trait]
+    impl StructuredProvider for BufferedOnly {
+        fn name(&self) -> &'static str {
+            "buffered"
+        }
+
+        async fn generate(&self, _: &StructuredRequest) -> Result<Value, ProviderError> {
+            Ok(serde_json::json!({"ok": true}))
+        }
+
+        async fn check(&self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+    }
+
+    fn request() -> StructuredRequest {
+        StructuredRequest {
+            system: "s".into(),
+            user: "u".into(),
+            schema: serde_json::json!({"type": "object"}),
+            tool_name: "t".into(),
+            tool_description: "d".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_default_returns_the_buffered_value_and_emits_no_text() {
+        let seen = Mutex::new(Vec::<String>::new());
+        let push = |f: &str| seen.lock().unwrap().push(f.to_string());
+        let value = BufferedOnly
+            .generate_streaming(&request(), &TextSink::new(&push))
+            .await
+            .unwrap();
+        assert_eq!(value, serde_json::json!({"ok": true}));
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_default_is_kept_through_the_arc_adapter() {
+        let shared = std::sync::Arc::new(BufferedOnly);
+        let value = shared
+            .generate_streaming(&request(), &TextSink::discard())
+            .await
+            .unwrap();
+        assert_eq!(value, serde_json::json!({"ok": true}));
     }
 }
