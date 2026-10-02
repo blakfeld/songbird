@@ -28,7 +28,7 @@ When vim mode is on, the notepad SHALL start in normal mode when it gains focus.
 - Operators `d`, `c`, `y` combined with motions, and the line forms `dd`, `cc`, `yy`.
 - `x`, `p`, `P`, `.` (repeat), `/` and `n` / `N` search, and `u` / `Ctrl-R` undo and redo.
 
-Undo and redo in vim mode SHALL use the same history as Cmd/Ctrl+Z in the notepad. Every edit made in vim mode SHALL obey the lyrics length limit.
+Undo and redo in vim mode SHALL use the same history as Cmd/Ctrl+Z in the notepad, and SHALL NOT change anything but the lyrics. Every edit made in vim mode SHALL obey the lyrics length limit.
 
 #### Scenario: Normal mode does not insert text
 - **WHEN** vim mode is on, the notepad is in normal mode, and the user types `dd`
@@ -43,8 +43,8 @@ Undo and redo in vim mode SHALL use the same history as Cmd/Ctrl+Z in the notepa
 - **THEN** the cursor moves to line 4
 
 #### Scenario: Vim undo matches editor undo
-- **WHEN** the user applies an assistant suggestion and then presses `u` in normal mode
-- **THEN** the lyrics return to their state before the suggestion was applied
+- **WHEN** the user types a lyric line with vim mode off, turns vim mode on, and presses `u` in normal mode
+- **THEN** the line is removed and the song's tracks are unchanged
 
 #### Scenario: Put respects the length limit
 - **WHEN** the notepad is 10 characters below its limit and the user puts a yanked 50-character line with `p`
@@ -68,16 +68,24 @@ In vim mode, `:w` SHALL show the message "Lyrics are saved automatically" and ch
 - **WHEN** the user types `:q` and presses Enter
 - **THEN** a message says `:q` is unsupported and the page, song, and lyrics are unchanged
 
-### Requirement: Shortcut and focus isolation in vim mode
-While the notepad has focus in vim mode, no keystroke SHALL trigger a page-level shortcut, in any vim mode. This includes the transport's Space toggle and song-level undo and redo. Escape SHALL NOT close panels or dialogs, or move focus out of the notepad. Tab and Shift+Tab pressed in normal mode SHALL move focus to the next or previous focusable element, so the user can always leave the editor with the keyboard.
+### Requirement: Keyboard isolation in vim mode
+The notepad's keyboard isolation from Studio shortcuts SHALL hold in every vim mode, including normal and visual mode, where keys move the cursor or run commands instead of inserting text. While vim mode is on and the notepad has focus, Escape SHALL NOT close the Lyrics drawer, panels, or dialogs, or move focus out of the notepad. Tab and Shift+Tab pressed in normal mode SHALL move focus to the next or previous focusable element, so the user can always leave the editor with the keyboard.
 
 #### Scenario: Space moves the cursor, not the transport
 - **WHEN** a song is stopped, the notepad has focus in normal mode, and the user presses Space
 - **THEN** playback does not start
 
+#### Scenario: Normal-mode commands do not trigger shortcuts
+- **WHEN** the notepad has focus in normal mode and the user presses `r` followed by `x`
+- **THEN** the character under the cursor is replaced with "x" and recording does not start
+
 #### Scenario: Escape stays in the editor
 - **WHEN** the notepad is in insert mode and the user presses Escape
-- **THEN** the notepad switches to normal mode, keeps focus, and the Lyrics panel stays open
+- **THEN** the notepad switches to normal mode, keeps focus, and the Lyrics tab stays selected
+
+#### Scenario: Escape keeps the drawer open
+- **WHEN** on a narrow screen the notepad is open in the Lyrics drawer in vim insert mode and the user presses Escape
+- **THEN** the notepad switches to normal mode and the drawer stays open
 
 #### Scenario: Keyboard exit
 - **WHEN** the notepad is in normal mode and the user presses Tab
