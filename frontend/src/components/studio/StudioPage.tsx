@@ -27,7 +27,9 @@ import { useStoredHeight } from "@/lib/useStoredHeight";
 import { useStoredValue } from "@/lib/useStoredValue";
 import { HeightHandle } from "@/components/editor/HeightHandle";
 import { Arrangement } from "./Arrangement";
+import { LyricsPanel } from "@/components/lyrics/LyricsPanel";
 import { AssistantPanel } from "./AssistantPanel";
+import { RightColumnTabs } from "./RightColumnTabs";
 import { EditorDock } from "./EditorDock";
 import { NoTracksDock } from "./NoTracksDock";
 import { TrackGenerateDialog } from "./TrackGenerateDialog";
@@ -90,6 +92,8 @@ export function StudioPage({
   const [attempt, setAttempt] = useState(0);
   const [follow, setFollow] = useState(true);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const lyricsButton = useRef<HTMLButtonElement>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const finalizer = useTakeFinalizer();
   const requestedSong = useRef<string | null | undefined>(undefined);
@@ -132,6 +136,20 @@ export function StudioPage({
     if (dock) observer.observe(dock);
     return () => observer.disconnect();
   }, [loaded, dockKind]);
+  // The id guards a flush that lands after another song was opened, which would otherwise write into the wrong song.
+  const setLyrics = useCallback(
+    (text: string, songId: string) => {
+      if (store.getState().song?.id === songId) store.getState().setLyrics(text);
+    },
+    [store],
+  );
+  // Registered by each mounted notepad so a song switch can hand over typing still waiting on the debounce.
+  const lyricFlushers = useRef(new Set<() => void>());
+  const registerLyricsFlush = useCallback((flush: () => void) => {
+    lyricFlushers.current.add(flush);
+    return () => void lyricFlushers.current.delete(flush);
+  }, []);
+  const flushLyrics = useCallback(() => lyricFlushers.current.forEach((flush) => flush()), []);
   const maxDock = Math.max(MIN_DOCK_PX, space - MIN_ARRANGEMENT_PX - HANDLE_PX);
   const dockHeight =
     storedDock === null ? null : Math.min(maxDock, Math.max(MIN_DOCK_PX, storedDock));
@@ -143,11 +161,12 @@ export function StudioPage({
   // Re-attached per song so opening a song is not itself saved, which would reorder the library by open time.
   const show = useCallback(
     (next: Song) => {
+      flushLyrics();
       detachAutosave.current?.();
       store.getState().loadSong(next);
       detachAutosave.current = library.autosave(store);
     },
-    [store, library],
+    [store, library, flushLyrics],
   );
 
   useEffect(() => {
@@ -313,11 +332,13 @@ export function StudioPage({
 
   const openById = useCallback(
     async (id: string) => {
+      // Before the await, so typing in the old song is saved to it rather than racing the open.
+      flushLyrics();
       const next = await library.open(id);
       if (next) show(next);
       else setStatus("That song couldn't be opened.");
     },
-    [library, show],
+    [library, show, flushLyrics],
   );
 
   const focusTitle = () => requestAnimationFrame(() => titleRef.current?.focus());
@@ -553,6 +574,7 @@ export function StudioPage({
   const inConflict = storage.conflict && song !== null && library.hasConflict(song.id);
 
   async function saveAsCopy() {
+    flushLyrics();
     const current = store.getState().song;
     if (!current) return;
     try {
@@ -643,6 +665,9 @@ export function StudioPage({
               onAnnounce={setStatus}
               onToggleAssistant={() => setAssistantOpen(true)}
               assistantOpen={assistantOpen}
+              onToggleLyrics={() => setLyricsOpen(true)}
+              lyricsOpen={lyricsOpen}
+              lyricsButtonRef={lyricsButton}
               onToggleSamples={() => (samplesOpen ? setSamplesOpen(false) : showSamples())}
               samplesOpen={samplesOpen}
               samplesButtonRef={samplesButton}
@@ -876,7 +901,11 @@ export function StudioPage({
           requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
         }}
       />
-      <AssistantPanel song={song} chat={chat} instruments={instruments.data} className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`} />
+      <RightColumnTabs
+        className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`}
+        assistant={<AssistantPanel song={song} chat={chat} instruments={instruments.data} heading={false} />}
+        lyrics={<LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} />}
+      />
       <ModalDialog
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
@@ -884,6 +913,17 @@ export function StudioPage({
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
         <AssistantPanel song={song} chat={chat} instruments={instruments.data} className="h-full border-l-0" />
+      </ModalDialog>
+      <ModalDialog
+        open={lyricsOpen}
+        onClose={() => {
+          setLyricsOpen(false);
+          requestAnimationFrame(() => lyricsButton.current?.focus());
+        }}
+        label="Lyrics"
+        className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
+      >
+        <LyricsPanel song={song} onChange={setLyrics} registerFlush={registerLyricsFlush} heading />
       </ModalDialog>
     </main>
   );
