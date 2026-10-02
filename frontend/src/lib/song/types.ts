@@ -24,6 +24,8 @@ export const LOOP_MEASURE_RANGE = { min: 1, max: 128 } as const;
 export const LOOP_NAME_MAX = 40;
 export const MAX_LOOPS = 64;
 export const MAX_CLIPS = 256;
+// Unicode code points, matching the server's chars().count(), not UTF-16 units.
+export const LYRICS_MAX_CHARS = 20_000;
 
 export const newId = () => crypto.randomUUID();
 

@@ -90,6 +90,11 @@ pub struct Song {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<ChatEntry>>", optional)]
     pub chat: Vec<ChatEntry>,
+    /// The Studio's lyric notepad. Optional so songs saved before it existed
+    /// stay valid and songs without lyrics serialize as they always did.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[ts(as = "Option<String>", optional)]
+    pub lyrics: String,
 }
 
 /// The browser trims the saved conversation to this many entries.
@@ -97,6 +102,8 @@ pub const MAX_CHAT_ENTRIES: usize = 20;
 /// Also the longest assistant message the chat endpoint accepts, so a saved
 /// conversation can always be sent back.
 pub const MAX_CHAT_CONTENT_CHARS: usize = 4000;
+/// Counted in characters, not bytes, so non-Latin lyrics get the same room.
+pub const MAX_LYRICS_CHARS: usize = 20_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -485,6 +492,7 @@ pub enum SongErrorKind {
     Measures,
     LoopRegion,
     Chat,
+    Lyrics,
     TrackCount,
     TrackName,
     Volume,
@@ -535,6 +543,7 @@ impl SongErrorKind {
             Self::Measures => "measures",
             Self::LoopRegion => "loop_region",
             Self::Chat => "chat",
+            Self::Lyrics => "lyrics",
             Self::TrackCount => "track_count",
             Self::TrackName => "track_name",
             Self::Volume => "volume",
@@ -810,6 +819,12 @@ impl Song {
                 format!(
                     "chat holds at most {MAX_CHAT_ENTRIES} messages of {MAX_CHAT_CONTENT_CHARS} characters"
                 ),
+            ));
+        }
+        if self.lyrics.chars().count() > MAX_LYRICS_CHARS {
+            return Err(invalid(
+                SongErrorKind::Lyrics,
+                format!("lyrics hold at most {MAX_LYRICS_CHARS} characters"),
             ));
         }
         Ok(())
@@ -1583,6 +1598,7 @@ pub(crate) mod tests {
             tracks,
             samples: vec![],
             chat: vec![],
+            lyrics: String::new(),
         }
     }
 
@@ -2195,5 +2211,31 @@ pub(crate) mod tests {
         let mut s = two_track_song();
         s.tracks[0].instrument = "kazoo".into();
         assert_eq!(error_kind(&s), "unknown_instrument");
+    }
+
+    #[test]
+    fn lyrics_at_the_limit_count_characters_not_bytes() {
+        let mut s = two_track_song();
+        s.lyrics = "é♪".repeat(MAX_LYRICS_CHARS / 2);
+        assert!(s.lyrics.len() > MAX_LYRICS_CHARS);
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    #[test]
+    fn lyrics_over_the_limit_are_rejected() {
+        let mut s = two_track_song();
+        s.lyrics = "é".repeat(MAX_LYRICS_CHARS + 1);
+        assert_eq!(error_kind(&s), "lyrics");
+    }
+
+    #[test]
+    fn song_without_lyrics_serializes_without_the_key() {
+        let json = serde_json::to_value(two_track_song()).unwrap();
+        assert!(json.get("lyrics").is_none());
+        let mut s = two_track_song();
+        s.lyrics = "la".into();
+        let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(json["lyrics"], "la");
+        assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
     }
 }

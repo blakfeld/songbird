@@ -39,4 +39,9 @@ samples?: Array<Sample>,
  * Optional so songs saved before the chat existed stay valid and songs
  * without a conversation serialize as they always did.
  */
-chat?: Array<ChatEntry>, };
+chat?: Array<ChatEntry>, 
+/**
+ * The Studio's lyric notepad. Optional so songs saved before it existed
+ * stay valid and songs without lyrics serialize as they always did.
+ */
+lyrics?: string, };

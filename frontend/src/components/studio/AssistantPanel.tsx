@@ -22,11 +22,14 @@ export function AssistantPanel({
   song,
   chat,
   instruments,
+  heading = true,
   className = "",
 }: {
   song: Song | null;
   instruments: readonly InstrumentInfo[] | null;
   chat: ChatController;
+  // Inside the tabbed column the tab names the panel and the column supplies the frame.
+  heading?: boolean;
   className?: string;
 }) {
   const titleId = useId();
@@ -52,16 +55,21 @@ export function AssistantPanel({
   const blocked = !song || chat.sending;
   const showLog = messages.length > 0 || chat.pending !== null;
 
+  const Root = heading ? "aside" : "div";
   return (
-    <aside
-      aria-labelledby={titleId}
-      className={`flex min-h-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${className}`}
+    <Root
+      aria-labelledby={heading ? titleId : undefined}
+      className={`flex min-h-0 flex-col bg-white dark:bg-zinc-950 ${
+        heading ? "border-l border-zinc-200 dark:border-zinc-800" : "flex-1"
+      } ${className}`}
     >
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 id={titleId} className="text-sm font-semibold">
-          Assistant
-        </h2>
-      </div>
+      {heading && (
+        <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <h2 id={titleId} className="text-sm font-semibold">
+            Assistant
+          </h2>
+        </div>
+      )}
       <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         {!showLog ? (
           <div className="m-auto max-w-60 text-center">
@@ -152,6 +160,6 @@ export function AssistantPanel({
           <span aria-hidden="true">➤</span>
         </Button>
       </form>
-    </aside>
+    </Root>
   );
 }

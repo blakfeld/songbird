@@ -720,3 +720,71 @@ describe("track sound", () => {
     expect(soundOf(store)).toEqual(cutoff(400));
   });
 });
+
+describe("lyrics", () => {
+  it("is not an undo step", () => {
+    const store = setup();
+    store.getState().setLyrics("la la");
+    expect(store.getState().song!.lyrics).toBe("la la");
+    expect(store.getState().past).toHaveLength(0);
+    store.getState().undo();
+    expect(store.getState().song!.lyrics).toBe("la la");
+  });
+
+  it("omits the field when empty so the song serializes as before", () => {
+    const store = setup();
+    store.getState().setLyrics("x");
+    store.getState().setLyrics("");
+    expect("lyrics" in store.getState().song!).toBe(false);
+  });
+
+  it("keeps lyrics when a track add is undone and redone", () => {
+    const store = setup();
+    const count = store.getState().song!.tracks.length;
+    store.getState().addTrack({ id: "bass", name: "Bass" });
+    store.getState().setLyrics("words");
+    store.getState().undo();
+    expect(store.getState().song!.tracks).toHaveLength(count);
+    expect(store.getState().song!.lyrics).toBe("words");
+    store.getState().redo();
+    expect(store.getState().song!.tracks).toHaveLength(count + 1);
+    expect(store.getState().song!.lyrics).toBe("words");
+  });
+
+  it("drops lyrics that were typed after the snapshot only when they are cleared", () => {
+    const store = setup();
+    store.getState().setLyrics("words");
+    store.getState().addTrack({ id: "bass", name: "Bass" });
+    store.getState().setLyrics("");
+    store.getState().undo();
+    expect("lyrics" in store.getState().song!).toBe(false);
+  });
+
+  it("keeps lyrics when a gesture is cancelled", () => {
+    const store = setup();
+    const id = store.getState().song!.tracks[0].id;
+    store.getState().beginGesture();
+    store.getState().setMixer(id, { volume_db: -10 }, { transient: true });
+    store.getState().setLyrics("mid-drag words");
+    store.getState().cancelGesture();
+    expect(store.getState().song!.tracks[0].volume_db).not.toBe(-10);
+    expect(store.getState().song!.lyrics).toBe("mid-drag words");
+  });
+
+  it("keeps lyrics and chat written during a drag through later previews and the drag's end", () => {
+    const store = setup();
+    const id = store.getState().song!.tracks[1].id;
+    const sound = (v: number) => ({ tone: { filter_cutoff_hz: v } });
+    store.getState().beginGesture();
+    store.getState().setSound(id, sound(900), { transient: true });
+    store.getState().setLyrics("mid-drag words");
+    store.getState().applyChatResult("hi", { reply: "hello", track: null });
+    store.getState().setSound(id, sound(600), { transient: true });
+    expect(store.getState().song!.lyrics).toBe("mid-drag words");
+    expect(store.getState().song!.chat).toHaveLength(2);
+    store.getState().endGesture();
+    store.getState().undo();
+    expect(store.getState().song!.lyrics).toBe("mid-drag words");
+    expect(store.getState().song!.chat).toHaveLength(2);
+  });
+});

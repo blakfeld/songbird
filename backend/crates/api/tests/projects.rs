@@ -320,6 +320,41 @@ async fn an_invalid_song_is_422_with_the_export_code_and_changes_nothing() {
 }
 
 #[tokio::test]
+async fn lyrics_over_the_limit_are_422_and_change_nothing() {
+    let app = TestApp::new(&[]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+    let id = project_id(&create(&app, &cookie, song("Late Train", 1)).await);
+    age_saves(&app).await;
+
+    let mut too_long = with_id(song("Late Train", 1), &id);
+    too_long["lyrics"] = json!("é".repeat(20_001));
+    let response = save(&app, &cookie, &id, too_long, 1).await;
+
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.body["error"]["code"], "invalid_song");
+    let opened = open(&app, &cookie, &id).await;
+    assert_eq!(opened.body["project"]["revision"], 1);
+    assert!(opened.body["project"]["song"].get("lyrics").is_none());
+}
+
+#[tokio::test]
+async fn lyrics_round_trip_through_create_and_open() {
+    let app = TestApp::new(&[]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+    let mut with_lyrics = song("Late Train", 1);
+    with_lyrics["lyrics"] = json!("[Chorus]\nla la \u{266a}");
+
+    let created = create(&app, &cookie, with_lyrics).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let opened = open(&app, &cookie, &project_id(&created)).await;
+
+    assert_eq!(
+        opened.body["project"]["song"]["lyrics"],
+        "[Chorus]\nla la \u{266a}"
+    );
+}
+
+#[tokio::test]
 async fn bodies_that_are_not_json_or_miss_song_or_revision_are_400() {
     let app = TestApp::new(&[]).await;
     let cookie = app.cookie_for("ana@example.com").await;

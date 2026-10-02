@@ -48,6 +48,9 @@ export function SongHeader({
   onSongRemoved,
   onAnnounce,
   onToggleAssistant,
+  onToggleLyrics,
+  lyricsOpen,
+  lyricsButtonRef,
   assistantOpen,
   onToggleSamples,
   samplesOpen,
@@ -64,6 +67,9 @@ export function SongHeader({
   onSongRemoved: (wasCurrent: boolean) => void;
   onAnnounce: (message: string) => void;
   onToggleAssistant: () => void;
+  onToggleLyrics: () => void;
+  lyricsOpen: boolean;
+  lyricsButtonRef: Ref<HTMLButtonElement>;
   assistantOpen: boolean;
   onToggleSamples: () => void;
   samplesOpen: boolean;
@@ -175,6 +181,15 @@ export function SongHeader({
       >
         <InstrumentIcon instrumentId="audio" kind={null} className="size-6 !bg-transparent" />
         <span className="max-sm:hidden">Samples</span>
+      </Button>
+      <Button
+        ref={lyricsButtonRef}
+        className="lg:hidden"
+        aria-expanded={lyricsOpen}
+        aria-haspopup="dialog"
+        onClick={onToggleLyrics}
+      >
+        Lyrics
       </Button>
       <Button
         className="lg:hidden"
