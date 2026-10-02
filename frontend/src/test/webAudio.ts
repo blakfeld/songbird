@@ -9,6 +9,16 @@ for (const [name, value] of Object.entries(nwa)) {
   }
 }
 
+// Tone builds a live AudioContext as soon as it's imported, before loadRealTone can swap in an offline one. Without
+// a "none" sink that constructor opens an output device, which CI runners don't have.
+// The package's typings lag its runtime, which accepts the standard AudioSinkOptions.
+type SinkOptions = NonNullable<ConstructorParameters<typeof nwa.AudioContext>[0]> & { sinkId?: { type: "none" } };
+globals.AudioContext = class extends nwa.AudioContext {
+  constructor(options: SinkOptions = {}) {
+    super({ ...options, sinkId: { type: "none" } } as SinkOptions);
+  }
+};
+
 type ToneModule = typeof import("tone");
 
 // The "live" context is itself offline so no audio device is opened; renders still get their own offline contexts.
