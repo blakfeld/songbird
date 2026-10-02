@@ -31,7 +31,7 @@
   - Backend Dockerfile: create `/app/data` owned by the runtime user.
 
   Verify that `docker compose up` serves `/readyz` 200 on SQLite, and that `docker compose --profile postgres up` with the URL set serves `/readyz` 200 on Postgres.
-- [ ] 5.2 Add a `postgres:16` service to `.github/workflows/ci.yml` and a `just test-backend-pg` step after `just test`. Verify that the CI run on the branch is green, with both passes visible in the log.
+- [x] 5.2 Add a `postgres:16` service to `.github/workflows/ci.yml` and a `just test-backend-pg` step after `just test`. Verify that the CI run on the branch is green, with both passes visible in the log.
 - [x] 5.3 Document the database settings, the SQLite default and its limits, switching to Postgres, `/readyz`, and running tests on Postgres in `backend/README.md`. Verify that the documented commands run as written.
 
 ## 6. Integration
