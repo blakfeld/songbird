@@ -3,6 +3,7 @@ import type { Pattern } from "@/generated/Pattern";
 import type { Song } from "@/generated/Song";
 import {
   ApiError,
+  assistLyrics,
   exportMidi,
   generateTrack,
   generatePattern,
@@ -280,4 +281,29 @@ describe("api client", () => {
     expect(err.code).toBe("network_error");
     expect(err.message).toMatch(/could not reach/i);
   });
+});
+
+describe("assistLyrics", () => {
+  const body = {
+    song_context: { name: "S", tempo_bpm: 100, time_signature: "4/4", sections: [] },
+    lyrics: "",
+    messages: [{ role: "user", content: "hi" }],
+  } as unknown as Parameters<typeof assistLyrics>[0];
+
+  it("posts to the lyrics endpoint and returns the reply", async () => {
+    const fn = mockFetch(json({ reply: "ok", suggestions: [] }));
+    expect(await assistLyrics(body)).toEqual({ reply: "ok", suggestions: [] });
+    expect(fn.mock.calls[0][0]).toBe("/api/v1/lyrics/assist");
+    expect(fn.mock.calls[0][1]?.method).toBe("POST");
+  });
+
+  it.each(["invalid_messages", "invalid_selection", "invalid_song_context", "lyrics_too_long"])(
+    "surfaces the server's message for a 422 %s",
+    async (code) => {
+      mockFetch(json(errorBody(code, "the selection is outside the lyrics"), 422));
+      const err = await assistLyrics(body).catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.message).toBe("the selection is outside the lyrics");
+    },
+  );
 });

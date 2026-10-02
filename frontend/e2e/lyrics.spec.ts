@@ -21,7 +21,8 @@ test("write lyrics in the notepad, reload to find them, and carry them through a
   await page.keyboard.type("red roses are rare");
   await page.keyboard.press("Enter");
   await page.keyboard.type("sing it out loud");
-  await expect(page.locator(".cm-lyric-heading")).toHaveText("[Chorus]");
+  // This song has no Chorus section, so the heading also carries the unlinked badge text.
+  await expect(page.locator(".cm-lyric-heading")).toHaveText(/^\[Chorus\]/);
   // Leaving the notepad hands the typing to the song at once instead of after the debounce, so "Saved" is not stale.
   await page.getByRole("tab", { name: "Assistant" }).focus();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -29,7 +30,7 @@ test("write lyrics in the notepad, reload to find them, and carry them through a
   await page.reload();
   await expect(page.getByRole("tab", { name: "Lyrics", selected: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Lyrics" })).toContainText("sing it out loud");
-  await expect(page.locator(".cm-line")).toHaveText(["[Chorus]", "red roses are rare", "sing it out loud"]);
+  await expect(page.locator(".cm-line")).toHaveText([/^\[Chorus\]/, "red roses are rare", "sing it out loud"]);
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download project" }).click();
@@ -43,7 +44,7 @@ test("write lyrics in the notepad, reload to find them, and carry them through a
   await page.getByRole("button", { name: "Songs" }).click();
   await expect(page.getByRole("dialog", { name: "Songs" }).getByRole("listitem")).toHaveCount(2);
   await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "Close" }).click();
-  await expect(page.locator(".cm-line")).toHaveText(["[Chorus]", "red roses are rare", "sing it out loud"]);
+  await expect(page.locator(".cm-line")).toHaveText([/^\[Chorus\]/, "red roses are rare", "sing it out loud"]);
 
   expect(problems).toEqual([]);
 });

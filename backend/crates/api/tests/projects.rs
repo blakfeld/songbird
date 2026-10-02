@@ -337,6 +337,58 @@ async fn lyrics_over_the_limit_are_422_and_change_nothing() {
     assert!(opened.body["project"]["song"].get("lyrics").is_none());
 }
 
+fn lyric_chat(entries: usize) -> Value {
+    json!((0..entries)
+        .map(|i| {
+            if i % 2 == 0 {
+                json!({"role": "user", "content": format!("message {i}")})
+            } else {
+                json!({"role": "assistant", "content": format!("reply {i}"),
+                    "selection": {"from": 0, "to": 4, "text": "line"},
+                    "suggestions": [{"id": "s1", "label": "Chorus", "text": "la la",
+                        "action": "replace_section", "section_id": "c", "section_name": "Chorus"}]})
+            }
+        })
+        .collect::<Vec<_>>())
+}
+
+#[tokio::test]
+async fn a_lyric_chat_of_21_messages_is_422_and_changes_nothing() {
+    let app = TestApp::new(&[]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+    let id = project_id(&create(&app, &cookie, song("Late Train", 1)).await);
+    age_saves(&app).await;
+
+    let mut too_long = with_id(song("Late Train", 1), &id);
+    too_long["lyric_chat"] = lyric_chat(21);
+    let response = save(&app, &cookie, &id, too_long, 1).await;
+
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.body["error"]["code"], "invalid_song");
+    let opened = open(&app, &cookie, &id).await;
+    assert_eq!(opened.body["project"]["revision"], 1);
+    assert!(opened.body["project"]["song"].get("lyric_chat").is_none());
+}
+
+#[tokio::test]
+async fn a_lyric_chat_of_20_messages_round_trips_with_its_suggestions() {
+    let app = TestApp::new(&[]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+    let id = project_id(&create(&app, &cookie, song("Late Train", 1)).await);
+    age_saves(&app).await;
+
+    let mut with_chat = with_id(song("Late Train", 1), &id);
+    with_chat["lyric_chat"] = lyric_chat(20);
+    let saved = save(&app, &cookie, &id, with_chat.clone(), 1).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
+
+    let opened = open(&app, &cookie, &id).await;
+    assert_eq!(
+        opened.body["project"]["song"]["lyric_chat"],
+        with_chat["lyric_chat"]
+    );
+}
+
 #[tokio::test]
 async fn lyrics_round_trip_through_create_and_open() {
     let app = TestApp::new(&[]).await;

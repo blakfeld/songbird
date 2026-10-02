@@ -219,3 +219,9 @@ mod checker_catches_violations {
         assert_strict_compliant(&schema, "enum");
     }
 }
+
+#[test]
+fn the_lyrics_schema_is_strict_compliant() {
+    let ids = ["verse-1".to_string(), "chorus-1".to_string()];
+    assert_strict_compliant(&music::ai::lyrics::lyrics_schema(&ids), "lyrics");
+}

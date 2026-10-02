@@ -12,7 +12,7 @@ use api::keys::{self, AiProvider, UserApiKey};
 use api::provider::Providers;
 use async_trait::async_trait;
 use axum::http::{header, StatusCode};
-use common::app::{request, song, Response, TestApp};
+use common::app::{lyrics_body, request, song, Response, TestApp};
 use music::ai::KeyCheckError;
 use serde_json::{json, Value};
 use wiremock::matchers::{header as header_is, method, path};
@@ -39,6 +39,7 @@ fn ai_routes() -> Vec<(&'static str, Value)> {
             "/api/v1/songs/chat",
             json!({"song": song("Late Train", 1), "messages": [{"role": "user", "content": "hello there"}]}),
         ),
+        ("/api/v1/lyrics/assist", lyrics_body()),
     ]
 }
 
@@ -596,6 +597,37 @@ async fn requests_that_end_for_lack_of_a_usable_key_do_not_spend_the_daily_quota
         .await;
     assert_eq!(over.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(h.built.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_lyric_request_without_a_key_spends_no_daily_quota() {
+    use api::config::{AI_REQUESTS_PER_DAY, AI_REQUESTS_PER_MINUTE};
+    let h = mock_harness(&[(AI_REQUESTS_PER_DAY, "1"), (AI_REQUESTS_PER_MINUTE, "600")]).await;
+    let cookie = h.app.cookie_for("ana@example.com").await;
+    for _ in 0..4 {
+        let response = h
+            .post(&cookie, "/api/v1/lyrics/assist", &lyrics_body())
+            .await;
+        assert_eq!(response.status, StatusCode::CONFLICT);
+        assert_eq!(response.body["error"]["code"], "api_key_required");
+    }
+    assert_eq!(h.built.load(Ordering::SeqCst), 0);
+
+    let saved = h
+        .app
+        .send(request(
+            "PUT",
+            "/api/v1/account/ai-keys/anthropic",
+            Some(&cookie),
+            Some(json!({"key": "sk-ant-test-0000000000ok"})),
+        ))
+        .await;
+    assert_eq!(saved.status, StatusCode::OK);
+    let served = h
+        .post(&cookie, "/api/v1/lyrics/assist", &lyrics_body())
+        .await;
+    assert_eq!(served.status, StatusCode::OK, "{:?}", served.body);
+    assert_eq!(h.built.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

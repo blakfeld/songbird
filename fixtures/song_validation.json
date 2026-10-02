@@ -29064,6 +29064,1351 @@
         ]
       },
       "error": "sample_origin"
+    },
+    {
+      "name": "valid with lyric chat",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "lyric chat of 21 messages",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "message 0"
+          },
+          {
+            "role": "assistant",
+            "content": "message 1"
+          },
+          {
+            "role": "user",
+            "content": "message 2"
+          },
+          {
+            "role": "assistant",
+            "content": "message 3"
+          },
+          {
+            "role": "user",
+            "content": "message 4"
+          },
+          {
+            "role": "assistant",
+            "content": "message 5"
+          },
+          {
+            "role": "user",
+            "content": "message 6"
+          },
+          {
+            "role": "assistant",
+            "content": "message 7"
+          },
+          {
+            "role": "user",
+            "content": "message 8"
+          },
+          {
+            "role": "assistant",
+            "content": "message 9"
+          },
+          {
+            "role": "user",
+            "content": "message 10"
+          },
+          {
+            "role": "assistant",
+            "content": "message 11"
+          },
+          {
+            "role": "user",
+            "content": "message 12"
+          },
+          {
+            "role": "assistant",
+            "content": "message 13"
+          },
+          {
+            "role": "user",
+            "content": "message 14"
+          },
+          {
+            "role": "assistant",
+            "content": "message 15"
+          },
+          {
+            "role": "user",
+            "content": "message 16"
+          },
+          {
+            "role": "assistant",
+            "content": "message 17"
+          },
+          {
+            "role": "user",
+            "content": "message 18"
+          },
+          {
+            "role": "assistant",
+            "content": "message 19"
+          },
+          {
+            "role": "user",
+            "content": "message 20"
+          }
+        ]
+      },
+      "error": "lyric_chat"
+    },
+    {
+      "name": "lyric chat message of 4001 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+        ]
+      },
+      "error": "lyric_chat"
+    },
+    {
+      "name": "lyric chat reply with 6 suggestions",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "assistant",
+            "content": "Try these.",
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s3",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s4",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s5",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s6",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "lyric_chat"
+    },
+    {
+      "name": "lyric chat suggestion with an unknown action",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "delete_everything",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
+      "name": "lyric chat selection with a negative offset",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": -1,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
+      "name": "lyric chat suggestion with a non-text section id",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": 7,
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
+      "name": "valid with an emoji section name at 40 UTF-16 units",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "lyric chat section name over 40 UTF-16 units by emoji",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "Rewrite the chorus",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "lyric_chat"
+    },
+    {
+      "name": "valid with an emoji label at 80 code points",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ],
+        "lyric_chat": [
+          {
+            "role": "user",
+            "content": "help with the chorus"
+          },
+          {
+            "role": "assistant",
+            "content": "Try this.",
+            "selection": {
+              "from": 0,
+              "to": 4,
+              "text": "line"
+            },
+            "suggestions": [
+              {
+                "id": "s1",
+                "label": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+                "text": "Carry me home",
+                "action": "replace_section",
+                "section_id": "chorus",
+                "section_name": "Chorus"
+              },
+              {
+                "id": "s2",
+                "label": "Add a line",
+                "text": "One more mile",
+                "action": "insert"
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
     }
   ]
 }

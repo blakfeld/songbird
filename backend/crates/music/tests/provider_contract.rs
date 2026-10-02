@@ -4,10 +4,13 @@
 mod common;
 
 use common::{request, request_for, FakeCodex, BAD_DRAFT, BAD_PIANO_DRAFT};
+use music::ai::lyrics::lyrics_schema;
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, OpenAiProvider, SchemaProvider,
+    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, OpenAiProvider,
+    SchemaLyricsProvider, SchemaProvider,
 };
 use music::generate::generate_pattern;
+use music::lyrics::assist_lyrics;
 use music::GenerateRequest;
 use secrecy::SecretString;
 use serde_json::{json, Value};
@@ -136,4 +139,114 @@ async fn every_provider_normalizes_the_same_bad_melodic_draft_identically() {
     assert_eq!(at("A#3", 2)[0].length_steps, 2);
     assert!(claude.notes.iter().all(|n| claude.row(&n.row_id).is_some()));
     assert_eq!(claude.notes.len(), 3 * 4);
+}
+
+fn lyrics_request() -> music::ai::LyricsRequest {
+    music::ai::LyricsRequest {
+        user: "<song>\n</song>".into(),
+        section_ids: vec!["verse-1".into(), "chorus-1".into()],
+        has_selection: false,
+        latest_user_message: "a chorus".into(),
+    }
+}
+
+const LYRICS_DRAFT: &str = r#"{"reply": "Try this.", "suggestions": [
+    {"label": "Chorus", "text": "Take me home", "action": "replace_section", "section_id": "chorus-1"},
+    {"label": "Bad", "text": "x", "action": "replace_section", "section_id": "nope"}
+]}"#;
+
+fn assert_lyrics_response(response: &music::lyrics::LyricsAssistResponse) {
+    assert_eq!(response.reply, "Try this.");
+    assert_eq!(response.suggestions.len(), 1);
+    assert_eq!(response.suggestions[0].id, "s1");
+    assert_eq!(
+        response.suggestions[0].section_id.as_deref(),
+        Some("chorus-1")
+    );
+}
+
+#[tokio::test]
+async fn lyrics_are_sent_to_claude_as_a_forced_tool_call_with_the_lyrics_schema() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "content": [{
+                "type": "tool_use",
+                "name": "emit_lyrics_reply",
+                "input": draft_value(LYRICS_DRAFT)
+            }]
+        })))
+        .mount(&server)
+        .await;
+    let provider = SchemaLyricsProvider::new(
+        ClaudeProvider::new(SecretString::from("k"), "m").with_base_url(server.uri()),
+    );
+    let request = lyrics_request();
+    let response = assist_lyrics(&provider, &request).await.unwrap();
+    assert_lyrics_response(&response);
+
+    let sent: Value = server.received_requests().await.unwrap()[0]
+        .body_json()
+        .unwrap();
+    assert_eq!(
+        sent["tool_choice"],
+        json!({"type": "tool", "name": "emit_lyrics_reply"})
+    );
+    assert_eq!(sent["tools"][0]["name"], "emit_lyrics_reply");
+    assert_eq!(
+        sent["tools"][0]["input_schema"],
+        lyrics_schema(&request.section_ids)
+    );
+    assert_eq!(sent["messages"][0]["content"], "<song>\n</song>");
+}
+
+#[tokio::test]
+async fn lyrics_are_sent_to_openai_as_strict_structured_output() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{
+                "message": {"role": "assistant", "content": LYRICS_DRAFT},
+                "finish_reason": "stop"
+            }]
+        })))
+        .mount(&server)
+        .await;
+    let provider = SchemaLyricsProvider::new(
+        OpenAiProvider::new(SecretString::from("k"), "m").with_base_url(server.uri()),
+    );
+    let request = lyrics_request();
+    let response = assist_lyrics(&provider, &request).await.unwrap();
+    assert_lyrics_response(&response);
+
+    let sent: Value = server.received_requests().await.unwrap()[0]
+        .body_json()
+        .unwrap();
+    let format = &sent["response_format"];
+    assert_eq!(format["type"], "json_schema");
+    assert_eq!(format["json_schema"]["strict"], true);
+    assert_eq!(
+        format["json_schema"]["schema"],
+        lyrics_schema(&request.section_ids)
+    );
+}
+
+#[tokio::test]
+async fn ollama_and_codex_serve_the_same_lyrics_response() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "message": {"role": "assistant", "content": LYRICS_DRAFT}
+        })))
+        .mount(&server)
+        .await;
+    let ollama = SchemaLyricsProvider::new(OllamaProvider::new(server.uri(), "m"));
+    assert_lyrics_response(&assist_lyrics(&ollama, &lyrics_request()).await.unwrap());
+
+    let fake = FakeCodex::new("ok", LYRICS_DRAFT);
+    let codex = SchemaLyricsProvider::new(CodexCliProvider::new(fake.bin(), None));
+    assert_lyrics_response(&assist_lyrics(&codex, &lyrics_request()).await.unwrap());
 }

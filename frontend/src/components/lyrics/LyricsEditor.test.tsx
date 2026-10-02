@@ -2,7 +2,8 @@ import { EditorView } from "@codemirror/view";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import LyricsEditor from "./LyricsEditor";
+import { missingHeadings } from "@/lib/lyrics/sectionLinks";
+import LyricsEditor, { type LyricsEditorHandle } from "./LyricsEditor";
 
 afterEach(cleanup);
 
@@ -143,5 +144,126 @@ describe("LyricsEditor", () => {
     editable().focus();
     await userEvent.keyboard("{Control>}z{/Control}");
     expect(text()).toBe("start");
+  });
+});
+
+function withHandle(lyrics: string) {
+  let handle!: LyricsEditorHandle;
+  const registerEditor = (h: LyricsEditorHandle) => {
+    handle = h;
+    return () => {};
+  };
+  const onChange = vi.fn();
+  const utils = render(
+    <LyricsEditor songId="a" lyrics={lyrics} onChange={onChange} registerEditor={registerEditor} />,
+  );
+  return { ...utils, onChange, handle: () => handle };
+}
+
+describe("LyricsEditor handle", () => {
+  it("reverts an applied suggestion with one undo", async () => {
+    const { handle } = withHandle("start");
+    act(() => void handle().apply({ from: 5, to: 5, insert: "\n[Hook]\nla\nla" }));
+    expect(text()).toBe("start\n[Hook]\nla\nla");
+    editable().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(text()).toBe("start");
+  });
+
+  it("refuses an application past the limit and shows the limit notice", async () => {
+    const { handle } = withHandle("a".repeat(19_990));
+    let applied = true;
+    act(() => {
+      applied = handle().apply({ from: 19_990, to: 19_990, insert: "b".repeat(50) });
+    });
+    expect(applied).toBe(false);
+    expect(text()).toHaveLength(19_990);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/limit reached/i));
+  });
+
+  it("shows a notice that came with an accepted application", async () => {
+    const { handle } = withHandle("x");
+    act(() => void handle().apply({ from: 1, to: 1, insert: "y" }, "Inserted at the cursor."));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Inserted at the cursor."));
+  });
+
+  it("snapshots typing that has not synced yet, with the selection and focus state", () => {
+    const { handle, onChange } = withHandle("");
+    type("[Chorus]\nla la");
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => viewOf().dispatch({ selection: { anchor: 9, head: 14 } }));
+    expect(handle().snapshot()).toEqual({
+      doc: "[Chorus]\nla la",
+      selection: { from: 9, to: 14, text: "la la" },
+      cursor: 14,
+      hasFocused: false,
+    });
+    act(() => {
+      fireEvent.focus(editable());
+    });
+    expect(handle().snapshot().hasFocused).toBe(true);
+  });
+
+  it("remembers focus across a remount when the page owns the focus record", () => {
+    const focusedSongs = new Set<string>();
+    let handle!: LyricsEditorHandle;
+    const registerEditor = (h: LyricsEditorHandle) => {
+      handle = h;
+      return () => {};
+    };
+    const mount = () =>
+      render(<LyricsEditor songId="a" lyrics="x" onChange={vi.fn()} registerEditor={registerEditor} focusedSongs={focusedSongs} />);
+    const first = mount();
+    act(() => {
+      fireEvent.focus(editable());
+    });
+    first.unmount();
+    mount();
+    expect(handle.snapshot().hasFocused).toBe(true);
+  });
+
+  it("reports no selection when the range is empty", () => {
+    const { handle } = withHandle("abc");
+    expect(handle().snapshot().selection).toBeNull();
+  });
+
+  it("flags unlinked headings and relinks them on a rename without losing undo history", async () => {
+    const props = { songId: "a", lyrics: "[Hook]\nla", onChange: vi.fn() };
+    const { rerender } = render(<LyricsEditor {...props} sectionKeys={["chorus"]} />);
+    const heading = () => document.querySelector(".cm-line")!;
+    expect(heading()).toHaveClass("cm-lyric-heading-unlinked");
+    expect(heading()).toHaveAttribute("title", 'No song section named "Hook". Rename a section or this heading to link them.');
+    expect(document.querySelector(".cm-lyric-unlinked-badge")).toHaveTextContent("no matching section");
+    type(" more");
+    rerender(<LyricsEditor {...props} sectionKeys={["hook"]} />);
+    expect(heading()).toHaveClass("cm-lyric-heading");
+    expect(heading()).not.toHaveClass("cm-lyric-heading-unlinked");
+    expect(document.querySelector(".cm-lyric-unlinked-badge")).toBeNull();
+    editable().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(text()).toBe("[Hook]\nla");
+  });
+
+  it("flags nothing while the section names are unknown", () => {
+    withHandle("[Hook]");
+    expect(document.querySelector(".cm-lyric-heading-unlinked")).toBeNull();
+  });
+
+  it("appends scaffolded headings as one undo step", async () => {
+    const { handle } = withHandle("[Verse 1]\nla");
+    const sections = ["Intro", "Verse 1", "Chorus", "Outro"].map((name) => ({
+      id: name,
+      name,
+      kind: "other" as const,
+      measures: 4,
+      notes: "",
+    }));
+    const { doc } = handle().snapshot();
+    const insert = missingHeadings(doc, sections);
+    act(() => void handle().apply({ from: doc.length, to: doc.length, insert }));
+    expect(text()).toBe("[Verse 1]\nla\n[Intro]\n[Chorus]\n[Outro]");
+    editable().focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(text()).toBe("[Verse 1]\nla");
   });
 });

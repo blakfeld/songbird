@@ -77,3 +77,30 @@ fn strings_draft_schema_matches_snapshot() {
 fn pluck_draft_schema_matches_snapshot() {
     check_snapshot(&PLUCK, "pluck_draft_schema.json");
 }
+
+fn lyrics_ids() -> Vec<String> {
+    vec!["verse-1".to_string(), "chorus-1".to_string()]
+}
+
+#[test]
+fn lyrics_schema_matches_snapshot() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/lyrics_schema.json");
+    let schema = music::ai::lyrics::lyrics_schema(&lyrics_ids());
+    let actual = serde_json::to_string_pretty(&schema).unwrap() + "\n";
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::write(&path, &actual).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path).expect("snapshot exists; see test docs");
+    assert_eq!(actual, expected, "lyrics_schema.json changed");
+}
+
+#[test]
+fn lyrics_schema_section_id_enum_is_the_request_ids() {
+    let schema = music::ai::lyrics::lyrics_schema(&lyrics_ids());
+    assert_eq!(
+        schema["$defs"]["DraftSuggestion"]["properties"]["section_id"]["enum"],
+        serde_json::json!(["verse-1", "chorus-1", null])
+    );
+}

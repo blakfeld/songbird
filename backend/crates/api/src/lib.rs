@@ -9,6 +9,7 @@ pub mod db;
 pub mod error;
 pub mod keys;
 pub mod limit;
+pub mod lyrics;
 pub mod patterns;
 pub mod project_store;
 pub mod projects;

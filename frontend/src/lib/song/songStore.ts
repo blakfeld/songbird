@@ -3,6 +3,9 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type { ChatEntry } from "@/generated/ChatEntry";
 import type { ChatResponse } from "@/generated/ChatResponse";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import type { LyricChatEntry } from "@/generated/LyricChatEntry";
+import type { LyricChatSelection } from "@/generated/LyricChatSelection";
+import type { LyricsAssistResponse } from "@/generated/LyricsAssistResponse";
 import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { Row } from "@/generated/Row";
@@ -139,6 +142,15 @@ export interface SongState {
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
   setLyrics: (text: string) => void;
+  // Not an undo step, like applyChatResult: the conversation is about the words, not the arrangement.
+  // `sectionNames` maps section id to its name now, stored with each suggestion so it still resolves after a rename or delete.
+  applyLyricReply: (
+    userMessage: string,
+    selection: LyricChatSelection | null,
+    response: LyricsAssistResponse,
+    sectionNames: Record<string, string>,
+  ) => void;
+  clearLyricChat: () => void;
   // Each structural section action is one undo step and is refused, with the reason, while a track is generating
   // because the generated range would otherwise land on measures the edit has since moved.
   addSection: (spec: sectionOps.SectionSpec) => SectionActionResult;
@@ -599,6 +611,34 @@ export function createSongStore(initial: Song | null = null): SongStore {
           const { lyrics: _old, ...rest } = s.song;
           void _old;
           return { song: text === "" ? rest : { ...rest, lyrics: text } };
+        }),
+      applyLyricReply: (userMessage, selection, response, sectionNames) =>
+        set((s) => {
+          if (!s.song) return s;
+          const suggestions = response.suggestions.map((g) => ({
+            ...g,
+            ...(g.section_id !== undefined && sectionNames[g.section_id] !== undefined && { section_name: sectionNames[g.section_id] }),
+          }));
+          const entries: LyricChatEntry[] = [
+            { role: "user", content: clipChat(userMessage) },
+            {
+              role: "assistant",
+              content: clipChat(response.reply),
+              // The server treats an empty range as no selection, so it is not recorded as one.
+              ...(selection && selection.from !== selection.to && { selection }),
+              ...(suggestions.length > 0 && { suggestions }),
+            },
+          ];
+          const lyric_chat = [...(s.song.lyric_chat ?? []), ...entries].slice(-CHAT_LIMIT);
+          return { song: { ...s.song, lyric_chat } };
+        }),
+      clearLyricChat: () =>
+        set((s) => {
+          if (!s.song || s.song.lyric_chat === undefined) return s;
+          // Omitted rather than emptied so a song without a conversation serializes as it did before the field existed.
+          const { lyric_chat: _old, ...rest } = s.song;
+          void _old;
+          return { song: rest };
         }),
       addSection: (spec) => sectionEdit((s) => sectionOps.addSection(s, spec)),
       insertSection: (spec, relativeTo, where) =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { headingLines, isHeadingLine } from "./headings";
+import { headingLines, headingName, isHeadingLine } from "./headings";
 
 describe("isHeadingLine", () => {
   it.each(["[Chorus]", "  [Verse 1]  ", "[a]"])("treats %j as a heading", (line) => {
@@ -21,5 +21,15 @@ describe("headingLines", () => {
 
   it("handles carriage returns as trailing whitespace", () => {
     expect(headingLines("[Verse]\r\nla")).toEqual([0]);
+  });
+});
+
+describe("headingName", () => {
+  it("returns the bracketed name as typed", () => {
+    expect(headingName("  [ Verse 1 ]  ")).toBe(" Verse 1 ");
+  });
+
+  it("returns null for a lyric line", () => {
+    expect(headingName("I said [softly] goodbye")).toBeNull();
   });
 });
