@@ -26,4 +26,4 @@
 
 - [x] 4.1 Run `just lint` and `just test` from the repo root and verify both pass.
 - [x] 4.2 Run `openspec validate add-lyric-notepad --strict` and verify it reports the change as valid.
-- [ ] 4.3 Run a manual smoke test in a browser at desktop and phone widths. Check that typing does not trigger shortcuts, that heading lines are styled, and that a project file with lyrics from one account opens in another. Note the results in the PR description.
+- [x] 4.3 Run a manual smoke test in a browser at desktop and phone widths. Check that typing does not trigger shortcuts, that heading lines are styled, and that a project file with lyrics from one account opens in another. Note the results in the PR description.
