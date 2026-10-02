@@ -7,6 +7,11 @@ import { PER_USER_IDB_DATABASES } from "./perUserStores";
 import { signOutLocally } from "./signOut";
 
 vi.mock("./navigation", () => ({ navigateTo: vi.fn() }));
+// The real list is empty, which would leave the wipe path untested.
+vi.mock("./perUserStores", async (original) => ({
+  ...(await original<typeof import("./perUserStores")>()),
+  PER_USER_IDB_DATABASES: ["wiped-db"],
+}));
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -40,6 +45,7 @@ describe("signOutLocally", () => {
     const [registered] = PER_USER_IDB_DATABASES;
     await createDatabase(registered);
     await createDatabase("keyval-store");
+    await createDatabase("songbird-samples.u1");
 
     await signOutLocally();
 
@@ -49,6 +55,7 @@ describe("signOutLocally", () => {
     const names = await databaseNames();
     expect(names).not.toContain(registered);
     expect(names).toContain("keyval-store");
+    expect(names).toContain("songbird-samples.u1");
   });
 
   it("navigates to login with the current path, query and fragment encoded", async () => {

@@ -3,6 +3,7 @@ import type { TimeSignature } from "@/generated/TimeSignature";
 import { ApiError } from "@/lib/api";
 import { getCurrentUserId } from "@/lib/auth/currentUser";
 import type { SongStore } from "./songStore";
+import { scheduleGarbageCollection, setOpenSongSource } from "@/lib/audio/sampleGc";
 import { migrateSong } from "./migrate";
 import { projectsApi, type ProjectsApi } from "./projectsApi";
 import { newId, type Song } from "./types";
@@ -70,7 +71,15 @@ export class SaveRefusedError extends Error {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export function createServerSongLibrary(api: ProjectsApi = projectsApi) {
+export interface SongLibraryOptions {
+  // Fired when a song is opened, copied or deleted, the moments the set of audio in use can shrink.
+  onSamplesMayBeFree?: () => void;
+}
+
+export function createServerSongLibrary(
+  api: ProjectsApi = projectsApi,
+  { onSamplesMayBeFree }: SongLibraryOptions = {},
+) {
   const status = createStore<SaveStatus>(() => ({
     ok: true,
     message: null,
@@ -257,6 +266,22 @@ export function createServerSongLibrary(api: ProjectsApi = projectsApi) {
     }
   };
 
+  // The list endpoint carries no sample references, so each song is fetched.
+  const sampleIdsBySong = async (): Promise<Map<string, Set<string>>> => {
+    await flush();
+    const bySong = new Map<string, Set<string>>();
+    for (const summary of await api.list()) {
+      const { song } = await api.get(summary.id);
+      const raw = song as unknown as { samples?: { id?: unknown }[] };
+      const ids = new Set<string>();
+      for (const sample of raw.samples ?? []) {
+        if (typeof sample?.id === "string") ids.add(sample.id);
+      }
+      bySong.set(summary.id, ids);
+    }
+    return bySong;
+  };
+
   return {
     status,
     readStatus,
@@ -303,6 +328,7 @@ export function createServerSongLibrary(api: ProjectsApi = projectsApi) {
         setConflict(id, false);
         rememberLast(id);
       }
+      onSamplesMayBeFree?.();
       return song;
     },
 
@@ -370,7 +396,9 @@ export function createServerSongLibrary(api: ProjectsApi = projectsApi) {
       const song = await load(id);
       if (!song) return null;
       try {
-        return await createOnServer({ ...structuredClone(song), id: newId(), name: `${song.name} (copy)` });
+        const copy = await createOnServer({ ...structuredClone(song), id: newId(), name: `${song.name} (copy)` });
+        onSamplesMayBeFree?.();
+        return copy;
       } catch {
         return null;
       }
@@ -393,14 +421,36 @@ export function createServerSongLibrary(api: ProjectsApi = projectsApi) {
       revisions.delete(id);
       setConflict(id, false);
       if (this.getLastSongId() === id) rememberLast(null);
+      onSamplesMayBeFree?.();
+    },
+
+    // Raw documents, unmigrated, because only the ids matter and a song that cannot migrate may still hold audio.
+    // A read failure propagates so garbage collection aborts rather than treating unreadable songs as empty.
+    async savedSampleIds(): Promise<string[]> {
+      return [...(await sampleIdsBySong()).values()].flatMap((ids) => [...ids]);
+    },
+
+    // Counted from raw documents like savedSampleIds, so the remove-from-library warning agrees with what collection keeps.
+    async songsUsingSample(sampleId: string): Promise<number> {
+      return [...(await sampleIdsBySong()).values()].filter((ids) => ids.has(sampleId)).length;
     },
 
     autosave(store: SongStore): () => void {
       let last = store.getState().song;
-      return store.subscribe((s) => {
+      setOpenSongSource(() => {
+        const s = store.getState();
+        return [s.song, s.gestureBase, ...s.past, ...s.future, ...(s.gestureFuture ?? [])].filter(
+          (song): song is Song => song !== null,
+        );
+      });
+      const unsubscribe = store.subscribe((s) => {
         if (s.song && s.song !== last) this.save(s.song);
         last = s.song;
       });
+      return () => {
+        unsubscribe();
+        setOpenSongSource(null);
+      };
     },
   };
 }
@@ -410,5 +460,5 @@ export type SongLibrary = ReturnType<typeof createServerSongLibrary>;
 let shared: SongLibrary | undefined;
 
 export function getSongLibrary(): SongLibrary {
-  return (shared ??= createServerSongLibrary());
+  return (shared ??= createServerSongLibrary(undefined, { onSamplesMayBeFree: scheduleGarbageCollection }));
 }

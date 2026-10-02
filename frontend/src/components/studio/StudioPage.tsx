@@ -37,6 +37,15 @@ import { useTrackGeneration } from "./useTrackGeneration";
 import { SongHeader } from "./SongHeader";
 import type { TrackActions } from "./trackActions";
 import { useClipActions } from "./useClipActions";
+import { useAudioActions } from "./useAudioActions";
+import { ReplaceSampleDialog } from "./audio/ReplaceSampleDialog";
+import { ImportProgress } from "./samples/ImportProgress";
+import { LowStorageDialog, SamplesPanel } from "./samples/SamplesPanel";
+import { useSampleImport } from "./samples/useSampleImport";
+import type { DropPayload } from "./samples/useSampleDrop";
+import type { SampleLibraryEntry } from "@/lib/audio/sampleLibrary";
+import { formatPosition } from "@/lib/song/audioTime";
+import { TICKS_PER_SIXTEENTH } from "@/lib/song/audioTiming";
 
 const STORAGE_FAILURE =
   "Changes aren't being saved. The server can't be reached or refused the save. You can keep editing and Songbird keeps retrying, but closing this tab may lose your changes.";
@@ -51,6 +60,7 @@ const MIN_ARRANGEMENT_PX = 192;
 const HANDLE_PX = 8;
 
 const RECORD_NEEDS_TRACK = "Add a track to record onto.";
+const RECORD_NOT_ON_AUDIO = "Select an instrument track to record onto. Audio tracks only play samples.";
 const parseOpen = (raw: string) => (raw === "true" ? true : raw === "false" ? false : null);
 
 const ARRANGEMENT_ID = "studio-arrangement";
@@ -259,7 +269,12 @@ export function StudioPage({
     const trackId = current?.tracks.find((t) => t.id === id)?.id ?? current?.tracks[0]?.id;
     return trackId ? createSongTake(store, trackId) : null;
   }, [store]);
-  const recordBlockedReason = song && song.tracks.length === 0 ? RECORD_NEEDS_TRACK : null;
+  const recordBlockedReason =
+    song && song.tracks.length === 0
+      ? RECORD_NEEDS_TRACK
+      : liveTrack?.instrument === "audio"
+        ? RECORD_NOT_ON_AUDIO
+        : null;
   const session = useRecordingSession({
     engine: playback.engine,
     playback,
@@ -347,13 +362,126 @@ export function StudioPage({
     });
   };
 
+  // The last position the transport reported, in steps, so placing "at the playhead" needs no per-frame render.
+  const playhead = useRef(0);
+  // Rendered state moves once per measure at most, so the panel's label follows playback without a render per frame.
+  const [labelStep, setLabelStep] = useState(0);
+  const { subscribePosition } = playback;
+  useEffect(
+    () =>
+      subscribePosition((step) => {
+        if (step === null) return;
+        playhead.current = step;
+        const spm = store.getState().song?.steps_per_measure ?? 1;
+        setLabelStep(Math.floor(step / spm) * spm);
+      }),
+    [subscribePosition, store],
+  );
+  const playheadTicks = () => Math.floor(playhead.current) * TICKS_PER_SIXTEENTH;
+
   const seek = (trackId: string, measureIndex: number) => {
     store.getState().selectTrack(trackId);
+    playhead.current = measureIndex * (store.getState().song?.steps_per_measure ?? 0);
+    setLabelStep(playhead.current);
     playback.seek?.(measureIndex + 1);
   };
 
   const audition = (trackId: string, row: Row, velocity?: number) =>
     void playback.audition(row, { voiceKey: trackId, velocity });
+
+
+  const [samplesOpen, setSamplesOpen] = useState(false);
+  const samplesButton = useRef<HTMLButtonElement>(null);
+  const samplesSearch = useRef<HTMLInputElement>(null);
+  const showSamples = useCallback(() => {
+    setSamplesOpen(true);
+    requestAnimationFrame(() => samplesSearch.current?.focus());
+  }, []);
+  const [replacing, setReplacing] = useState<{ trackId: string; clipId: string; invoker: HTMLElement | null } | null>(null);
+  const importer = useSampleImport();
+  const fileInput = useRef<HTMLInputElement>(null);
+  // The picker returns asynchronously, so its destination is parked here instead of in render state.
+  const pickTarget = useRef<{ place: boolean; trackId: string | null; startTicks: number | null; invoker: HTMLElement | null }>({
+    place: false,
+    trackId: null,
+    startTicks: null,
+    invoker: null,
+  });
+
+  const importHere = useCallback(
+    (trackId: string | null, startTicks: number | null, options?: { single?: boolean }) => {
+      pickTarget.current = {
+        place: true,
+        trackId,
+        startTicks,
+        invoker: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+      };
+      const input = fileInput.current;
+      if (!input) return;
+      input.multiple = !options?.single;
+      input.value = "";
+      input.click();
+    },
+    [],
+  );
+  const requestReplace = useCallback(
+    (trackId: string, clipId: string, invoker: HTMLElement | null) => setReplacing({ trackId, clipId, invoker }),
+    [],
+  );
+  const audio = useAudioActions(store, setStatus, guardEdit, openDock, { requestReplace, importHere });
+
+  const { importFiles } = importer;
+  const importAndPlace = useCallback(
+    async (files: File[], target: { place: boolean; trackId: string | null; startTicks: number | null }) => {
+      setStatus(files.length === 1 ? `Importing ${files[0].name}…` : `Importing ${files.length} files…`);
+      const songId = store.getState().song?.id;
+      const entries = await importFiles(files);
+      if (entries.length === 0) {
+        setStatus(
+          files.length === 1
+            ? `Couldn't import ${files[0].name}.`
+            : "Nothing was imported.",
+        );
+        return;
+      }
+      if (!target.place) {
+        setStatus(entries.length === 1 ? `Imported ${entries[0].name} to the library.` : `Imported ${entries.length} samples to the library.`);
+        return;
+      }
+      // Decoding can take seconds, and a track id from the previous song would place into the wrong document.
+      if (store.getState().song?.id !== songId) {
+        setStatus("Imported to the library. The song changed meanwhile, so nothing was placed.");
+        return;
+      }
+      audio.placeMany(target.trackId, entries, target.startTicks ?? playheadTicks(), "import");
+    },
+    [importFiles, audio, store],
+  );
+
+  const onSampleDrop = (trackId: string | null, startTicks: number, _free: boolean, payload: DropPayload) => {
+    if (payload.kind === "sample") audio.place(trackId, payload.entry, startTicks);
+    else void importAndPlace(payload.files, { place: true, trackId, startTicks });
+  };
+
+  const addAudioTrack = () => {
+    store.getState().addAudioTrack();
+    setStatus("Added an audio track.");
+    const id = store.getState().selectedTrackId;
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-track-select="${id}"]`);
+      el?.focus();
+      el?.scrollIntoView?.({ block: "nearest" });
+    });
+  };
+
+  const selectedAudioTrack = song?.tracks.find((t) => t.id === selectedTrackId && t.instrument === "audio") ?? null;
+  const placeFromPanel = (entry: SampleLibraryEntry) => {
+    if (!selectedAudioTrack) {
+      setStatus("Select an audio track first.");
+      return;
+    }
+    audio.place(selectedAudioTrack.id, entry, playheadTicks());
+  };
 
   const track = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0] ?? null;
   const showBanner = !storage.ok && !bannerDismissed;
@@ -450,11 +578,17 @@ export function StudioPage({
               onAnnounce={setStatus}
               onToggleAssistant={() => setAssistantOpen(true)}
               assistantOpen={assistantOpen}
+              onToggleSamples={() => (samplesOpen ? setSamplesOpen(false) : showSamples())}
+              samplesOpen={samplesOpen}
+              samplesButtonRef={samplesButton}
               guardEdit={session.guardEdit}
             />
             <p role="status" className="min-h-5 px-4 text-sm text-zinc-600 sm:px-6 dark:text-zinc-400">
               {status}
             </p>
+            <div className="px-4 sm:px-6">
+              <ImportProgress importer={importer} />
+            </div>
             <div className="px-4 pb-3 sm:px-6">
               <Transport
                 playback={playback}
@@ -499,8 +633,11 @@ export function StudioPage({
             soundTrackId={soundTrackId}
             onSoundTrack={setSoundTrackId}
             clipActions={clipActions}
+            audioActions={audio}
+            onSampleDrop={onSampleDrop}
             generatingTrackId={generatingTrackId}
             onAddTrack={addTrack}
+            onAddAudio={addAudioTrack}
             onSeek={seek}
           />
           {dockOpen && (
@@ -529,6 +666,8 @@ export function StudioPage({
                   subscribePosition={playback.subscribePosition}
                   onAudition={audition}
                   clipActions={clipActions}
+                  audioActions={audio}
+                  onShowSamples={showSamples}
                   onAnnounce={setStatus}
                   renamingLoopId={renamingLoopId}
                   onRenameDone={() => {
@@ -579,6 +718,64 @@ export function StudioPage({
           onClose={generation.close}
         />
       )}
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        data-testid="audio-file-input"
+        accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.aac,.flac,.ogg,.opus"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          const target = pickTarget.current;
+          e.target.value = "";
+          // The picker's own focus return is unreliable across browsers, so the opener is refocused explicitly.
+          requestAnimationFrame(() => target.invoker?.isConnected && target.invoker.focus());
+          if (files.length > 0) void importAndPlace(files, target);
+        }}
+      />
+      {song && samplesOpen && (
+        <SamplesPanel
+          songSampleIds={new Set((song.samples ?? []).map((s) => s.id))}
+          targetLabel={
+            selectedAudioTrack ? `Places on: ${selectedAudioTrack.name} at ${formatPosition(labelStep * TICKS_PER_SIXTEENTH, song)}` : null
+          }
+          searchRef={samplesSearch}
+          onImportRequest={() => {
+            pickTarget.current = { place: false, trackId: null, startTicks: null, invoker: null };
+            fileInput.current?.click();
+          }}
+          onDropFiles={(files) => void importAndPlace(files, { place: false, trackId: null, startTicks: null })}
+          onPlace={placeFromPanel}
+          countSongs={(id) => library.songsUsingSample(id)}
+          onClose={() => {
+            setSamplesOpen(false);
+            requestAnimationFrame(() => samplesButton.current?.focus());
+          }}
+        />
+      )}
+      <LowStorageDialog importer={importer} />
+      <ReplaceSampleDialog
+        open={replacing !== null}
+        songSampleIds={new Set((song?.samples ?? []).map((s) => s.id))}
+        currentSampleId={
+          replacing
+            ? song?.tracks.find((t) => t.id === replacing.trackId)?.audio_clips?.find((c) => c.id === replacing.clipId)?.sample_id
+            : undefined
+        }
+        onPick={(entry) => {
+          if (!replacing) return;
+          const { trackId, clipId, invoker } = replacing;
+          setReplacing(null);
+          audio.replace(trackId, clipId, entry);
+          requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+        }}
+        onClose={() => {
+          const invoker = replacing?.invoker;
+          setReplacing(null);
+          requestAnimationFrame(() => invoker?.isConnected && invoker.focus());
+        }}
+      />
       <AssistantPanel song={song} chat={chat} instruments={instruments.data} className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`} />
       <ModalDialog
         open={assistantOpen}

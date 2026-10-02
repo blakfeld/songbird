@@ -1,3 +1,4 @@
+import type { AudioClip } from "@/generated/AudioClip";
 import type { ChatTrack } from "@/generated/ChatTrack";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
@@ -6,6 +7,7 @@ import type { Note } from "@/generated/Note";
 import type { TrackSound } from "@/generated/TrackSound";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
+import { TICKS_PER_SECOND_PER_BPM, TICKS_PER_SIXTEENTH, clipEndMeasure, clipsOverlap, sampleMap } from "./audioTiming";
 import { songLoop, withSongLoop } from "./songLoop";
 import {
   LOOP_NAME_MAX,
@@ -48,11 +50,48 @@ export const totalSteps = (song: Song) => song.measures * song.steps_per_measure
 export const songKey = (song: Pick<Song, "tracks"> & { key?: SongKey }): SongKey => song.key ?? DEFAULT_KEY;
 
 // Exported separately so migration can correct a stored length before the song is otherwise trusted.
-export function derivedMeasures(song: Pick<Song, "tracks">): number {
+type Timed = Pick<Song, "tracks"> & Partial<Pick<Song, "samples" | "tempo_bpm" | "steps_per_measure">>;
+
+// Audio ends depend on tempo and the sample rate, so a song that holds audio needs all three to be sized.
+function audioEndMeasure(song: Timed): number {
+  const { samples, tempo_bpm: tempo, steps_per_measure: spm } = song;
+  if (tempo === undefined || spm === undefined) return 1;
+  const rates = sampleMap(samples);
   let end = 1;
   for (const t of song.tracks)
-    for (const c of t.clips) end = Math.max(end, c.start_measure + c.measures);
-  return clamp(end - 1, MEASURE_RANGE.min, MEASURE_RANGE.max);
+    for (const c of t.audio_clips ?? []) {
+      const sample = rates.get(c.sample_id);
+      if (sample) end = Math.max(end, clipEndMeasure(c, sample.sample_rate, tempo, spm));
+    }
+  return end;
+}
+
+export function derivedMeasures(song: Timed): number {
+  let end = 1;
+  for (const t of song.tracks)
+    for (const c of t.clips) end = Math.max(end, c.start_measure + c.measures - 1);
+  end = Math.max(end, audioEndMeasure(song));
+  return clamp(end, MEASURE_RANGE.min, MEASURE_RANGE.max);
+}
+
+// Tempo and measure length both move audio ends, and a song may neither pass the length limit nor
+// let two clips collide, so a change that would do either is refused rather than trimming recordings.
+export function audioFits(song: Timed): boolean {
+  const { samples, tempo_bpm: tempo, steps_per_measure: spm } = song;
+  if (tempo === undefined || spm === undefined) return true;
+  const rates = sampleMap(samples);
+  for (const t of song.tracks) {
+    const placed = (t.audio_clips ?? []).flatMap((c) => {
+      const sample = rates.get(c.sample_id);
+      return sample ? [{ clip: c, rate: sample.sample_rate }] : [];
+    });
+    placed.sort((a, b) => a.clip.start_ticks - b.clip.start_ticks);
+    for (const [n, { clip, rate }] of placed.entries()) {
+      if (clipEndMeasure(clip, rate, tempo, spm) > MEASURE_RANGE.max) return false;
+      if (n > 0 && clipsOverlap(placed[n - 1].clip, clip, placed[n - 1].rate, tempo)) return false;
+    }
+  }
+  return true;
 }
 
 // Every clip-changing op funnels through this so the stored length can never drift from the clips.
@@ -75,7 +114,7 @@ export const timelineMeasures = (song: Pick<Song, "measures">) =>
   );
 
 // The smallest free suffix keeps names distinguishable in the lane list without renumbering existing tracks.
-function uniqueTrackName(song: Song, base: string): string {
+export function uniqueTrackName(song: Song, base: string): string {
   const taken = new Set(song.tracks.map((t) => t.name));
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? base : `${base} ${n}`;
@@ -223,7 +262,11 @@ function forKind(patch: SoundPatch, drums: boolean): SoundPatch {
 
 export function setSound(song: Song, trackId: string, rawPatch: SoundPatch): Song {
   return mapTrack(song, trackId, (t) => {
-    const patch = forKind(rawPatch, t.instrument === "drums");
+    // Audio has no tone, and a stored one would fail validation on reload, so it is dropped whatever the UI sent.
+    const patch =
+      t.instrument === "audio"
+        ? (({ tone: _tone, ...rest }) => (void _tone, rest))(rawPatch)
+        : forKind(rawPatch, t.instrument === "drums");
     const merged = mergePatch((t.sound ?? undefined) as Plain | undefined, patch as Plain) as TrackSound | undefined;
     // A stored null means the same as absent, so an empty result must not replace it or a drag that
     // ends where it began would still count as a change.
@@ -243,9 +286,49 @@ export function resetSound(song: Song, trackId: string): Song {
   });
 }
 
+// Raising the tempo shortens every second of audio in ticks, so a clip that touched its neighbour now overruns it.
+// Cutting the earlier clip at the neighbour's start keeps the later audio where it was; integer maths keeps the
+// end from ever passing that start, which the server would reject. Null when a clip would have nothing left.
+function trimOverlaps(song: Song): Song | null {
+  const rates = sampleMap(song.samples);
+  const unit = TICKS_PER_SECOND_PER_BPM * song.tempo_bpm;
+  let changed = false;
+  const tracks: Track[] = [];
+  for (const t of song.tracks) {
+    const clips = [...(t.audio_clips ?? [])].sort((a, b) => a.start_ticks - b.start_ticks);
+    if (clips.length < 2) {
+      tracks.push(t);
+      continue;
+    }
+    const next = clips.map((clip, i) => {
+      const following = clips[i + 1];
+      const rate = rates.get(clip.sample_id)?.sample_rate;
+      if (!following || rate === undefined) return clip;
+      if (clip.start_ticks * rate + clip.length_samples * unit <= following.start_ticks * rate) return clip;
+      const length = Math.floor(((following.start_ticks - clip.start_ticks) * rate) / unit);
+      if (length < 1) return null;
+      changed = true;
+      const fadeIn = Math.min(clip.fade_in_samples, length);
+      return {
+        ...clip,
+        length_samples: length,
+        slice_samples: clip.loop ? clip.slice_samples : Math.min(clip.slice_samples, length),
+        fade_in_samples: fadeIn,
+        fade_out_samples: Math.min(clip.fade_out_samples, length - fadeIn),
+      };
+    });
+    if (next.some((c) => c === null)) return null;
+    tracks.push({ ...t, audio_clips: next as AudioClip[] });
+  }
+  return changed ? { ...song, tracks } : song;
+}
+
 export function setTempo(song: Song, tempo: number): Song {
   const next = clamp(Math.round(tempo), TEMPO_RANGE.min, TEMPO_RANGE.max);
-  return next === song.tempo_bpm ? song : { ...song, tempo_bpm: next };
+  if (next === song.tempo_bpm) return song;
+  const trimmed = trimOverlaps({ ...song, tempo_bpm: next });
+  // Only the song limit can still refuse: overlaps were trimmed away above.
+  return trimmed && audioFits(trimmed) ? normalizeSong(trimmed) : song;
 }
 
 export function setSwing(song: Song, swing: number): Song {
@@ -314,6 +397,21 @@ export function setTimeSignature(song: Song, ts: TimeSignature): Song {
   if (ts === song.time_signature) return song;
   const oldSpm = song.steps_per_measure;
   const newSpm = STEPS_PER_MEASURE[ts];
+  const oldTicks = oldSpm * TICKS_PER_SIXTEENTH;
+  const newTicks = newSpm * TICKS_PER_SIXTEENTH;
+  // Audio keeps its measure and its offset inside it, like notes, so it stays aligned with the parts it was played against.
+  const convertTrack = (t: Track): Track =>
+    t.audio_clips && t.audio_clips.length > 0
+      ? {
+          ...t,
+          audio_clips: t.audio_clips.map((c) => ({
+            ...c,
+            start_ticks: Math.floor(c.start_ticks / oldTicks) * newTicks + (c.start_ticks % oldTicks),
+          })),
+        }
+      : t;
+  const audioConverted = { ...song, steps_per_measure: newSpm, tracks: song.tracks.map(convertTrack) };
+  if (!audioFits(audioConverted)) return song;
   const convert = (n: Note): Note | null => {
     const { measure, offset } = splitStep(n.step, oldSpm);
     if (offset >= newSpm) return null;
@@ -328,15 +426,15 @@ export function setTimeSignature(song: Song, ts: TimeSignature): Song {
       return n.length_steps <= limit - n.step ? n : { ...n, length_steps: Math.max(1, limit - n.step) };
     });
   };
-  return {
+  return normalizeSong({
     ...song,
     time_signature: ts,
     steps_per_measure: newSpm,
-    tracks: song.tracks.map((t) => ({
+    tracks: audioConverted.tracks.map((t) => ({
       ...t,
       loops: t.loops.map((l) => ({ ...l, notes: fit(l.notes, l.measures * newSpm) })),
     })),
-  };
+  });
 }
 
 export function setKey(song: Song, key: SongKey): Song {

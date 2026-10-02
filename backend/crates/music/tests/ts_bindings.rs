@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
 use music::instruments::{InstrumentKind, PitchRange};
 use music::song::{
-    ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect, KeyMode,
-    LoopRegion, MeasureRegion, ReverbEffect, SongKey, Tone, Tonic, TrackSound,
+    AudioClip, ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect,
+    KeyMode, LoopRegion, MeasureRegion, ReverbEffect, Sample, SongKey, Tone, Tonic, TrackSound,
 };
 use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
@@ -35,6 +35,8 @@ fn export_into(dir: &Path) {
     Track::export_all(&cfg).unwrap();
     Loop::export_all(&cfg).unwrap();
     Clip::export_all(&cfg).unwrap();
+    Sample::export_all(&cfg).unwrap();
+    AudioClip::export_all(&cfg).unwrap();
     SongKey::export_all(&cfg).unwrap();
     Tonic::export_all(&cfg).unwrap();
     KeyMode::export_all(&cfg).unwrap();

@@ -347,3 +347,46 @@ async fn a_zero_context_budget_sends_no_context() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(seen.lock().unwrap()[0].context, None);
 }
+
+fn audio_song_parts() -> (Value, Value) {
+    let sample = json!({
+        "id": "s1", "name": "Vocal take", "sample_rate": 48000, "channels": 1,
+        "length_samples": 96000, "origin": "import",
+    });
+    let mut vocals = track("t9", "Vocals", "audio", json!([]), json!([]));
+    vocals["audio_clips"] = json!([{
+        "id": "a1", "sample_id": "s1", "start_ticks": 0, "offset_samples": 0,
+        "slice_samples": 96000, "length_samples": 96000,
+    }]);
+    (sample, vocals)
+}
+
+#[tokio::test]
+async fn generating_into_an_audio_track_is_400_without_a_provider_call() {
+    let (sample, vocals) = audio_song_parts();
+    let mut s = drums_and_empty_bass(4);
+    s["tracks"].as_array_mut().unwrap().push(vocals);
+    s["samples"] = json!([sample]);
+    let mut request = body(s, None);
+    request["track_id"] = json!("t9");
+    assert_eq!(
+        rejected(request).await,
+        (StatusCode::BAD_REQUEST, json!("audio_track_target"), 0)
+    );
+}
+
+#[tokio::test]
+async fn audio_tracks_are_not_sent_as_generation_context() {
+    let (sample, vocals) = audio_song_parts();
+    let mut s = drums_and_empty_bass(4);
+    s["tracks"].as_array_mut().unwrap().push(vocals);
+    s["samples"] = json!([sample]);
+    let provider = Recording::default();
+    let seen = provider.seen.clone();
+    let (status, response) = generate(app_with(provider, &[]).await, body(s, None)).await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    let seen = seen.lock().unwrap();
+    let context = seen[0].context.as_deref().unwrap();
+    assert!(context.contains("Track \"Drums\""), "{context}");
+    assert!(!context.contains("Vocals"), "{context}");
+}

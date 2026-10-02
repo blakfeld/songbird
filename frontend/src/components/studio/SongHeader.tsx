@@ -12,9 +12,10 @@ import { TempoField } from "@/components/editor/TempoField";
 import type { SongLibrary } from "@/lib/song/songLibrary";
 import { countTimeSignatureLosses, songKey } from "@/lib/song/songOps";
 import { useSongStore, type SongStore } from "@/lib/song/songStore";
-import { SONG_NAME_MAX, TONICS, type KeyMode, type Song, type Tonic } from "@/lib/song/types";
+import { MEASURE_RANGE, SONG_NAME_MAX, TONICS, type KeyMode, type Song, type Tonic } from "@/lib/song/types";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { InlineNameInput } from "./InlineNameInput";
+import { InstrumentIcon } from "./InstrumentIcon";
 import { SongFileActions } from "./SongFileActions";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { SongLibraryMenu } from "./SongLibraryMenu";
@@ -48,6 +49,9 @@ export function SongHeader({
   onAnnounce,
   onToggleAssistant,
   assistantOpen,
+  onToggleSamples,
+  samplesOpen,
+  samplesButtonRef,
   guardEdit = (edit) => edit(),
 }: {
   store: SongStore;
@@ -61,6 +65,9 @@ export function SongHeader({
   onAnnounce: (message: string) => void;
   onToggleAssistant: () => void;
   assistantOpen: boolean;
+  onToggleSamples: () => void;
+  samplesOpen: boolean;
+  samplesButtonRef: Ref<HTMLButtonElement>;
   // Ends a running take before the history moves, so the take is committed and announced rather than cut off.
   guardEdit?: (edit: () => void) => void;
 }) {
@@ -116,7 +123,16 @@ export function SongHeader({
         onRemoved={onSongRemoved}
         onAnnounce={onAnnounce}
       />
-      <TempoField value={song.tempo_bpm} onCommit={(bpm) => actions().setTempo(bpm)} />
+      <TempoField
+        value={song.tempo_bpm}
+        onCommit={(bpm) => {
+          // Audio clips are fixed in sample time, so a faster tempo can stretch them past the song limit.
+          if (actions().setTempo(bpm) === "tempo_limit")
+            onAnnounce(
+              `Tempo not changed: at ${bpm} BPM an audio clip would run past measure ${MEASURE_RANGE.max}.`,
+            );
+        }}
+      />
       <SwingSlider value={song.swing} onCommit={(s) => actions().setSwing(s)} />
       <TimeSignatureField song={song} store={store} onAnnounce={onAnnounce} />
       <KeyField song={song} store={store} />
@@ -151,6 +167,16 @@ export function SongHeader({
         onAnnounce={onAnnounce}
       />
       <Button
+        ref={samplesButtonRef}
+        aria-label="Samples"
+        aria-expanded={samplesOpen}
+        aria-controls="samples-panel"
+        onClick={onToggleSamples}
+      >
+        <InstrumentIcon instrumentId="audio" kind={null} className="size-6 !bg-transparent" />
+        <span className="max-sm:hidden">Samples</span>
+      </Button>
+      <Button
         className="lg:hidden"
         aria-expanded={assistantOpen}
         aria-haspopup="dialog"
@@ -183,7 +209,10 @@ function TimeSignatureField({
   const [pending, setPending] = useState<{ ts: TimeSignature; losses: number } | null>(null);
 
   const apply = (ts: TimeSignature, losses: number) => {
-    store.getState().setTimeSignature(ts);
+    if (store.getState().setTimeSignature(ts) === "meter_limit") {
+      onAnnounce(`Time signature not changed: an audio clip would run past measure ${MEASURE_RANGE.max} or into the next clip.`);
+      return;
+    }
     onAnnounce(`Time signature changed to ${ts}.${losses > 0 ? ` ${plural(losses)} removed.` : ""}`);
   };
 

@@ -6,7 +6,7 @@ use crate::ai::prompt::escape_name;
 use crate::instruments::pitch::parse_pitch;
 use crate::instruments::InstrumentKind;
 use crate::pattern::Note;
-use crate::song::{SongKey, ValidSong, ValidTrack};
+use crate::song::{SongKey, TrackInstrument, ValidSong, ValidTrack, AUDIO_INSTRUMENT_ID};
 use crate::tokens::estimate_tokens;
 use crate::track_generation::MeasureRange;
 
@@ -94,7 +94,7 @@ fn render_header(song: &ValidSong, target: usize, range: MeasureRange) -> String
         s.key.unwrap_or(SongKey::DEFAULT).name(),
         s.measures,
         escape_name(&target.track.name),
-        target.instrument.id,
+        instrument_id(target),
         range.start_measure,
         range.end_measure,
     )
@@ -134,11 +134,16 @@ fn other_track_blocks(song: &ValidSong, target: usize, range: MeasureRange) -> V
     let last = (range.end_measure + 1).min(song.song.measures);
     let mut blocks = Vec::new();
     for (index, track) in song.tracks.iter().enumerate() {
+        // Audio tracks have no notes, so they would only spend budget on
+        // empty blocks.
+        let TrackInstrument::Instrument(instrument) = track.instrument else {
+            continue;
+        };
         if index == target || track.track.muted {
             continue;
         }
         for measure in first..=last {
-            let lines = match track.instrument.kind {
+            let lines = match instrument.kind {
                 InstrumentKind::Drums => lane_lines(track, measure, spm),
                 InstrumentKind::Melodic => beat_line(track, measure, spm, steps_per_beat)
                     .into_iter()
@@ -177,7 +182,7 @@ fn assemble(
             out.push_str(&format!(
                 "Track \"{}\" ({}):\n",
                 escape_name(&track.track.name),
-                track.instrument.id
+                instrument_id(track)
             ));
             current = Some(block.track);
         }
@@ -185,6 +190,13 @@ fn assemble(
         out.push('\n');
     }
     out.trim_end().to_string()
+}
+
+fn instrument_id(track: &ValidTrack) -> &'static str {
+    track
+        .instrument
+        .instrument()
+        .map_or(AUDIO_INSTRUMENT_ID, |i| i.id)
 }
 
 fn measure_steps(measure: u32, spm: u32) -> (u32, u32) {
@@ -206,7 +218,9 @@ fn notes_in<'a>(
 /// the previous measure shows as a hold from step 0.
 fn lane_lines(track: &ValidTrack, measure: u32, spm: u32) -> Vec<String> {
     let (start, end) = measure_steps(measure, spm);
-    let instrument = track.instrument;
+    let Some(instrument) = track.instrument.instrument() else {
+        return Vec::new();
+    };
     let mut rows: Vec<(u8, &str, Vec<char>)> = Vec::new();
     for note in notes_in(track, start, end) {
         let Some(row) = instrument.row_index(&note.row_id) else {
@@ -250,7 +264,7 @@ fn velocity_char(velocity: u8) -> char {
 /// the cost of every note. `None` when the measure is silent.
 fn beat_line(track: &ValidTrack, measure: u32, spm: u32, steps_per_beat: u32) -> Option<String> {
     let start = measure_steps(measure, spm).0;
-    let instrument = track.instrument;
+    let instrument = track.instrument.instrument()?;
     let mut any = false;
     let beats: Vec<String> = (0..spm / steps_per_beat)
         .map(|beat| {

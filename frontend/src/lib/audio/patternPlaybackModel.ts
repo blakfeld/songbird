@@ -27,6 +27,7 @@ export function createPatternPlaybackModel(
       return [
         {
           key: instrumentId,
+          kind: "instrument" as const,
           instrument: instrumentId,
           rows: p.rows,
           notes: p.notes,

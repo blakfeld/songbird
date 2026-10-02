@@ -80,6 +80,17 @@ async fn serve() -> Result<(), String> {
 
     api::auth::session::spawn_sweeper(state.db.clone());
 
+    if !bind_addr.ip().is_loopback() {
+        // Containers must bind 0.0.0.0 inside, so this fires under compose even when the
+        // published port is loopback-only; what matters is how the port is exposed.
+        tracing::warn!(
+            addr = %bind_addr,
+            "listening on a non-loopback address; anyone who can reach this port can \
+             attempt to sign in and, with an account, spend provider quota. Publish the \
+             port on loopback or put a TLS-terminating proxy in front of it"
+        );
+    }
+
     // The peer address is what login throttling keys on when no proxy is trusted.
     axum::serve(
         listener,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { createSongStore } from "@/lib/song/songStore";
+import { newTrack } from "@/lib/song/types";
 import { createSongPlaybackModel } from "./songPlaybackModel";
 
 const piano = { ...drums, id: "piano", name: "Piano", kind: "melodic" as const };
@@ -55,5 +56,38 @@ describe("song playback model", () => {
     };
     const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
     expect(model.getVoices()[0].notes.map((n) => n.step)).toEqual([32, 48]);
+  });
+
+  it("gives audio tracks an audio voice with their clips and each sample's rate", () => {
+    const song = newSongWithTracks();
+    song.samples = [{ id: "s1", name: "Loop", sample_rate: 44100, channels: 2, length_samples: 88200, origin: "import" }];
+    const clip = {
+      id: "c1",
+      sample_id: "s1",
+      start_ticks: 480,
+      offset_samples: 0,
+      slice_samples: 88200,
+      length_samples: 88200,
+      loop: false,
+      gain_db: 0,
+      fade_in_samples: 0,
+      fade_out_samples: 0,
+    };
+    song.tracks.push({ ...newTrack("audio", "Loops"), audio_clips: [clip, { ...clip, id: "c2", sample_id: "missing" }] });
+    const model = createSongPlaybackModel(createSongStore(song), [drums, piano]);
+    const voices = model.getVoices();
+    expect(voices.map((v) => v.kind)).toEqual(["instrument", "instrument", "audio"]);
+    const audio = voices[2];
+    expect(audio).toMatchObject({ instrument: "audio", rows: [], notes: [], audible: true });
+    // The clip whose sample is not in the song is left out instead of failing playback.
+    expect(audio.clips).toEqual([{ clip, sampleRate: 44100 }]);
+    expect(model.getVoices()[2].clips).toBe(audio.clips);
+  });
+
+  it("has audio voices before the instrument list arrives, and resolves their mute and solo", () => {
+    const song = newSongWithTracks();
+    song.tracks = [{ ...newTrack("audio", "A"), soloed: true }, { ...newTrack("audio", "B") }];
+    const model = createSongPlaybackModel(createSongStore(song));
+    expect(model.getVoices().map((v) => v.audible)).toEqual([true, false]);
   });
 });

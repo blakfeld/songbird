@@ -1,7 +1,12 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EXCLUDED_IDB_DATABASES, LOCAL_STORAGE_PREFIX, PER_USER_IDB_DATABASES } from "./perUserStores";
+import {
+  EXCLUDED_IDB_DATABASES,
+  KEPT_PER_USER_IDB_PREFIXES,
+  LOCAL_STORAGE_PREFIX,
+  PER_USER_IDB_DATABASES,
+} from "./perUserStores";
 
 const SRC = join(__dirname, "../..");
 
@@ -51,6 +56,7 @@ describe("per-user storage registry", () => {
       ...matches(new RegExp(String.raw`\bcreateStore\(${LITERAL}`, "g")),
       ...matches(new RegExp(String.raw`indexedDB\.open\(${LITERAL}`, "g")),
     ];
-    expect(names.filter((n) => !known.has(n.literal))).toEqual([]);
+    const isKept = (literal: string) => KEPT_PER_USER_IDB_PREFIXES.includes(literal);
+    expect(names.filter((n) => !known.has(n.literal) && !isKept(n.literal))).toEqual([]);
   });
 });

@@ -1,8 +1,15 @@
 mod common;
 
-use api::config::{AI_REQUESTS_PER_DAY, AI_REQUESTS_PER_MINUTE};
+use std::sync::Arc;
+use std::time::Duration;
+
+use api::config::{AI_REQUESTS_PER_DAY, AI_REQUESTS_PER_MINUTE, MAX_CONCURRENT_GENERATIONS};
+use api::provider::Providers;
+use async_trait::async_trait;
 use axum::http::{header, StatusCode};
 use common::app::{request, song, TestApp};
+use music::ai::{PatternProvider, ProviderError};
+use music::{GenerateRequest, Instrument, PatternDraft};
 use serde_json::{json, Value};
 
 /// Every route that calls a provider. A new provider-calling route must be
@@ -129,4 +136,54 @@ async fn non_ai_routes_are_not_metered() {
             .await;
         assert_eq!(response.status, StatusCode::OK);
     }
+}
+
+struct BlockingPatterns(Arc<tokio::sync::Notify>);
+
+#[async_trait]
+impl PatternProvider for BlockingPatterns {
+    async fn generate(
+        &self,
+        _: &GenerateRequest,
+        _: &Instrument,
+    ) -> Result<PatternDraft, ProviderError> {
+        self.0.notify_one();
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        unreachable!("the test aborts the request")
+    }
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn without_a_session_a_full_house_answers_401_not_503() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let held = started.clone();
+    let app = Arc::new(
+        TestApp::with_state(&[(MAX_CONCURRENT_GENERATIONS, "1")], |state| {
+            state.providers = Providers::with_patterns(BlockingPatterns(held));
+        })
+        .await,
+    );
+    let cookie = app.cookie_for("ana@example.com").await;
+    let (uri, body) = ai_routes().remove(0);
+
+    let holder = {
+        let app = app.clone();
+        let (cookie, uri, body) = (cookie.clone(), uri.to_string(), body.clone());
+        tokio::spawn(async move {
+            app.send(request("POST", &uri, Some(&cookie), Some(body)))
+                .await
+        })
+    };
+    started.notified().await;
+
+    let signed_in = post(&app, &cookie, uri, &body).await;
+    assert_eq!(signed_in.status, StatusCode::SERVICE_UNAVAILABLE);
+    for (uri, body) in ai_routes() {
+        let anonymous = app.send(request("POST", uri, None, Some(body))).await;
+        assert_eq!(anonymous.status, StatusCode::UNAUTHORIZED, "{uri}");
+    }
+    holder.abort();
 }

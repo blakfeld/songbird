@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use music::ai::{
     ClaudeProvider, CodexCliProvider, MockPlanProvider, MockProvider, OllamaProvider,
@@ -49,6 +50,12 @@ async fn over_transport<T: StructuredProvider + 'static>(
     ))
 }
 
+/// The handler's own timeout must fire first so clients see 504 generation_timeout;
+/// the client timeout is only a backstop that frees the socket if that ever fails.
+fn client_timeout(config: &Config) -> Duration {
+    config.generation_timeout + Duration::from_secs(5)
+}
+
 /// Fails startup, rather than the first request, when the selected provider is
 /// unusable; every message says how to fix it.
 pub async fn build_providers(config: &Config) -> Result<Providers, ProviderError> {
@@ -59,13 +66,17 @@ pub async fn build_providers(config: &Config) -> Result<Providers, ProviderError
                     "{ANTHROPIC_API_KEY} is required when SONGBIRD_AI_PROVIDER=claude"
                 ))
             })?;
-            over_transport(ClaudeProvider::new(key, config.ai_model.clone())).await
+            over_transport(
+                ClaudeProvider::new(key, config.ai_model.clone())
+                    .with_timeout(client_timeout(config)),
+            )
+            .await
         }
         ProviderKind::Ollama => {
-            over_transport(OllamaProvider::new(
-                config.ollama_url.clone(),
-                config.ollama_model.clone(),
-            ))
+            over_transport(
+                OllamaProvider::new(config.ollama_url.clone(), config.ollama_model.clone())
+                    .with_timeout(client_timeout(config)),
+            )
             .await
         }
         ProviderKind::Codex => {

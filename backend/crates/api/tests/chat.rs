@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS};
+use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS, MAX_CONCURRENT_GENERATIONS};
 use api::provider::Providers;
 use api::state::AppState;
 use async_trait::async_trait;
@@ -511,5 +511,157 @@ async fn without_a_named_length_a_song_with_clips_uses_its_own_length() {
     assert_eq!(
         response["track"]["range"],
         json!({"start_measure": 1, "end_measure": 4})
+    );
+}
+
+fn audio_song_parts() -> (Value, Value) {
+    let sample = json!({
+        "id": "s1", "name": "Vocal take", "sample_rate": 48000, "channels": 1,
+        "length_samples": 96000, "origin": "import",
+    });
+    let mut vocals = track("t9", "Vocals", "audio", json!([]), json!([]));
+    vocals["audio_clips"] = json!([{
+        "id": "a1", "sample_id": "s1", "start_ticks": 0, "offset_samples": 0,
+        "slice_samples": 96000, "length_samples": 96000,
+    }]);
+    (sample, vocals)
+}
+
+#[tokio::test]
+async fn chat_ignores_audio_tracks() {
+    let (sample, vocals) = audio_song_parts();
+    let mut s = song(4, vec![piano_track("t1"), vocals]);
+    s["samples"] = json!([sample]);
+    let patterns = RecordingPatterns::default();
+    let generated = patterns.seen.clone();
+    let plans = RecordingPlans::default();
+    let planned = plans.seen.clone();
+    let (status, response) = chat(
+        app_with(Providers::new(patterns, plans), &[]).await,
+        json!({"song": s, "messages": [user("give me a bass part")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"]["instrument"], "bass");
+
+    let generated = generated.lock().unwrap();
+    let context = generated[0].context.as_deref().unwrap();
+    assert!(context.contains("Track \"Piano\" (piano):"), "{context}");
+    assert!(!context.contains("Vocals"), "{context}");
+    assert!(!planned.lock().unwrap()[0].user.contains("Vocals"));
+}
+
+#[tokio::test]
+async fn audio_tracks_count_toward_the_chat_track_limit() {
+    let (sample, vocals) = audio_song_parts();
+    let mut tracks: Vec<Value> = (0..15).map(|i| piano_track(&format!("t{i}"))).collect();
+    tracks.push(vocals);
+    let mut s = song(4, tracks);
+    s["samples"] = json!([sample]);
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]).await,
+        json!({"song": s, "messages": [user("give me a bass")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"], Value::Null);
+}
+
+struct BlockingPatterns(Arc<tokio::sync::Notify>);
+
+#[async_trait]
+impl PatternProvider for BlockingPatterns {
+    async fn generate(
+        &self,
+        _: &GenerateRequest,
+        _: &Instrument,
+    ) -> Result<PatternDraft, ProviderError> {
+        self.0.notify_one();
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        unreachable!("the test aborts the request")
+    }
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+async fn post_status(app: &axum::Router, uri: &str, body: Value) -> StatusCode {
+    let req = Request::post(uri)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap().status()
+}
+
+async fn single_slot_app() -> (axum::Router, Arc<tokio::sync::Notify>) {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let app = app_with(
+        Providers::with_patterns(BlockingPatterns(started.clone())),
+        &[
+            (MAX_CONCURRENT_GENERATIONS, "1"),
+            (GENERATION_TIMEOUT_SECS, "3600"),
+        ],
+    )
+    .await;
+    (app, started)
+}
+
+fn chat_body() -> Value {
+    json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("give me the drums to match")]})
+}
+
+#[tokio::test]
+async fn all_generation_routes_share_one_budget_and_cheap_routes_stay_available() {
+    let (app, started) = single_slot_app().await;
+    let first = tokio::spawn(chat(app.clone(), chat_body()));
+    started.notified().await;
+
+    // The limiter runs before body validation, so any body shows the shed.
+    for uri in [
+        CHAT_URI,
+        "/api/v1/patterns/generate",
+        "/api/v1/songs/tracks/generate",
+    ] {
+        assert_eq!(
+            post_status(&app, uri, json!({})).await,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{uri}"
+        );
+    }
+    let (_, response) = chat(app.clone(), chat_body()).await;
+    assert_eq!(response["error"]["code"], "generation_busy");
+
+    for uri in [
+        "/healthz",
+        "/api/v1/songs/limits",
+        "/api/v1/patterns/limits",
+    ] {
+        let res = app
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{uri}");
+    }
+    first.abort();
+}
+
+#[tokio::test]
+async fn the_slot_is_released_when_a_generation_is_abandoned() {
+    let (app, started) = single_slot_app().await;
+    let first = tokio::spawn(chat(app.clone(), chat_body()));
+    started.notified().await;
+    first.abort();
+    let _ = first.await;
+
+    // Reaching the provider again (and so blocking) proves the slot was free; a shed returns at once.
+    let next = tokio::time::timeout(
+        Duration::from_millis(300),
+        post_status(&app, CHAT_URI, chat_body()),
+    )
+    .await;
+    assert!(
+        next.is_err(),
+        "expected the request to be running, got {next:?}"
     );
 }

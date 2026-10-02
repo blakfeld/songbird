@@ -16,3 +16,7 @@ export const midiFilename = (p: Pick<Pattern, "name" | "tempo_bpm">) =>
 // Songs use the same slug rule so a proxy-stripped header still yields the server's file name.
 export const songMidiFilename = (s: Pick<Song, "name" | "tempo_bpm">) =>
   `songbird-${slugify(s.name, "song")}-${s.tempo_bpm}bpm.mid`;
+
+// Same slug rule as the MIDI export so one song's files sort together.
+export const songWavFilename = (s: Pick<Song, "name" | "tempo_bpm">) =>
+  `songbird-${slugify(s.name, "song")}-${s.tempo_bpm}bpm.wav`;

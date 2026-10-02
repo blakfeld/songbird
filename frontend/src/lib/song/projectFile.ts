@@ -1,6 +1,8 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { slugify } from "../midiFilename";
+import { audioProblem, type AudioErrorKind } from "./audioValidation";
+import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
 import { migrateSong, validateClips } from "./migrate";
 import { soundProblem } from "./trackSound";
 import {
@@ -55,7 +57,10 @@ export type ProjectErrorKind =
   | "clip_position"
   | "clip_length"
   | "clip_overlap"
-  | "clip_outside_song";
+  | "clip_outside_song"
+  // A bundle's zip or audio is at fault, as opposed to the song inside it.
+  | "bundle"
+  | AudioErrorKind;
 
 export type ProjectParse = { ok: Song } | { error: string; kind: ProjectErrorKind };
 
@@ -173,12 +178,14 @@ function checkTracks(raw: Raw, instruments: InstrumentInfo[]): Problem | null {
       );
     if (!isNum(t.pan) || !inRange(t.pan, PAN_RANGE))
       return problem("pan", `${label(t, i)}: pan must be from -1 to 1`);
-    if (!instruments.some((inst) => inst.id === t.instrument))
+    const audio = t.instrument === AUDIO_INSTRUMENT_ID;
+    if (!audio && !instruments.some((inst) => inst.id === t.instrument))
       return problem(
         "unknown_instrument",
         `${label(t, i)} uses the instrument "${t.instrument}", which Songbird does not offer`,
       );
-    if (t.sound !== undefined) {
+    // Audio tracks take their sound checks from audioProblem, which knows tone is not allowed on them.
+    if (t.sound !== undefined && !audio) {
       const drums = instruments.find((inst) => inst.id === t.instrument)?.kind === "drums";
       const reason = soundProblem(t.sound, drums);
       if (reason) return problem("sound", `${label(t, i)}: ${reason}`);
@@ -295,7 +302,8 @@ export function parseProjectFile(text: string, instruments: InstrumentInfo[]): P
   if (!isObject(raw)) return { error: "That project file has no song.", kind: "malformed" };
 
   const early =
-    checkHeader(raw) ?? checkTracks(raw, instruments) ?? (raw.version === 2 ? clipProblem(raw) : null);
+    checkHeader(raw) ?? checkTracks(raw, instruments) ??
+    (raw.version === 2 ? (audioProblem(raw) ?? clipProblem(raw)) : null);
   if (early) return { error: `That project can't be opened: ${early.message}.`, kind: early.kind };
 
   const song = migrateSong(raw);

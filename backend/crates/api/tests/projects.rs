@@ -73,6 +73,44 @@ fn with_id(mut song: Value, id: &str) -> Value {
     song
 }
 
+fn song_with_audio_track() -> Value {
+    let mut value = song("Breaks", 1);
+    value["samples"] = json!([{
+        "id": "s1", "name": "Break", "sample_rate": 48000, "channels": 2,
+        "length_samples": 120000, "origin": "import",
+    }]);
+    value["tracks"].as_array_mut().unwrap().push(json!({
+        "id": "t9", "name": "Loops", "instrument": "audio",
+        "volume_db": 0, "pan": 0, "muted": false, "soloed": false,
+        "loops": [], "clips": [],
+        "audio_clips": [{
+            "id": "a1", "sample_id": "s1", "start_ticks": 0, "offset_samples": 0,
+            "slice_samples": 120000, "length_samples": 120000,
+        }],
+    }));
+    value
+}
+
+#[tokio::test]
+async fn a_song_with_an_audio_track_can_be_created_saved_and_reopened() {
+    let app = TestApp::new(&[]).await;
+    let cookie = app.cookie_for("ana@example.com").await;
+
+    let created = create(&app, &cookie, song_with_audio_track()).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let id = project_id(&created);
+
+    age_saves(&app).await;
+    let saved = save(&app, &cookie, &id, with_id(song_with_audio_track(), &id), 1).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
+
+    let opened = open(&app, &cookie, &id).await;
+    assert_eq!(
+        opened.body["project"]["song"]["tracks"][1]["audio_clips"][0]["sample_id"],
+        "s1"
+    );
+}
+
 #[tokio::test]
 async fn create_returns_201_with_a_server_id_revision_1_and_the_id_inside_the_song() {
     let app = TestApp::new(&[]).await;

@@ -6,6 +6,7 @@ use axum::http::{header, HeaderValue};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+
 use music::generate::{generate_pattern, GenerationError};
 use music::midi::{pattern_to_midi, MidiError};
 use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};

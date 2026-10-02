@@ -2,8 +2,12 @@ use async_trait::async_trait;
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
+use std::time::Duration;
 
-use super::{ProviderError, StructuredProvider, StructuredRequest};
+use super::{
+    http_client, read_json_capped, ProviderError, StructuredProvider, StructuredRequest,
+    DEFAULT_REQUEST_TIMEOUT,
+};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 /// Pinned because the tool-use request shape is tied to an API version.
@@ -22,7 +26,7 @@ pub struct ClaudeProvider {
 impl ClaudeProvider {
     pub fn new(api_key: SecretString, model: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: http_client(DEFAULT_REQUEST_TIMEOUT),
             base_url: DEFAULT_BASE_URL.into(),
             api_key,
             model: model.into(),
@@ -33,6 +37,11 @@ impl ClaudeProvider {
     /// Lets tests point at a local fake server.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into().trim_end_matches('/').to_string();
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.client = http_client(timeout);
         self
     }
 
@@ -90,10 +99,7 @@ impl StructuredProvider for ClaudeProvider {
                 "the Anthropic API returned HTTP {status}"
             )));
         }
-        let payload: Value = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::InvalidOutput(format!("response is not JSON: {e}")))?;
+        let payload = read_json_capped(response).await?;
         payload["content"]
             .as_array()
             .and_then(|blocks| {
@@ -142,6 +148,18 @@ mod tests {
         ClaudeProvider::new(SecretString::from("test-key"), "claude-test")
             .with_base_url(server.uri())
             .with_max_tokens(1234)
+    }
+
+    #[tokio::test]
+    async fn oversize_response_is_rejected() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b' '; 5 * 1024 * 1024]))
+            .mount(&server)
+            .await;
+        let err = provider(&server).generate(&request()).await.unwrap_err();
+        assert!(matches!(err, ProviderError::Request(m) if m.contains("limit")));
     }
 
     #[tokio::test]

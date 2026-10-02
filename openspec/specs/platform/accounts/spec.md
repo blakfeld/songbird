@@ -263,12 +263,16 @@ Every page except `/login` SHALL show the signed-in user's email and a Log out c
 - **THEN** the session ends, the browser shows `/login`, and pressing Back does not show the user's projects
 
 ### Requirement: Per-user browser storage
-Everything the app keeps in browser storage under the `songbird.` localStorage prefix, and every IndexedDB store the app creates for a user's work (including stored audio samples), SHALL be treated as belonging to the signed-in user. Signing out, by logging out or after a `401`, SHALL delete all of it. The app SHALL keep one list of its per-user IndexedDB stores, and every new store SHALL be added to it. Songs saved in a browser's local library before accounts existed SHALL be left untouched (see `songs/multitrack`).
+Everything the app keeps in browser storage under the `songbird.` localStorage prefix, and every IndexedDB store the app creates for a user's work, SHALL be treated as belonging to the signed-in user. Signing out, by logging out or after a `401`, SHALL delete all of it, except stored sample audio. Sample audio exists only in the browser (see `songs/audio-tracks`), so deleting it would destroy the user's work. It SHALL instead be kept in a store keyed by the user's id, which only that user can open. The app SHALL keep one list of its per-user IndexedDB stores, marking any store that is kept on sign-out, and every new store SHALL be added to it. Songs and samples saved in a browser before accounts existed SHALL be left untouched (see `songs/multitrack`).
 
 #### Scenario: Sign-out clears everything per-user
-- **WHEN** a user with a saved pattern, a last-opened song, and stored samples logs out
-- **THEN** no `songbird.` localStorage key and no per-user IndexedDB store remains in the browser
+- **WHEN** a user with a saved pattern and a last-opened song logs out
+- **THEN** no `songbird.` localStorage key and no per-user IndexedDB store remains in the browser, other than the stores kept on sign-out
+
+#### Scenario: Samples kept for the same user
+- **WHEN** a user with stored samples logs out and signs in again on the same browser
+- **THEN** their songs play the same sample audio as before
 
 #### Scenario: Next user starts clean
 - **WHEN** user A logs out and user B signs in on the same browser
-- **THEN** nothing user A kept in browser storage is visible to user B
+- **THEN** nothing user A kept in browser storage, including stored samples, is visible to user B

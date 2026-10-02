@@ -158,13 +158,17 @@ export function LaneMenuItems({
   actions,
   close,
   extra,
+  hideLaneItems = false,
 }: {
   track: Track;
   measure: number | null;
   actions: ClipActions;
   close: () => void;
   extra?: React.ReactNode;
+  // Audio tracks have no loops or note clips, so only the track-level items apply to them.
+  hideLaneItems?: boolean;
 }) {
+  if (hideLaneItems) return <>{extra}</>;
   const clipLimit = track.clips.length >= MAX_CLIPS;
   const loopLimit = track.loops.length >= MAX_LOOPS;
   const noRoom = measure === null;

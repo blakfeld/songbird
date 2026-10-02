@@ -14,6 +14,7 @@ use tracing::Level;
 use crate::auth::http::{check_origin, require_session};
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::limit::{shed_when_busy, GenerationLimiter};
 use crate::state::AppState;
 
 /// Generation bodies are a short description plus a few numbers, and export
@@ -51,11 +52,16 @@ async fn readyz(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
 
 /// Takes the state because the session, origin, and metering layers read it.
 pub fn routes(state: AppState) -> Router {
-    // Metering sits inside authentication, which supplies the user it meters.
+    // One limiter for every provider route: the budget protects the provider, not a route.
+    let limiter = GenerationLimiter::new(state.config.max_concurrent_generations);
+
+    // Shedding is outermost so a request refused for load does not spend the
+    // user's quota; metering sits inside authentication, which supplies the user.
     let ai = Router::new()
         .merge(crate::patterns::ai_router())
         .merge(crate::songs::ai_router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
-        .route_layer(from_fn_with_state(state.clone(), crate::ai_limits::meter));
+        .route_layer(from_fn_with_state(state.clone(), crate::ai_limits::meter))
+        .route_layer(from_fn_with_state(limiter, shed_when_busy));
 
     // One layer around every protected route, so a new route cannot forget
     // authentication. Added last, the origin check runs first and refuses a

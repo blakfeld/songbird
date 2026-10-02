@@ -8,6 +8,8 @@ pub mod ollama;
 pub mod plan;
 pub mod prompt;
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -43,6 +45,51 @@ pub enum ProviderError {
     Request(String),
     #[error("provider returned invalid output: {0}")]
     InvalidOutput(String),
+}
+
+/// Fails fast when the host is down instead of consuming the whole request budget.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Backstop for callers that do not set their own; the API passes its configured generation timeout.
+pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+/// Structured outputs are a few KiB; a larger body means a misbehaving or hostile endpoint,
+/// and buffering it unbounded would let one response exhaust memory.
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
+pub(crate) fn http_client(timeout: Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(timeout)
+        .build()
+        .expect("static client configuration is valid")
+}
+
+pub(crate) async fn read_json_capped(response: reqwest::Response) -> Result<Value, ProviderError> {
+    read_json_capped_at(response, MAX_RESPONSE_BYTES).await
+}
+
+async fn read_json_capped_at(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Value, ProviderError> {
+    // Request rather than InvalidOutput because invalid output is retried, and a
+    // hostile endpoint should not get a second read of the cap.
+    let too_large = || ProviderError::Request(format!("response exceeds the {limit} byte limit"));
+    if response.content_length().is_some_and(|n| n > limit as u64) {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| ProviderError::Request(format!("could not read the response: {e}")))?
+    {
+        if body.len() + chunk.len() > limit {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body)
+        .map_err(|e| ProviderError::InvalidOutput(format!("response is not JSON: {e}")))
 }
 
 #[async_trait]
@@ -120,5 +167,47 @@ impl<T: StructuredProvider> PatternProvider for SchemaProvider<T> {
 
     async fn check(&self) -> Result<(), ProviderError> {
         self.transport.check().await
+    }
+}
+
+#[cfg(test)]
+mod capped_read_tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    // Chunked transfer sends no Content-Length, so only the streaming check can catch it.
+    async fn chunked_response(payload: &'static str) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
+            let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            socket.write_all(head.as_bytes()).await.unwrap();
+            for part in payload.as_bytes().chunks(8) {
+                let frame = format!("{:x}\r\n{}\r\n", part.len(), String::from_utf8_lossy(part));
+                socket.write_all(frame.as_bytes()).await.unwrap();
+            }
+            socket.write_all(b"0\r\n\r\n").await.unwrap();
+        });
+        let response = reqwest::get(format!("http://{addr}")).await.unwrap();
+        assert_eq!(response.content_length(), None);
+        response
+    }
+
+    #[tokio::test]
+    async fn streamed_body_over_the_limit_is_rejected() {
+        let response = chunked_response(r#"{"padding":"xxxxxxxxxxxxxxxxxxxxxxxx"}"#).await;
+        let err = read_json_capped_at(response, 16).await.unwrap_err();
+        assert!(matches!(err, ProviderError::Request(m) if m.contains("limit")));
+    }
+
+    #[tokio::test]
+    async fn streamed_body_within_the_limit_is_parsed() {
+        let response = chunked_response(r#"{"ok":true}"#).await;
+        let value = read_json_capped_at(response, 1024).await.unwrap();
+        assert_eq!(value, serde_json::json!({"ok": true}));
     }
 }

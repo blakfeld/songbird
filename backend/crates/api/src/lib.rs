@@ -5,6 +5,7 @@ pub mod clock;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod limit;
 pub mod patterns;
 pub mod project_store;
 pub mod projects;

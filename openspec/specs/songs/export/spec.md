@@ -56,12 +56,12 @@ A track whose instrument is not listed by `GET /api/v1/instruments` SHALL be rej
 ### Requirement: Multitrack MIDI file contents
 The exported file SHALL be a Type 1 Standard MIDI File at 480 ticks per quarter note.
 - **First track (conductor):** the song name, a tempo meta-event matching `tempo_bpm`, and a time-signature meta-event matching `time_signature`.
-- **Remaining tracks:** one MIDI track per song track, in song order, including muted tracks. Each contains, at tick 0:
+- **Remaining tracks:** one MIDI track per instrument track, in song order, including muted tracks. Audio tracks SHALL be left out, because MIDI cannot carry audio; use the WAV mixdown for them. Each contains, at tick 0:
   - a track-name meta-event with the track's name;
   - for melodic instruments, a Program Change to the instrument's `midi_program`;
   - a Control Change 7 (volume) and a Control Change 10 (pan) derived from the mixer.
 - **Notes:** each track then contains, as Note On / Note Off pairs, exactly the notes its clips play during song playback: each clip plays its loop from the clip's start measure, repeating when the clip is longer than the loop, playing only the loop's start when it is shorter, cutting notes off at the clip's end, and nothing outside clips (see `songs/clips`, "What a clip plays"). Timing, swing, overlap handling, and note-length rules SHALL be the same as single-pattern export.
-- **Channels:** drums tracks SHALL use channel 10. Melodic tracks SHALL be assigned channels 1–9 and then 11–16, in track order.
+- **Channels:** drums tracks SHALL use channel 10. Melodic tracks SHALL be assigned channels 1–9 and then 11–16, in track order, skipping audio tracks.
 - **End of track:** every track SHALL end with End of Track at the end of the song's final measure.
 
 #### Scenario: Track layout
@@ -91,6 +91,10 @@ The exported file SHALL be a Type 1 Standard MIDI File at 480 ticks per quarter 
 #### Scenario: Empty track still exported
 - **WHEN** a song contains a track with no clips
 - **THEN** the file still contains that track, with its name and controller events
+
+#### Scenario: Audio tracks left out
+- **WHEN** a song with tracks Drums, Loops (audio), and Bass is exported to MIDI
+- **THEN** the file has 3 tracks: the conductor, "Drums" on channel 10, and "Bass" on channel 1
 
 ### Requirement: Mixer values in exported MIDI
 Volume SHALL be written as Control Change 7 with value `round(100 × 10^(volume_db / 40))`, clamped to 0–127. This puts 0 dB at 100, leaving headroom for boosts. Pan SHALL be written as Control Change 10 with value 64 for center, `round(64 + pan × 64)` for negative pan, and `round(64 + pan × 63)` for positive pan. Mute and solo state SHALL NOT affect the exported notes or controllers.
@@ -169,3 +173,42 @@ The imported song SHALL always receive a new id from the server, so that it neve
 #### Scenario: Duplicate id kept separately
 - **WHEN** the user opens a project file whose song id matches a project already in their library
 - **THEN** the library contains both songs, and the imported one has a new id
+
+### Requirement: Download WAV mixdown
+The Studio page SHALL provide a "Download WAV" action that renders the open song, including unsaved edits, in the browser. The render SHALL be a 16-bit stereo WAV at the audio context's sample rate, and it SHALL sound as the song plays:
+- every instrument and audio track;
+- the tracks' sound settings and effects, volume, and pan;
+- mute and solo as they are set.
+
+It SHALL run from the start of measure 1 to the end of the song, plus up to 4 seconds while effect tails fade below −60 dBFS. Looping and the count-in SHALL be ignored. The file SHALL be named `songbird-<slug of song name>-<tempo_bpm>bpm.wav`. The page SHALL show progress and offer Cancel, and editing SHALL remain possible during the render. The render SHALL reflect the song as it was when the action started. Nothing SHALL be sent to the server. When the mix reaches full scale, the page SHALL warn after the download that the mix clipped.
+
+#### Scenario: Mixdown includes audio tracks
+- **WHEN** the user downloads a WAV of a song with a Piano track and an audio track playing a drum loop
+- **THEN** the downloaded file contains both the piano and the drum loop, with the tracks' effects
+
+#### Scenario: Muted track left out
+- **WHEN** the Drums track is muted and the user downloads a WAV
+- **THEN** the file has no drums
+
+#### Scenario: Cancel
+- **WHEN** the user cancels a render in progress
+- **THEN** no file is downloaded and the song is unchanged
+
+### Requirement: Project bundles with audio
+When the open song has at least one entry in `samples`, "Download project" SHALL save a ZIP file named `<slug of song name>.songbird.zip` instead of a `.songbird.json` file. The ZIP SHALL hold:
+- `project.json`, in the existing project-file format and version;
+- one `audio/<sample id>.wav` per song sample, holding that sample's audio losslessly.
+
+"Open project" SHALL accept `.songbird.zip` files of at most 2 GB as well as `.songbird.json` files, and SHALL validate `project.json` exactly as a `.songbird.json` file. A bundle SHALL be rejected, without changing the library, when:
+- a sample's audio file is missing or unreadable;
+- the audio's sample rate, channel count, or length differ from the sample's metadata.
+
+A sample whose audio this browser already stores under the same id SHALL reuse the stored audio. Other samples SHALL be stored and added to the sample library. A song without samples SHALL still download as `.songbird.json`.
+
+#### Scenario: Round trip with audio
+- **WHEN** the user downloads a project with two samples and opens the bundle in another browser
+- **THEN** the song opens with the same clips playing the same audio
+
+#### Scenario: Missing audio file
+- **WHEN** the user opens a bundle whose `project.json` refers to a sample with no matching file in `audio/`
+- **THEN** the import is rejected with a message naming the sample, and the library is unchanged
