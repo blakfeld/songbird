@@ -33,7 +33,7 @@ async fn echo(ApiJson(value): ApiJson<Value>) -> axum::Json<Value> {
 fn app_with_echo() -> Router {
     let state = state();
     let config = state.config.clone();
-    let router = api::routes()
+    let router = api::routes(&config)
         .with_state(state)
         .route("/api/v1/echo", post(echo));
     api::middleware(router, &config)

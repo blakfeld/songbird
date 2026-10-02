@@ -13,6 +13,25 @@ The service SHALL expose `GET /healthz` returning `200` with `{"status": "ok"}` 
 - **WHEN** a client requests `GET /healthz`
 - **THEN** the response is `200` with body `{"status":"ok"}`
 
+### Requirement: Concurrent generation limit
+The service SHALL allow at most `SONGBIRD_MAX_CONCURRENT_GENERATIONS` LLM-backed requests to run at once, counted across `POST /api/v1/patterns/generate`, `POST /api/v1/songs/tracks/generate` and `POST /api/v1/songs/chat`. A request that arrives when the limit is reached SHALL be rejected immediately, not queued, with `503` and error code `generation_busy`. A slot SHALL be released when its request finishes, fails, times out or is abandoned. No other route SHALL be limited.
+
+#### Scenario: Limit reached
+- **WHEN** the limit is 1, one generation is running, and a client sends a second generation request to any of the three routes
+- **THEN** the response is `503` with error code `generation_busy` and the provider is not called
+
+#### Scenario: Slot released
+- **WHEN** a running generation finishes or its client disconnects
+- **THEN** the next generation request is accepted
+
+#### Scenario: Cheap routes unaffected
+- **WHEN** the limit is reached
+- **THEN** `GET /healthz` and the limits endpoints still return `200`
+
+#### Scenario: Concurrency limit out of range
+- **WHEN** the service starts with `SONGBIRD_MAX_CONCURRENT_GENERATIONS=0`
+- **THEN** the process exits non-zero and the error names `SONGBIRD_MAX_CONCURRENT_GENERATIONS`
+
 ### Requirement: Environment-based configuration
 The service SHALL read its configuration from environment variables, optionally loaded from a `.env` file in development. The configuration SHALL include:
 - listen address/port;
@@ -20,6 +39,7 @@ The service SHALL read its configuration from environment variables, optionally 
 - Ollama server URL and model;
 - Codex CLI path and optional model;
 - generation timeout;
+- maximum concurrent generations (`SONGBIRD_MAX_CONCURRENT_GENERATIONS`, default 4, allowed 1-64);
 - maximum input tokens for generation prompts;
 - maximum context tokens for song track generation (`SONGBIRD_MAX_CONTEXT_TOKENS`, default 4000, allowed 0–32000);
 - allowed frontend origins.

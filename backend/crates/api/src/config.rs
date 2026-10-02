@@ -17,6 +17,7 @@ pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
 pub const AI_MODEL: &str = "SONGBIRD_AI_MODEL";
 pub const CORS_ORIGINS: &str = "SONGBIRD_CORS_ORIGINS";
 pub const GENERATION_TIMEOUT_SECS: &str = "SONGBIRD_GENERATION_TIMEOUT_SECS";
+pub const MAX_CONCURRENT_GENERATIONS: &str = "SONGBIRD_MAX_CONCURRENT_GENERATIONS";
 pub const MAX_INPUT_TOKENS: &str = "SONGBIRD_MAX_INPUT_TOKENS";
 pub const MAX_CONTEXT_TOKENS: &str = "SONGBIRD_MAX_CONTEXT_TOKENS";
 pub const OLLAMA_URL: &str = "SONGBIRD_OLLAMA_URL";
@@ -25,13 +26,14 @@ pub const CODEX_BIN: &str = "SONGBIRD_CODEX_BIN";
 pub const CODEX_MODEL: &str = "SONGBIRD_CODEX_MODEL";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 12] = [
+pub const ALL_VARIABLES: [&str; 13] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
     AI_MODEL,
     CORS_ORIGINS,
     GENERATION_TIMEOUT_SECS,
+    MAX_CONCURRENT_GENERATIONS,
     MAX_INPUT_TOKENS,
     MAX_CONTEXT_TOKENS,
     OLLAMA_URL,
@@ -44,6 +46,10 @@ const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_CORS_ORIGIN: &str = "http://localhost:3000";
 const DEFAULT_AI_MODEL: &str = "claude-sonnet-5-5";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
+/// A chat can make several provider calls, so a small number of concurrent
+/// generations already saturates a local model or a personal API budget.
+const DEFAULT_MAX_CONCURRENT_GENERATIONS: usize = 4;
+const MAX_MAX_CONCURRENT_GENERATIONS: usize = 64;
 const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 const DEFAULT_OLLAMA_MODEL: &str = "qwen2.5:7b-instruct";
 const DEFAULT_CODEX_BIN: &str = "codex";
@@ -103,6 +109,7 @@ pub struct Config {
     pub ai_model: String,
     pub cors_origins: Vec<String>,
     pub generation_timeout: Duration,
+    pub max_concurrent_generations: usize,
     pub max_input_tokens: u32,
     pub max_context_tokens: u32,
     pub ollama_url: String,
@@ -171,6 +178,22 @@ impl Config {
             })?,
         };
 
+        let max_concurrent_generations = match get(MAX_CONCURRENT_GENERATIONS) {
+            None => DEFAULT_MAX_CONCURRENT_GENERATIONS,
+            Some(v) => v
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=MAX_MAX_CONCURRENT_GENERATIONS).contains(n))
+                .ok_or_else(|| {
+                    invalid(
+                        MAX_CONCURRENT_GENERATIONS,
+                        format!(
+                            "\"{v}\" is not an integer between 1 and {MAX_MAX_CONCURRENT_GENERATIONS}"
+                        ),
+                    )
+                })?,
+        };
+
         let max_input_tokens = match get(MAX_INPUT_TOKENS) {
             None => DEFAULT_MAX_INPUT_TOKENS,
             Some(v) => v
@@ -208,6 +231,7 @@ impl Config {
             ai_model: get(AI_MODEL).unwrap_or_else(|| DEFAULT_AI_MODEL.into()),
             cors_origins,
             generation_timeout: Duration::from_secs(timeout_secs),
+            max_concurrent_generations,
             max_input_tokens,
             max_context_tokens,
             ollama_url: get(OLLAMA_URL)
@@ -294,6 +318,20 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn max_concurrent_generations_defaults_and_is_range_checked() {
+        assert_eq!(mock(&[]).unwrap().max_concurrent_generations, 4);
+        for bad in ["0", "65", "-1", "abc"] {
+            let err = mock(&[(MAX_CONCURRENT_GENERATIONS, bad)]).unwrap_err();
+            assert!(
+                err.to_string().contains(MAX_CONCURRENT_GENERATIONS),
+                "{bad}: {err}"
+            );
+        }
+        let c = mock(&[(MAX_CONCURRENT_GENERATIONS, "64")]).unwrap();
+        assert_eq!(c.max_concurrent_generations, 64);
     }
 
     #[test]
@@ -398,6 +436,7 @@ mod tests {
             (AI_MODEL, "m"),
             (CORS_ORIGINS, "http://x.example"),
             (GENERATION_TIMEOUT_SECS, "7"),
+            (MAX_CONCURRENT_GENERATIONS, "3"),
             (MAX_INPUT_TOKENS, "99"),
             (MAX_CONTEXT_TOKENS, "1234"),
             (OLLAMA_URL, "http://o"),
@@ -411,6 +450,7 @@ mod tests {
         assert_eq!(c.ai_model, "m");
         assert_eq!(c.cors_origins, ["http://x.example"]);
         assert_eq!(c.generation_timeout.as_secs(), 7);
+        assert_eq!(c.max_concurrent_generations, 3);
         assert_eq!(c.max_input_tokens, 99);
         assert_eq!(c.max_context_tokens, 1234);
         assert_eq!(c.ollama_url, "http://o");

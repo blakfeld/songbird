@@ -13,7 +13,7 @@ services:
       SONGBIRD_GENERATION_TIMEOUT_SECS: ${SONGBIRD_GENERATION_TIMEOUT_SECS:-60}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     # The ollama provider fails startup while Ollama is still booting.
     restart: on-failure
 
@@ -23,7 +23,7 @@ services:
       args:
         SONGBIRD_API_URL: http://backend:8080
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - backend
 
@@ -33,7 +33,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
 
 volumes:
   ollama:
