@@ -15,13 +15,17 @@ import * as audioOps from "./audioClipOps";
 import * as ops from "./songOps";
 import * as samplerOps from "./samplerOps";
 import type { SamplerKind } from "./sampler";
+import * as sectionOps from "../songSectionOps";
 import { songLoop, withLiveFields, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
 import type { AudioFailure, AudioOpResult } from "./audioClipOps";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
-import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey, type Track } from "./types";
+import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type SectionKind, type Song, type SongKey, type Track } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
+
+// A refusal carries the sentence to show, so callers never have to translate limits themselves.
+export type SectionActionResult = { sectionId: string | null } | { error: string };
 
 export interface SongState {
   song: Song | null;
@@ -131,6 +135,22 @@ export interface SongState {
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
   setLyrics: (text: string) => void;
+  // Each structural section action is one undo step and is refused, with the reason, while a track is generating
+  // because the generated range would otherwise land on measures the edit has since moved.
+  addSection: (spec: sectionOps.SectionSpec) => SectionActionResult;
+  insertSection: (spec: sectionOps.SectionSpec, relativeTo: string, where: "before" | "after") => SectionActionResult;
+  renameSection: (sectionId: string, name: string) => SectionActionResult;
+  setSectionKind: (sectionId: string, kind: SectionKind) => SectionActionResult;
+  // The edit dialog's name, kind and length together, so one Save is one undo step.
+  editSection: (
+    sectionId: string,
+    patch: { name?: string; kind?: SectionKind; measures?: number },
+  ) => SectionActionResult;
+  resizeSection: (sectionId: string, measures: number) => SectionActionResult;
+  duplicateSection: (sectionId: string) => SectionActionResult;
+  deleteSection: (sectionId: string) => SectionActionResult;
+  // Not an undo step: the textarea keeps its own undo stack, and keystrokes would flood the bounded history.
+  setSectionNotes: (sectionId: string, text: string) => void;
   // Both are one undo step each; the UI asks for confirmation first when a meter change would drop notes.
   setTimeSignature: (ts: TimeSignature) => "meter_limit" | null;
   setKey: (key: SongKey) => void;
@@ -144,6 +164,7 @@ const GENERATE_FAILURES: Record<ClipFailure, (track: string) => string> = {
   "loop-limit": (t) => `${t} already has ${MAX_LOOPS} loops, the most a track can hold. Delete an unused loop and try again.`,
   "not-found": () => "That track is no longer in the song.",
   "no-room": () => "There is no room for the generated part.",
+  "section-limit": () => "The part reaches past what the last section can hold. Add a section and try again.",
   "not-shared": () => "That track is no longer in the song.",
   generating: (t) => `${t} is already being generated.`,
 };
@@ -238,6 +259,17 @@ export function createSongStore(initial: Song | null = null): SongStore {
       if (options.select && result.clipId)
         set({ selectedTrackId: trackId, selectedClipId: result.clipId });
       return null;
+    };
+
+    const sectionEdit = (fn: (song: Song) => sectionOps.SectionOpResult): SectionActionResult => {
+      const current = get().song;
+      if (!current) return { error: "There is no song open." };
+      if (get().generatingTrackId !== null)
+        return { error: "Wait for the track to finish generating before editing sections." };
+      const result = fn(current);
+      if (result.song === null) return { error: sectionOps.describeRefusal(result) };
+      edit(() => result.song);
+      return { sectionId: result.sectionId };
     };
 
     return {
@@ -561,6 +593,21 @@ export function createSongStore(initial: Song | null = null): SongStore {
           const { lyrics: _old, ...rest } = s.song;
           void _old;
           return { song: text === "" ? rest : { ...rest, lyrics: text } };
+        }),
+      addSection: (spec) => sectionEdit((s) => sectionOps.addSection(s, spec)),
+      insertSection: (spec, relativeTo, where) =>
+        sectionEdit((s) => sectionOps.insertSection(s, spec, relativeTo, where)),
+      renameSection: (id, name) => sectionEdit((s) => sectionOps.renameSection(s, id, name)),
+      setSectionKind: (id, kind) => sectionEdit((s) => sectionOps.setSectionKind(s, id, kind)),
+      editSection: (id, patch) => sectionEdit((s) => sectionOps.editSection(s, id, patch)),
+      resizeSection: (id, measures) => sectionEdit((s) => sectionOps.resizeSection(s, id, measures)),
+      duplicateSection: (id) => sectionEdit((s) => sectionOps.duplicateSection(s, id)),
+      deleteSection: (id) => sectionEdit((s) => sectionOps.deleteSection(s, id)),
+      setSectionNotes: (id, text) =>
+        set((s) => {
+          if (!s.song) return s;
+          const result = sectionOps.setSectionNotes(s.song, id, text);
+          return result.song === null || result.song === s.song ? s : { song: result.song };
         }),
       setTimeSignature: (ts) => {
         const before = get().song;

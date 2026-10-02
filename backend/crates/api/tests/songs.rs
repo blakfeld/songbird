@@ -260,6 +260,23 @@ async fn one_mebibyte_to_a_pattern_route_is_still_rejected() {
 }
 
 #[tokio::test]
+async fn midi_export_ignores_sections() {
+    let plain = two_track_song();
+    let measures = plain["measures"].as_u64().unwrap();
+    assert!(measures > 1);
+    let mut sectioned = two_track_song();
+    sectioned["sections"] = json!([
+        {"id": "s1", "name": "Intro", "kind": "intro", "measures": 1, "notes": ""},
+        {"id": "s2", "name": "Pre-chorus", "kind": "pre-chorus", "measures": measures - 1, "notes": "build"},
+    ]);
+    let (plain_status, _, plain_bytes) = export(&plain).await;
+    let (sectioned_status, _, sectioned_bytes) = export(&sectioned).await;
+    assert_eq!(plain_status, StatusCode::OK);
+    assert_eq!(sectioned_status, StatusCode::OK);
+    assert_eq!(plain_bytes, sectioned_bytes);
+}
+
+#[tokio::test]
 async fn midi_export_ignores_track_sound() {
     let plain = two_track_song();
     let mut shaped = two_track_song();

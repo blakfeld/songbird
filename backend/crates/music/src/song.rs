@@ -95,6 +95,39 @@ pub struct Song {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     #[ts(as = "Option<String>", optional)]
     pub lyrics: String,
+    /// Optional so songs saved before sections existed stay valid and songs
+    /// without sections serialize as they always did. While present, their
+    /// lengths sum to `measures`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Section>>", optional)]
+    pub sections: Vec<Section>,
+}
+
+pub const SECTION_NAME_MAX: usize = 40;
+pub const MIN_SECTION_MEASURES: u32 = 1;
+pub const MAX_SECTION_MEASURES: u32 = 32;
+/// Counted in characters, not bytes, like lyrics.
+pub const MAX_SECTION_NOTES_CHARS: usize = 5_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SectionKind {
+    Intro,
+    Verse,
+    PreChorus,
+    Chorus,
+    Bridge,
+    Outro,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Section {
+    pub id: String,
+    pub name: String,
+    pub kind: SectionKind,
+    pub measures: u32,
+    pub notes: String,
 }
 
 /// The browser trims the saved conversation to this many entries.
@@ -493,6 +526,11 @@ pub enum SongErrorKind {
     LoopRegion,
     Chat,
     Lyrics,
+    DuplicateSectionId,
+    SectionName,
+    SectionLength,
+    SectionTotal,
+    SectionNotes,
     TrackCount,
     TrackName,
     Volume,
@@ -544,6 +582,11 @@ impl SongErrorKind {
             Self::LoopRegion => "loop_region",
             Self::Chat => "chat",
             Self::Lyrics => "lyrics",
+            Self::DuplicateSectionId => "duplicate_section_id",
+            Self::SectionName => "section_name",
+            Self::SectionLength => "section_length",
+            Self::SectionTotal => "section_total",
+            Self::SectionNotes => "section_notes",
             Self::TrackCount => "track_count",
             Self::TrackName => "track_name",
             Self::Volume => "volume",
@@ -825,6 +868,54 @@ impl Song {
             return Err(invalid(
                 SongErrorKind::Lyrics,
                 format!("lyrics hold at most {MAX_LYRICS_CHARS} characters"),
+            ));
+        }
+        self.validate_sections()
+    }
+
+    fn validate_sections(&self) -> Result<(), SongError> {
+        let mut ids = HashSet::new();
+        let mut total: u64 = 0;
+        for section in &self.sections {
+            if !ids.insert(section.id.as_str()) {
+                return Err(invalid(
+                    SongErrorKind::DuplicateSectionId,
+                    format!("section id `{}` is used more than once", section.id),
+                ));
+            }
+            if section.name.is_empty() || name_len(&section.name) > SECTION_NAME_MAX {
+                return Err(invalid(
+                    SongErrorKind::SectionName,
+                    format!("section names must be 1-{SECTION_NAME_MAX} characters"),
+                ));
+            }
+            if !(MIN_SECTION_MEASURES..=MAX_SECTION_MEASURES).contains(&section.measures) {
+                return Err(invalid(
+                    SongErrorKind::SectionLength,
+                    format!(
+                        "section `{}` must be {MIN_SECTION_MEASURES}-{MAX_SECTION_MEASURES} measures, got {}",
+                        section.name, section.measures
+                    ),
+                ));
+            }
+            if section.notes.chars().count() > MAX_SECTION_NOTES_CHARS {
+                return Err(invalid(
+                    SongErrorKind::SectionNotes,
+                    format!(
+                        "section `{}` notes hold at most {MAX_SECTION_NOTES_CHARS} characters",
+                        section.name
+                    ),
+                ));
+            }
+            total += u64::from(section.measures);
+        }
+        if !self.sections.is_empty() && total != u64::from(self.measures) {
+            return Err(invalid(
+                SongErrorKind::SectionTotal,
+                format!(
+                    "section lengths total {total} measures but the song has {}",
+                    self.measures
+                ),
             ));
         }
         Ok(())
@@ -1599,6 +1690,7 @@ pub(crate) mod tests {
             samples: vec![],
             chat: vec![],
             lyrics: String::new(),
+            sections: vec![],
         }
     }
 
@@ -2236,6 +2328,84 @@ pub(crate) mod tests {
         s.lyrics = "la".into();
         let json = serde_json::to_value(&s).unwrap();
         assert_eq!(json["lyrics"], "la");
+        assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
+    }
+
+    fn section(id: &str, kind: SectionKind, measures: u32) -> Section {
+        Section {
+            id: id.into(),
+            name: format!("Section {id}"),
+            kind,
+            measures,
+            notes: String::new(),
+        }
+    }
+
+    fn sectioned_song() -> Song {
+        let mut s = two_track_song();
+        s.sections = vec![
+            section("s1", SectionKind::Intro, 1),
+            section("s2", SectionKind::PreChorus, 3),
+        ];
+        s
+    }
+
+    #[test]
+    fn sections_tiling_the_song_are_valid() {
+        assert!(sectioned_song()
+            .validate(&InstrumentRegistry::builtin())
+            .is_ok());
+    }
+
+    #[test]
+    fn section_lengths_must_sum_to_song_measures() {
+        let mut s = sectioned_song();
+        s.sections[1].measures = 4;
+        assert_eq!(error_kind(&s), "section_total");
+    }
+
+    #[test]
+    fn section_length_is_bounded() {
+        let mut s = sectioned_song();
+        s.sections[0].measures = 0;
+        assert_eq!(error_kind(&s), "section_length");
+        s.sections[0].measures = 33;
+        assert_eq!(error_kind(&s), "section_length");
+    }
+
+    #[test]
+    fn section_ids_must_be_unique() {
+        let mut s = sectioned_song();
+        s.sections[1].id = "s1".into();
+        assert_eq!(error_kind(&s), "duplicate_section_id");
+    }
+
+    #[test]
+    fn section_names_are_bounded() {
+        let mut s = sectioned_song();
+        s.sections[0].name = String::new();
+        assert_eq!(error_kind(&s), "section_name");
+        s.sections[0].name = "x".repeat(SECTION_NAME_MAX + 1);
+        assert_eq!(error_kind(&s), "section_name");
+    }
+
+    #[test]
+    fn section_notes_count_characters_not_bytes() {
+        let mut s = sectioned_song();
+        s.sections[0].notes = "é♪".repeat(MAX_SECTION_NOTES_CHARS / 2);
+        assert!(s.sections[0].notes.len() > MAX_SECTION_NOTES_CHARS);
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+        s.sections[0].notes = "é".repeat(MAX_SECTION_NOTES_CHARS + 1);
+        assert_eq!(error_kind(&s), "section_notes");
+    }
+
+    #[test]
+    fn song_without_sections_serializes_without_the_key() {
+        let json = serde_json::to_value(two_track_song()).unwrap();
+        assert!(json.get("sections").is_none());
+        let s = sectioned_song();
+        let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(json["sections"][1]["kind"], "pre-chorus");
         assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
     }
 }

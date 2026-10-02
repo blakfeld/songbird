@@ -1,7 +1,7 @@
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 import { type NoteGrid, mergeNotes, normalizeNotes } from "../patternOps";
-import { normalizeSong, timelineMeasures } from "./songOps";
+import { clipBound, normalizeSong, timelineMeasures } from "./songOps";
 import {
   LOOP_MEASURE_RANGE,
   MEASURE_RANGE,
@@ -24,6 +24,8 @@ export type ClipFailure =
   | "clip-limit"
   | "loop-limit"
   | "not-shared"
+  // The edit would stretch the last section past 32 measures; the user has to add a section first.
+  | "section-limit"
   | "generating";
 
 // `clipId` names the clip the caller should select afterwards; null when no clip results from the op.
@@ -85,6 +87,9 @@ const editTrack = (
   );
 };
 
+// Told apart from "no-room" because the cure differs: a bound set by the last section is lifted by adding a section.
+const sectionLimited = (song: Song) => clipBound(song) < timelineMeasures(song);
+
 const insertClip = (clips: Clip[], clip: Clip) =>
   [...clips, clip].sort(byStart);
 
@@ -93,7 +98,7 @@ export const loopUseCount = (track: Track, loopId: string) =>
 
 // Returns a length rather than a yes/no so a placement can be shortened to fit instead of refused.
 export function freeSpanAt(track: Track, measure: number, song: Song): number {
-  const bound = timelineMeasures(song);
+  const bound = clipBound(song);
   if (measure < 1 || measure > bound) return 0;
   let limit = bound + 1;
   for (const c of track.clips) {
@@ -105,7 +110,7 @@ export function freeSpanAt(track: Track, measure: number, song: Song): number {
 
 // Lets the UI offer "the next place a clip fits" without duplicating the occupancy rules.
 export function nextFreeMeasure(track: Track, song: Song, from = 1): number | null {
-  for (let m = Math.max(1, from); m <= timelineMeasures(song); m++) {
+  for (let m = Math.max(1, from); m <= clipBound(song); m++) {
     const free = freeSpanAt(track, m, song);
     if (free > 0) return m;
     const covering = track.clips.find((c) => m >= c.start_measure && m < clipEnd(c));
@@ -116,7 +121,7 @@ export function nextFreeMeasure(track: Track, song: Song, from = 1): number | nu
 
 // Snapping rather than refusing keeps a copy dropped onto a neighbour from feeling like a failed drag.
 export function nearestFreeMeasure(track: Track, song: Song, desired: number): number | null {
-  const bound = timelineMeasures(song);
+  const bound = clipBound(song);
   const at = clamp(Math.round(desired), 1, bound);
   for (let d = 0; d < bound; d++) {
     for (const m of d === 0 ? [at] : [at - d, at + d]) {
@@ -129,7 +134,7 @@ export function nearestFreeMeasure(track: Track, song: Song, desired: number): n
 // Clamping to the neighbours here (not in callers) means pointer drags and keyboard nudges share one rule.
 function neighbours(track: Track, clip: Clip, song: Song) {
   let prevEnd = 1;
-  let nextStart = timelineMeasures(song) + 1;
+  let nextStart = clipBound(song) + 1;
   for (const c of track.clips) {
     if (c === clip) continue;
     if (clipEnd(c) <= clip.start_measure) prevEnd = Math.max(prevEnd, clipEnd(c));
@@ -163,6 +168,7 @@ export function newClipWithNotes(
   return editTrack(song, trackId, clipId, (track) => {
     if (track.clips.length >= MAX_CLIPS) return "clip-limit";
     if (track.loops.length >= MAX_LOOPS) return "loop-limit";
+    if (sectionLimited(song) && measure + Math.max(1, Math.round(measures)) - 1 > clipBound(song)) return "section-limit";
     const free = freeSpanAt(track, measure, song);
     if (free === 0) return "no-room";
     const length = clamp(Math.round(measures), 1, Math.min(free, LOOP_MEASURE_RANGE.max));
@@ -202,6 +208,8 @@ export function placeLoop(
     const loop = track.loops.find((l) => l.id === loopId);
     if (!loop) return "not-found";
     if (track.clips.length >= MAX_CLIPS) return "clip-limit";
+    if (sectionLimited(song) && measure + (measures ?? loop.measures) - 1 > clipBound(song))
+      return "section-limit";
     const free = freeSpanAt(track, measure, song);
     if (free === 0) return "no-room";
     const clip: Clip = {
@@ -225,6 +233,7 @@ export function duplicateClip(
     if (!source) return "not-found";
     if (track.clips.length >= MAX_CLIPS) return "clip-limit";
     const start = clipEnd(source);
+    if (sectionLimited(song) && start + source.measures - 1 > clipBound(song)) return "section-limit";
     if (freeSpanAt(track, start, song) < source.measures) return "no-room";
     const copy: Clip = { ...source, id: copyId, start_measure: start };
     return { ...track, clips: insertClip(track.clips, copy) };
@@ -377,6 +386,49 @@ function clearTrackRange(song: Song, track: Track, start: number, end: number): 
   return changed ? { ...track, loops, clips: clips.sort(byStart) } : track;
 }
 
+// Several cuts are made against the original clip in one pass because a second cut on an already baked tail would
+// judge "starts on a repeat" by the baked loop's length, and so bake again a piece that should keep its loop.
+export function cutTrackAt(song: Song, track: Track, points: number[]): Track | ClipFailure {
+  const spm = song.steps_per_measure;
+  const loops = [...track.loops];
+  const out: Clip[] = [];
+  for (const clip of track.clips) {
+    const cuts = [...new Set(points)].filter((p) => p > clip.start_measure && p < clipEnd(clip)).sort((a, b) => a - b);
+    if (cuts.length === 0) {
+      out.push(clip);
+      continue;
+    }
+    const edges = [clip.start_measure, ...cuts, clipEnd(clip)];
+    const loop = track.loops.find((l) => l.id === clip.loop_id);
+    const played = loop ? resolveTrackNotes(song, { ...track, clips: [clip] }) : [];
+    out.push({ ...clip, measures: edges[1] - edges[0] });
+    for (let i = 1; i < edges.length - 1; i++) {
+      const from = edges[i];
+      const to = edges[i + 1];
+      const piece: Clip = { ...clip, id: newId(), start_measure: from, measures: to - from };
+      if (loop && (from - clip.start_measure) % loop.measures !== 0) {
+        const a = (from - 1) * spm;
+        const b = (to - 1) * spm;
+        const baked: Loop = {
+          id: newId(),
+          name: fitName(loop.name, " (cont.)"),
+          measures: piece.measures,
+          // A note sounding across a cut belongs to the piece before it, which clips it at its own end.
+          notes: played
+            .filter((n) => n.step >= a && n.step < b)
+            .map((n) => ({ ...n, step: n.step - a, length_steps: Math.min(n.length_steps, b - n.step) })),
+        };
+        loops.push(baked);
+        piece.loop_id = baked.id;
+      }
+      out.push(piece);
+    }
+  }
+  if (out.length === track.clips.length) return track;
+  const result = { ...track, loops, clips: out.sort(byStart) };
+  return overLimit(result) ?? result;
+}
+
 const overLimit = (track: Track): ClipFailure | null =>
   track.clips.length > MAX_CLIPS ? "clip-limit" : track.loops.length > MAX_LOOPS ? "loop-limit" : null;
 
@@ -404,6 +456,7 @@ export function applyGeneratedRange(
   return editTrack(song, trackId, clipId, (track) => {
     // The range may reach past the song's end, which grows the song, but never past the length cap.
     if (range.end_measure > MEASURE_RANGE.max) return "no-room";
+    if (sectionLimited(song) && range.end_measure > clipBound(song)) return "section-limit";
     const cleared = clearTrackRange(song, track, range.start_measure, range.end_measure);
     const measures = range.end_measure - range.start_measure + 1;
     const loop: Loop = { id: newId(), name: newLoopName(cleared), measures, notes };
@@ -650,7 +703,7 @@ export function recordNotes(
       continue;
     }
 
-    const bound = timelineMeasures(current);
+    const bound = clipBound(current);
     if (m > bound) {
       drop("no-room");
       continue;

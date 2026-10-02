@@ -23,7 +23,14 @@ export interface GenerateRequest {
   range?: { start_measure: number; end_measure: number };
 }
 
-type Choice = "song" | "loop" | "custom";
+type Choice = "song" | "section" | "loop" | "custom";
+
+// The selected section, offered first because selecting it already said which measures the user is working on.
+export interface SectionRange {
+  name: string;
+  start_measure: number;
+  end_measure: number;
+}
 
 const SHORT_SONG_MEASURES = 4;
 const DEFAULT_NEW_SPAN = 8;
@@ -35,6 +42,7 @@ function GenerateForm({
   track,
   initialPrompt,
   initialError,
+  section,
   onSubmit,
   onClose,
 }: {
@@ -42,6 +50,7 @@ function GenerateForm({
   track: Track;
   initialPrompt: string;
   initialError: DescribedError | null;
+  section: SectionRange | null;
   onSubmit: (request: GenerateRequest) => void;
   onClose: () => void;
 }) {
@@ -53,7 +62,7 @@ function GenerateForm({
   // A new song is one measure long, so "whole song" would generate a single bar; the span grows the song instead.
   const tiny = song.measures < SHORT_SONG_MEASURES;
   const [choice, setChoice] = useState<Choice>(
-    loopRange ? "loop" : wholeSongOffered && !tiny ? "song" : "custom",
+    section ? "section" : loopRange ? "loop" : wholeSongOffered && !tiny ? "song" : "custom",
   );
   const [start, setStart] = useState("1");
   const [end, setEnd] = useState(String(tiny ? DEFAULT_NEW_SPAN : SHORT_SONG_MEASURES));
@@ -83,7 +92,9 @@ function GenerateForm({
     e.preventDefault();
     if (!canSubmit) return;
     const range =
-      choice === "loop"
+      choice === "section" && section
+        ? { start_measure: section.start_measure, end_measure: section.end_measure }
+        : choice === "loop"
         ? (loopRange ?? undefined)
         : choice === "custom"
           ? { start_measure: startNumber, end_measure: endNumber }
@@ -143,6 +154,12 @@ function GenerateForm({
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">Range</legend>
         {radio("song", `Whole song (${song.measures} ${song.measures === 1 ? "measure" : "measures"})`, wholeSongOffered)}
+        {section &&
+          radio(
+            "section",
+            `Selected section: ${section.name} (measures ${section.start_measure}–${section.end_measure})`,
+            true,
+          )}
         {loopRange &&
           radio(
             "loop",
@@ -209,6 +226,7 @@ export function TrackGenerateDialog({
   track,
   initialPrompt = "",
   initialError = null,
+  section = null,
   onSubmit,
   onClose,
 }: {
@@ -217,6 +235,7 @@ export function TrackGenerateDialog({
   track: Track;
   initialPrompt?: string;
   initialError?: DescribedError | null;
+  section?: SectionRange | null;
   onSubmit: (request: GenerateRequest) => void;
   onClose: () => void;
 }) {
@@ -227,6 +246,7 @@ export function TrackGenerateDialog({
         track={track}
         initialPrompt={initialPrompt}
         initialError={initialError}
+        section={section}
         onSubmit={onSubmit}
         onClose={onClose}
       />

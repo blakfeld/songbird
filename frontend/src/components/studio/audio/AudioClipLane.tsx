@@ -450,7 +450,9 @@ export function AudioClipLane({
             ? ghostRefusal
               ? ghostRefusal === "no-room"
                 ? "Space taken"
-                : "Past measure 128"
+                : ghostRefusal === "section-limit"
+                  ? "Past the last section"
+                  : "Past measure 128"
               : `${draggedAsSample.name} · ${formatPosition(hoverTicks, song)}`
             : `Import here · ${formatPosition(hoverTicks, song)}`}
         </div>

@@ -57,6 +57,8 @@ export function refusal(reason: AudioFailure | "generating", where: string, song
       return `the space ${where} is taken.`;
     case "song-limit":
       return `it would make the song longer than ${MEASURE_RANGE.max} measures.`;
+    case "section-limit":
+      return "the last section can't be any longer. Add a section to make room.";
     case "clip-limit":
       return "that track already holds the most clips it can.";
     case "sample-limit":

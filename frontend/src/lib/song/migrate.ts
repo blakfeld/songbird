@@ -3,8 +3,9 @@ import type { Note } from "@/generated/Note";
 import { normalizeNotes } from "../patternOps";
 import { normalizeLoopRegion } from "./songLoop";
 import { audioProblem } from "./audioValidation";
-import { derivedMeasures } from "./songOps";
+import { withLength } from "./songOps";
 import { DEFAULT_ROOT_NOTE, usesDrumTone } from "./sampler";
+import { sectionProblem } from "./sectionValidation";
 import { samplerProblem } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
@@ -159,8 +160,7 @@ const isKey = (v: unknown): v is SongKey =>
 // Correcting here rather than rejecting keeps songs saved before keys or derived lengths openable.
 // Length is fixed before the loop region is clamped so a stale short length cannot truncate the region.
 function finish(song: Song): Song {
-  const measures = derivedMeasures(song);
-  const sized = measures === song.measures ? song : { ...song, measures };
+  const sized = withLength(song);
   const keyed = isKey(sized.key) ? sized : { ...sized, key: { ...DEFAULT_KEY } };
   return normalizeLoopRegion(keyed);
 }
@@ -192,7 +192,7 @@ function withSamplerDefaults(sampler: Track["sampler"]): Track["sampler"] {
 function migrate(raw: unknown): Song | null {
   if (!isObject(raw)) return null;
   if (raw.version === 1) return fromV1(raw);
-  if (raw.version !== 2 || validateClips(raw) !== null || audioProblem(raw) !== null || samplerProblem(raw) !== null)
+  if (raw.version !== 2 || validateClips(raw) !== null || sectionProblem(raw.sections, raw.measures as number, { checkTotal: false }) !== null || audioProblem(raw) !== null || samplerProblem(raw) !== null)
     return null;
   const song = raw as unknown as Song;
   const tracks = song.tracks.map((t) => {

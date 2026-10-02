@@ -136,6 +136,8 @@ describe("right column tabs", () => {
     expect(screen.getByRole("tab", { name: "Lyrics" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Lyrics" })).toHaveFocus();
     await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Section" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Assistant" })).toHaveAttribute("aria-selected", "true");
   });
 

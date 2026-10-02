@@ -77,6 +77,25 @@ describe("parseProjectFile", () => {
     expect(r).toEqual({ ok: expect.objectContaining({ id: base.id, name: base.name, tracks: base.tracks }) });
   });
 
+  it("keeps sections and their notes through download and re-upload", () => {
+    const sectioned = valid.find((c) => c.name === "valid with sections tiling the song")!.song;
+    const withNotes: Song = {
+      ...sectioned,
+      sections: sectioned.sections!.map((s, i) => ({ ...s, notes: `notes ${i} ♪\nsecond line` })),
+    };
+    const r = parseProjectFile(serializeProject(withNotes), instruments);
+    expect("ok" in r && r.ok.sections).toEqual(withNotes.sections);
+  });
+
+  it("opens a song with and without sections", () => {
+    const sectioned = valid.find((c) => c.name === "valid with sections tiling the song")!.song;
+    const { sections: _sections, ...plain } = sectioned;
+    void _sections;
+    expect(error(file(sectioned))).toBeNull();
+    const r = parseProjectFile(file(plain), instruments);
+    expect("ok" in r && r.ok.sections).toBeUndefined();
+  });
+
   it("writes the envelope with loops and clips as they are", () => {
     const doc = JSON.parse(serializeProject(base));
     expect(doc).toMatchObject({ format: "songbird-song", version: 1 });

@@ -5,6 +5,7 @@ import { audioProblem, type AudioErrorKind } from "./audioValidation";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
 import { migrateSong, validateClips } from "./migrate";
 import { withBuiltIns } from "./sampler";
+import { sectionProblem, type SectionErrorKind } from "./sectionValidation";
 import { samplerProblem, type SamplerErrorKind } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
@@ -64,6 +65,7 @@ export type ProjectErrorKind =
   | "clip_outside_song"
   // A bundle's zip or audio is at fault, as opposed to the song inside it.
   | "bundle"
+  | SectionErrorKind
   | AudioErrorKind
   | SamplerErrorKind;
 
@@ -164,6 +166,8 @@ function checkHeader(raw: Raw): Problem | null {
         `the lyrics must be text of at most ${LYRICS_MAX_CHARS.toLocaleString("en-US")} characters`,
       );
   }
+  const sections = sectionProblem(raw.sections, raw.measures, { checkTotal: true });
+  if (sections) return sections;
   return null;
 }
 

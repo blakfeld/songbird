@@ -1231,7 +1231,7 @@ describe("the dock edits the selected clip's loop", () => {
   it("marks the song's end on the ruler and lanes, and hides the marker at the 128 measure cap", async () => {
     await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 8)]));
     const marks = screen.getAllByTestId("past-end");
-    expect(marks.length).toBe(1 + 2);
+    expect(marks.length).toBe(1 + 1 + 2);
     expect(marks[0].style.left).toBe("calc(var(--cell-w) * 128)");
     expect(screen.getByText(/Song length: 8 measures\./)).toBeInTheDocument();
     cleanup();
@@ -1586,7 +1586,7 @@ describe("MIDI keyboard", () => {
 
   it("ends the take when a clip is nudged mid-take, keeping the recorded notes", async () => {
     await recordPianoNote();
-    const drumClip = screen.getByRole("button", { name: /^.*measures 1 to 8/ });
+    const drumClip = within(lane("Drums")).getByRole("button", { name: /^.*measures 1 to 8/ });
     drumClip.focus();
     await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("{/ArrowRight}");

@@ -16,12 +16,14 @@ import {
   DEFAULT_KEY,
   MEASURE_RANGE,
   PAN_RANGE,
+  SECTION_MEASURE_RANGE,
   SONG_NAME_MAX,
   TRACK_NAME_MAX,
   VOLUME_DB_RANGE,
   newId,
   newTrack,
   type Loop,
+  type Section,
   type Song,
   type SongKey,
   type Track,
@@ -51,7 +53,7 @@ export const totalSteps = (song: Song) => song.measures * song.steps_per_measure
 export const songKey = (song: Pick<Song, "tracks"> & { key?: SongKey }): SongKey => song.key ?? DEFAULT_KEY;
 
 // Exported separately so migration can correct a stored length before the song is otherwise trusted.
-type Timed = Pick<Song, "tracks"> & Partial<Pick<Song, "samples" | "tempo_bpm" | "steps_per_measure">>;
+type Timed = Pick<Song, "tracks"> & Partial<Pick<Song, "samples" | "tempo_bpm" | "steps_per_measure" | "sections">>;
 
 // Audio ends depend on tempo and the sample rate, so a song that holds audio needs all three to be sized.
 function audioEndMeasure(song: Timed): number {
@@ -75,6 +77,16 @@ export function derivedMeasures(song: Timed): number {
   return clamp(end, MEASURE_RANGE.min, MEASURE_RANGE.max);
 }
 
+// Past the last section's reach the song could not lengthen to cover the audio, and it would then fail validation.
+export function sectionReach(song: Pick<Song, "sections">): number {
+  const sections = song.sections;
+  if (!sections || sections.length === 0) return Infinity;
+  const lastStart = sections.reduce((n, s) => n + s.measures, 1) - sections[sections.length - 1].measures;
+  return lastStart + SECTION_MEASURE_RANGE.max - 1;
+}
+
+export const lengthLimit = (song: Pick<Song, "sections">) => Math.min(MEASURE_RANGE.max, sectionReach(song));
+
 // Tempo and measure length both move audio ends, and a song may neither pass the length limit nor
 // let two clips collide, so a change that would do either is refused rather than trimming recordings.
 export function audioFits(song: Timed): boolean {
@@ -88,17 +100,37 @@ export function audioFits(song: Timed): boolean {
     });
     placed.sort((a, b) => a.clip.start_ticks - b.clip.start_ticks);
     for (const [n, { clip, rate }] of placed.entries()) {
-      if (clipEndMeasure(clip, rate, tempo, spm) > MEASURE_RANGE.max) return false;
+      if (clipEndMeasure(clip, rate, tempo, spm) > lengthLimit(song)) return false;
       if (n > 0 && clipsOverlap(placed[n - 1].clip, clip, placed[n - 1].rate, tempo)) return false;
     }
   }
   return true;
 }
 
+// With sections the song is as long as they are, so a clip past the end can only stretch the last one; clips
+// never shrink a section, otherwise deleting a clip would eat an empty outro the user made on purpose.
+function sectionedLength(song: Song, sections: Section[]): Song {
+  const sum = sections.reduce((n, s) => n + s.measures, 0);
+  const last = sections[sections.length - 1];
+  const wanted = last.measures + Math.max(0, derivedMeasures(song) - sum);
+  // Past these limits the clip bound should already have refused the edit; clamping only keeps the document valid.
+  const room = MEASURE_RANGE.max - (sum - last.measures);
+  const grown = Math.min(wanted, SECTION_MEASURE_RANGE.max, room);
+  const next = grown === last.measures ? sections : [...sections.slice(0, -1), { ...last, measures: grown }];
+  const measures = sum - last.measures + grown;
+  return next === sections && measures === song.measures ? song : { ...song, sections: next, measures };
+}
+
+// Exported so migration repairs a stored length the same way an edit does, before the loop region is clamped.
+export function withLength(song: Song): Song {
+  if (song.sections && song.sections.length > 0) return sectionedLength(song, song.sections);
+  const measures = derivedMeasures(song);
+  return measures === song.measures ? song : { ...song, measures };
+}
+
 // Every clip-changing op funnels through this so the stored length can never drift from the clips.
 export function normalizeSong(song: Song): Song {
-  const measures = derivedMeasures(song);
-  const sized = measures === song.measures ? song : { ...song, measures };
+  const sized = withLength(song);
   // The region may cover the silent measures past the song's end, so only the visible timeline bounds it.
   return sized.loop_region
     ? withSongLoop(sized, clampLoop(songLoop(sized), timelineMeasures(sized)))
@@ -113,6 +145,10 @@ export const timelineMeasures = (song: Pick<Song, "measures">) =>
     MEASURE_RANGE.max,
     Math.max(MIN_TIMELINE_MEASURES, song.measures + TIMELINE_TAIL_MEASURES),
   );
+
+// A section holds at most 32 measures, so a clip cannot reach past the furthest end the last section can have.
+export const clipBound = (song: Pick<Song, "measures" | "sections">) =>
+  Math.min(timelineMeasures(song), sectionReach(song));
 
 // The smallest free suffix keeps names distinguishable in the lane list without renumbering existing tracks.
 export function uniqueTrackName(song: Song, base: string): string {
