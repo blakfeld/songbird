@@ -2,60 +2,68 @@
 
 ## Why
 
-Songbird can arrange a song's music (tracks, sections, chords), but songwriters still have nowhere to write the words. Lyrics are written against the song's structure and harmony, so an AI co-writer that already knows the sections, the section notes, and the chords can give much better help than a generic chat window. This is the last piece of the songwriting tools feature (feature 3).
+Songwriters can now write lyrics in the Studio's notepad, but the only AI help on the page is the song chat, which arranges tracks and knows nothing about words. Lyrics are written against the song's structure and harmony, so a co-writer that already knows the sections, the section notes, and the chords can give much better help than a generic chat window. This is the last piece of the songwriting tools feature (feature 3).
 
-**Depends on:** #7 `add-song-sections`, which provides sections and section notes. It also builds on #4 `add-multitrack-song` (the song document and `/studio` page) and #5 `add-song-export` (the Rust `Song` type, the project-file validator, and the 2 MiB body limit for `/api/v1/lyrics/`) and uses chords from #8 `add-section-chord-generation` when they are present. It does not need #8 to have landed. It extends the `Providers` bundle that #8 introduces, or introduces it in the same shape if #8 has not landed. This is PR 9 of 10 in the Songbird roadmap. #10 `add-lyrics-vim-mode` builds on it.
+**Depends on** (all archived):
+- `2026-10-02-add-lyric-notepad`: the CodeMirror notepad, the `lyrics` field on Song with its 20,000-character limit, the Lyrics tab and drawer, heading styling, separate notepad undo, and shortcut isolation (`openspec/specs/songwriting/lyrics/spec.md`).
+- `2026-10-02-add-song-sections`: sections with names, kinds, lengths and 5,000-character notes, including implicit "Song", "Song 2", … chunks for unsectioned songs (`openspec/specs/songwriting/sections/spec.md`).
+- The song chat, per-user AI keys, and AI usage limits that the existing AI endpoints already go through.
+
+It uses chords from #8 `add-section-chord-generation` when they are present, and sends an empty chord list otherwise, so it does not need #8 to have landed. #10 `add-lyrics-vim-mode` builds on it. This is PR 9 of 10 in the Songbird roadmap.
 
 ## What Changes
 
-- **Lyric notepad**: every song gets one lyric notepad. It is a plain-text editor on the `/studio` page, saved with the song in the browser and included in the song project file.
-  - A line that holds only `[Name]` (for example `[Chorus]`) starts a lyric section. It is linked to the song section of the same name.
-  - An "Add section headings" action writes a heading for each song section that has none yet.
-- **AI lyric assistant**: a chat panel beside the notepad.
-  - Each request sends the conversation so far, the current lyrics, the user's text selection, and a compact summary of the song: name, key, tempo, and each section's name, kind, length, notes and chords.
+- **Heading linking**: a notepad heading such as `[Chorus]` is linked to the song section of the same name, ignoring case and surrounding whitespace. Headings with no matching section are marked as unlinked.
+  - An "Add section headings" action appends a heading for each section that has none yet.
+  - Unsectioned songs link to their implicit sections ("Song", "Song 2", …), which keep their names when they become real sections.
+- **AI lyric assistant**: a chat panel in the Lyrics tab, below the notepad.
+  - Each request sends the conversation so far, the current lyrics, the user's text selection, and a compact summary of the song: name, key, tempo, meter, and each section's name, kind, length, notes and chords.
   - The assistant replies with prose and, optionally, up to five suggestions. Each suggestion can be inserted at the cursor, replace the selection, or replace one lyric section.
-  - Nothing changes the lyrics until the user clicks a suggestion's action. Applying a suggestion is a single undoable edit.
-  - The conversation is kept with the song, and the user can clear it.
+  - Nothing changes the lyrics until the user clicks a suggestion's action. Applying a suggestion is a single notepad undo step.
+  - The conversation is saved with the song, separately from the song chat, and the user can clear it.
 - **New endpoint** `POST /api/v1/lyrics/assist`: a stateless multi-turn request, where the client holds the history. It returns `{reply, suggestions}`.
-  - It uses the same provider selection, validation-before-provider, output normalization, one retry, timeout, and error shape as pattern generation.
+  - It goes through the same sign-in, per-user API key resolution, rate and daily usage limits, concurrency limit, timeout, one retry, and error mapping as the existing AI endpoints.
   - The mock provider answers deterministically and makes no network calls.
 - **Bounded input**:
-  - Each user message is limited by the existing `max_input_tokens` estimate.
-  - History is limited to 20 messages.
-  - Lyrics are limited to 20,000 characters.
-  - Section notes are limited to 5,000 characters each, matching #7.
+  - The latest user message is limited by the existing `max_input_tokens` setting.
+  - History is limited to 20 messages of at most 4,000 characters each, as in the song chat.
+  - Lyrics and section notes keep their existing limits (20,000 and 5,000 characters).
+  - The conversation and section notes sent to the model are trimmed to the existing `max_context_tokens` budget.
   - Replies and suggestions are capped.
-  - Because every input is bounded, there is no new configuration setting.
-- **Editor foundation**: the notepad uses CodeMirror 6, so #10 can add vim bindings as an editor extension instead of replacing the editor.
+  - There is no new configuration setting.
 
 ## Capabilities
 
 ### New Capabilities
-- `songwriting/lyrics`: The song's lyric notepad (content, section headings, persistence, limits) and the AI lyric assistant (chat panel, suggestion application, and the `POST /api/v1/lyrics/assist` contract, validation, and error behavior).
+<!-- None. -->
 
 ### Modified Capabilities
-<!-- None. The 2 MiB body limit for routes under /api/v1/lyrics/ is introduced by #5 add-song-export in platform/service-operations. Lyrics and chat history are new optional fields on the song document that #4 and #5 define. Older songs and project files without them load with empty lyrics and no conversation, so no existing requirement changes. -->
+- `songwriting/lyrics`:
+  - "Lyric headings" gains linking to song sections, the unlinked marker, and the "Add section headings" action.
+  - New requirements cover the lyric assistant: the chat panel, conversation persistence, applying suggestions, the `POST /api/v1/lyrics/assist` contract, its input validation and output normalization, treating user text as data, and the deterministic mock.
 
 ## Impact
 
 - **Backend**:
-  - New `music::lyrics` module (request validation, prompt, schema, and the normalization of suggestions).
-  - A `LyricsProvider` seam implemented by `SchemaProvider<T>` and `MockProvider`.
-  - A new `api/src/lyrics.rs` router.
-  - `AppState` carries the lyrics provider.
+  - New `music::lyrics` module, modeled on `music::chat`: request types and validation, prompt rendering, normalization, and the retry loop.
+  - New `music::ai::lyrics` module, modeled on `music::ai::plan`: the `LyricsProvider` trait, the `SchemaLyricsProvider<T>` adapter, and `MockLyricsProvider`.
+  - `Providers` (`api/src/provider.rs`) gains a `lyrics` field. Every access mode fills it, including per-user keys and the user-mock failures.
+  - New `api/src/lyrics.rs` handler, merged into the metered AI routes with the 2 MiB song body limit.
+  - `Song` gains an optional `lyric_chat` field, validated like `chat`.
   - New ts-rs types go through `just gen-types`.
 - **Frontend**:
-  - New `components/lyrics/` (notepad, chat panel, suggestion cards) and `lib/lyrics/` (section-heading parsing, suggestion application).
-  - The song document gains `lyrics` and `lyric_chat`.
-  - The `/studio` page gets a Lyrics panel.
-- **New dependencies**: `@codemirror/state`, `@codemirror/view`, `@codemirror/commands` (MIT). They are loaded on the client only.
+  - `lib/lyrics/` gains section linking, "Add section headings", suggestion application, and the song-context builder, all reusing `headings.ts`.
+  - `components/lyrics/` gains the chat panel and suggestion cards. `LyricsEditor` exposes a handle for reading the selection and applying changes, and marks unlinked headings.
+  - The song store gains lyric-chat actions that stay out of song undo, like the song chat.
+  - `lib/api.ts` gains `assistLyrics`.
 - **API**: `POST /api/v1/lyrics/assist`.
-- **Cost**: each chat turn is one provider call. The bounded input keeps a single call to about 10k tokens at worst.
+- **Dependencies**: none new. The CodeMirror packages are already installed.
+- **Cost**: each chat turn is one provider call, counted against the user's existing per-minute and daily AI limits.
 - **Non-goals**:
   - Streaming replies.
-  - Server-side storage of lyrics or conversations.
+  - Server-side conversation memory. The server stores the conversation only as part of the saved song.
   - Rhyme or syllable-count tooling outside the AI.
   - Inline selection actions without chat. The user chose a chat panel with suggestions to apply.
   - Singing or melody generation from lyrics.
+  - Giving the song chat access to lyrics, or the lyric assistant access to tracks.
   - Vim bindings, which are #10.
-  - More than one notepad per song.
