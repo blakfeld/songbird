@@ -3,6 +3,9 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Song, Track } from "@/lib/song/types";
 import { ClipLane } from "./ClipLane";
+import { AudioClipLane } from "./audio/AudioClipLane";
+import type { SampleDrop } from "./samples/useSampleDrop";
+import type { AudioActions } from "./useAudioActions";
 import { TrackHeader, type InstrumentLookup } from "./TrackHeader";
 import type { TrackActions } from "./trackActions";
 import type { GripHandlers } from "./useTrackDrag";
@@ -26,6 +29,8 @@ export function TrackLane({
   soundOpen,
   onSoundOpen,
   clipActions,
+  audioActions,
+  drop,
   generatingTrackId,
   onSeek,
 }: {
@@ -46,6 +51,8 @@ export function TrackLane({
   soundOpen: boolean;
   onSoundOpen: (open: boolean) => void;
   clipActions: ClipActions;
+  audioActions: AudioActions;
+  drop: SampleDrop;
   generatingTrackId: string | null;
   onSeek: (trackId: string, measureIndex: number) => void;
 }) {
@@ -78,11 +85,25 @@ export function TrackLane({
         song={song}
         selectedClipId={selectedClipId}
         clipActions={clipActions}
+        audioActions={audioActions}
         generating={generating}
         generateBlocked={generatingTrackId !== null && !generating}
       />
       {/* Inert rather than disabled so the lane keeps its layout while its clips cannot be touched. */}
       <div inert={generating} aria-busy={generating} className="grid min-w-0">
+      {instrument.state === "audio" ? (
+        <AudioClipLane
+          song={song}
+          timeline={timeline}
+          track={track}
+          audible={audible}
+          selectedClipId={selectedClipId}
+          first={first}
+          actions={audioActions}
+          drop={drop}
+          onSeek={(m) => onSeek(track.id, m)}
+        />
+      ) : (
       <ClipLane
         song={song}
         timeline={timeline}
@@ -95,6 +116,7 @@ export function TrackLane({
         actions={clipActions}
         onSeek={(m) => onSeek(track.id, m)}
       />
+      )}
       </div>
     </div>
   );

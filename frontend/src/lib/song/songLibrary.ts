@@ -2,6 +2,7 @@ import { del, get, set } from "idb-keyval";
 import { createStore } from "zustand/vanilla";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import type { SongStore } from "./songStore";
+import { scheduleGarbageCollection, setOpenSongSource } from "@/lib/audio/sampleGc";
 import { migrateSong } from "./migrate";
 import { newId, type Song } from "./types";
 
@@ -44,7 +45,15 @@ export interface SaveStatus {
 
 const FAILURE_MESSAGE = "Changes are not being saved: browser storage is unavailable or full.";
 
-export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
+export interface SongLibraryOptions {
+  // Fired when a song is opened, copied or deleted, the moments the set of audio in use can shrink.
+  onSamplesMayBeFree?: () => void;
+}
+
+export function createSongLibrary(
+  kv: KeyValueStore = idbKeyValueStore(),
+  { onSamplesMayBeFree }: SongLibraryOptions = {},
+) {
   const status = createStore<SaveStatus>(() => ({
     ok: true,
     message: null,
@@ -183,6 +192,7 @@ export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
       await flush();
       const song = await load(id);
       if (song) rememberLast(id);
+      onSamplesMayBeFree?.();
       return song;
     },
 
@@ -231,6 +241,7 @@ export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
         name: `${song.name} (copy)`,
       };
       await write(copy);
+      onSamplesMayBeFree?.();
       return copy;
     },
 
@@ -252,14 +263,50 @@ export function createSongLibrary(kv: KeyValueStore = idbKeyValueStore()) {
         }, undefined),
       );
       if (this.getLastSongId() === id) rememberLast(null);
+      onSamplesMayBeFree?.();
+    },
+
+    // Raw reads, unmigrated, because only the ids matter and a song that cannot migrate may still hold audio.
+    // A read failure propagates so garbage collection aborts rather than treating unreadable songs as empty.
+    async savedSampleIds(): Promise<string[]> {
+      await flush();
+      const ids = new Set<string>();
+      for (const entry of await readIndex()) {
+        const raw = (await kv.get(songKey(entry.id))) as { samples?: { id?: unknown }[] } | undefined;
+        for (const sample of raw?.samples ?? []) {
+          if (typeof sample?.id === "string") ids.add(sample.id);
+        }
+      }
+      return [...ids];
+    },
+
+    // Counted from raw documents like savedSampleIds, so the remove-from-library warning agrees with what collection keeps.
+    async songsUsingSample(sampleId: string): Promise<number> {
+      await flush();
+      let count = 0;
+      for (const entry of await readIndex()) {
+        const raw = (await kv.get(songKey(entry.id))) as { samples?: { id?: unknown }[] } | undefined;
+        if ((raw?.samples ?? []).some((sample) => sample?.id === sampleId)) count++;
+      }
+      return count;
     },
 
     autosave(store: SongStore): () => void {
       let last = store.getState().song;
-      return store.subscribe((s) => {
+      setOpenSongSource(() => {
+        const s = store.getState();
+        return [s.song, s.gestureBase, ...s.past, ...s.future, ...(s.gestureFuture ?? [])].filter(
+          (song): song is Song => song !== null,
+        );
+      });
+      const unsubscribe = store.subscribe((s) => {
         if (s.song && s.song !== last) this.save(s.song);
         last = s.song;
       });
+      return () => {
+        unsubscribe();
+        setOpenSongSource(null);
+      };
     },
   };
 }
@@ -269,5 +316,5 @@ export type SongLibrary = ReturnType<typeof createSongLibrary>;
 let shared: SongLibrary | undefined;
 
 export function getSongLibrary(): SongLibrary {
-  return (shared ??= createSongLibrary());
+  return (shared ??= createSongLibrary(undefined, { onSamplesMayBeFree: scheduleGarbageCollection }));
 }

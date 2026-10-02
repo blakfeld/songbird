@@ -23,6 +23,9 @@ import { InstrumentIcon } from "./InstrumentIcon";
 import { LoopsDialog } from "./LoopsDialog";
 import { Menu } from "./Menu";
 import type { ClipActions } from "./useClipActions";
+import type { AudioActions } from "./useAudioActions";
+import { AudioClipPanel } from "./audio/AudioClipPanel";
+import { sampleMap } from "@/lib/song/audioTiming";
 
 function EmptyState({
   song,
@@ -90,6 +93,8 @@ export function EditorDock({
   onAudition,
   sectionId,
   clipActions,
+  audioActions,
+  onShowSamples,
   renamingLoopId,
   onRenameDone,
   onAnnounce,
@@ -108,6 +113,8 @@ export function EditorDock({
   onAudition: (trackId: string, row: Row, velocity?: number) => void;
   sectionId: string;
   clipActions: ClipActions;
+  audioActions: AudioActions;
+  onShowSamples: () => void;
   renamingLoopId: string | null;
   onRenameDone: () => void;
   onAnnounce: (message: string) => void;
@@ -156,6 +163,29 @@ export function EditorDock({
   const loopIndex = loopDoc ? track.loops.indexOf(loopDoc) : 0;
   const renaming = loopDoc !== undefined && renamingLoopId === loopDoc.id;
   const showRoll = info && grid && loopDoc && clip;
+
+  if (track.instrument === "audio") {
+    const audioClip = (track.audio_clips ?? []).find((c) => c.id === selectedClipId);
+    const sampleName = audioClip ? sampleMap(song.samples).get(audioClip.sample_id)?.name : undefined;
+    return (
+      <section
+        ref={section}
+        id={sectionId}
+        tabIndex={-1}
+        aria-label={sampleName ? `Editor: ${sampleName} on ${track.name}` : `Editor: ${track.name}`}
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-zinc-200 bg-white max-md:h-[70dvh] dark:border-zinc-800 dark:bg-zinc-950"
+      >
+        <AudioClipPanel
+          song={song}
+          track={track}
+          clip={audioClip}
+          actions={audioActions}
+          onShowSamples={onShowSamples}
+          onClose={onClose}
+        />
+      </section>
+    );
+  }
 
   return (
     <section

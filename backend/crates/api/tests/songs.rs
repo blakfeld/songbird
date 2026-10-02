@@ -315,3 +315,61 @@ async fn export_follows_track_array_order_for_names_and_channels() {
         }
     }
 }
+
+fn audio_song_parts() -> (Value, Value) {
+    let sample = json!({
+        "id": "s1", "name": "Vocal take", "sample_rate": 48000, "channels": 1,
+        "length_samples": 96000, "origin": "import",
+    });
+    let mut vocals = track("t9", "Vocals", "audio", json!([]), json!([]));
+    vocals["audio_clips"] = json!([{
+        "id": "a1", "sample_id": "s1", "start_ticks": 0, "offset_samples": 0,
+        "slice_samples": 96000, "length_samples": 96000,
+    }]);
+    (sample, vocals)
+}
+
+#[tokio::test]
+async fn audio_tracks_are_left_out_of_the_midi_file() {
+    let (sample, loops) = audio_song_parts();
+    let mut s = song(
+        4,
+        vec![
+            track("t1", "Drums", "drums", json!([]), json!([])),
+            loops,
+            track("t3", "Bass", "bass", json!([]), json!([])),
+        ],
+    );
+    s["samples"] = json!([sample]);
+    let (status, _, bytes) = export(&s).await;
+    assert_eq!(status, StatusCode::OK);
+    let smf = Smf::parse(&bytes).unwrap();
+    assert_eq!(smf.tracks.len(), 3);
+    let channel_of = |index: usize| {
+        smf.tracks[index].iter().find_map(|e| match e.kind {
+            midly::TrackEventKind::Midi { channel, .. } => Some(channel.as_int()),
+            _ => None,
+        })
+    };
+    assert_eq!(channel_of(1), Some(9));
+    assert_eq!(channel_of(2), Some(0));
+}
+
+#[tokio::test]
+async fn an_audio_track_is_not_rejected_as_an_unknown_instrument() {
+    let (sample, loops) = audio_song_parts();
+    let mut s = song(4, vec![loops]);
+    s["samples"] = json!([sample]);
+    let (status, _, _) = export(&s).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_clip_naming_an_unknown_sample_names_the_track() {
+    let (_, loops) = audio_song_parts();
+    let (status, _, bytes) = export(&song(4, vec![loops])).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let error = error_of(&bytes);
+    assert_eq!(error["code"], "invalid_song");
+    assert!(error["message"].as_str().unwrap().contains("\"Vocals\""));
+}

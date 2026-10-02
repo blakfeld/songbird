@@ -269,13 +269,16 @@ export function TrackSoundPanel({
       </header>
       <div className="flex flex-col gap-2 overflow-y-auto overscroll-contain p-3">
         <div className="flex flex-wrap gap-2">
-          <Group title="Tone" className="flex-auto">
-            {() =>
-              toneSpecs.map((s) =>
-                knob("tone", s, toneDef[s.field as keyof Tone & keyof typeof toneDef], TONE_ARIA[s.field] ?? s.label),
-              )
-            }
-          </Group>
+          {/* The document rejects tone settings on an audio track, so the group is not offered at all. */}
+          {track.instrument !== "audio" && (
+            <Group title="Tone" className="flex-auto">
+              {() =>
+                toneSpecs.map((s) =>
+                  knob("tone", s, toneDef[s.field as keyof Tone & keyof typeof toneDef], TONE_ARIA[s.field] ?? s.label),
+                )
+              }
+            </Group>
+          )}
           {EFFECT_SPECS.slice(0, 2).map((e) => renderEffect(e))}
         </div>
         <div className="flex flex-wrap gap-2">{EFFECT_SPECS.slice(2).map((e) => renderEffect(e))}</div>

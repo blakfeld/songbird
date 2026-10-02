@@ -67,6 +67,12 @@ pub async fn generate_track(
 ) -> Result<TrackGenerateResponse, GenerationError> {
     let song = request.song.song;
     let target = &request.song.tracks[request.target];
+    // Both constructors of `ValidTrackRequest` refuse audio targets, so
+    // reaching this with one is a programming error rather than bad input.
+    let instrument = target
+        .instrument
+        .instrument()
+        .expect("generation targets are never audio tracks");
     let context = render_context(
         &request.song,
         request.target,
@@ -74,7 +80,7 @@ pub async fn generate_track(
         max_context_tokens,
     );
     let generate_request = GenerateRequest {
-        instrument: target.instrument,
+        instrument,
         prompt: request.prompt.clone(),
         measures: request.range.measures(),
         tempo_bpm: Some(song.tempo_bpm),
@@ -88,7 +94,7 @@ pub async fn generate_track(
     Ok(TrackGenerateResponse {
         track_id: target.track.id.clone(),
         range: request.range,
-        notes: build_notes(&draft, span, target.instrument),
+        notes: build_notes(&draft, span, instrument),
     })
 }
 

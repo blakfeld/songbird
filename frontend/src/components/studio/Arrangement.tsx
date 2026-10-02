@@ -20,6 +20,10 @@ import { useTrackDrag } from "./useTrackDrag";
 import { PastEnd } from "./PastEnd";
 import { CLIP_KEYS_HELP, CLIP_KEYS_HELP_ID } from "./ClipLane";
 import type { ClipActions } from "./useClipActions";
+import type { AudioActions } from "./useAudioActions";
+import { AUDIO_CLIP_KEYS_HELP, AUDIO_CLIP_KEYS_HELP_ID } from "./audio/AudioClipLane";
+import { NewTrackDropZone } from "./samples/NewTrackDropZone";
+import { useDragActive, type SampleDrop } from "./samples/useSampleDrop";
 
 // Wide enough that two neighbouring bar numbers never touch.
 const MIN_LABEL_GAP_PX = 32;
@@ -60,8 +64,11 @@ export function Arrangement({
   soundTrackId,
   onSoundTrack,
   clipActions,
+  audioActions,
+  onSampleDrop,
   generatingTrackId,
   onAddTrack,
+  onAddAudio,
   onSeek,
   sectionId,
 }: {
@@ -78,8 +85,11 @@ export function Arrangement({
   soundTrackId: string | null;
   onSoundTrack: (trackId: string | null) => void;
   clipActions: ClipActions;
+  audioActions: AudioActions;
+  onSampleDrop: SampleDrop["onDrop"];
   generatingTrackId: string | null;
   onAddTrack: (instrument: InstrumentInfo) => void;
+  onAddAudio: () => void;
   onSeek: (trackId: string, measureIndex: number) => void;
   sectionId: string;
 }) {
@@ -125,7 +135,11 @@ export function Arrangement({
     onDrop: (trackId, toIndex) => moveTrack(trackId, toIndex, { restoreFocus: true }),
   });
 
+  const dragActive = useDragActive();
+  const drop: SampleDrop = { active: dragActive, onDrop: onSampleDrop };
+
   const lookup = (instrument: string): InstrumentLookup => {
+    if (instrument === "audio") return { state: "audio" };
     if (instruments.status !== "ready") return { state: "loading" };
     const info = instruments.data.find((i) => i.id === instrument);
     return info ? { state: "ready", info } : { state: "missing" };
@@ -142,6 +156,9 @@ export function Arrangement({
       <p id={CLIP_KEYS_HELP_ID} className="sr-only">
         {CLIP_KEYS_HELP}
       </p>
+      <p id={AUDIO_CLIP_KEYS_HELP_ID} className="sr-only">
+        {AUDIO_CLIP_KEYS_HELP}
+      </p>
       <p className="sr-only">
         Song length: {song.measures} {song.measures === 1 ? "measure" : "measures"}. Add clips after the end to
         lengthen it.
@@ -156,6 +173,7 @@ export function Arrangement({
             onRetry={onRetryInstruments}
             trackCount={song.tracks.length}
             onAdd={onAddTrack}
+            onAddAudio={onAddAudio}
           />
         </div>
         <div ref={rulerCell} className="@container min-w-0">
@@ -181,7 +199,7 @@ export function Arrangement({
           </div>
         </div>
       </div>
-      {song.tracks.length === 0 && (
+      {song.tracks.length === 0 && !dragActive && (
         <div className="relative flex flex-col items-center gap-1 px-6 py-10 text-center">
           <h2 className="text-sm font-semibold">This song has no tracks yet</h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -210,10 +228,13 @@ export function Arrangement({
             soundOpen={track.id === soundTrackId}
             onSoundOpen={(open) => onSoundTrack(open ? track.id : null)}
             clipActions={clipActions}
+            audioActions={audioActions}
+            drop={drop}
             generatingTrackId={generatingTrackId}
             onSeek={onSeek}
           />
         ))}
+        {dragActive && <NewTrackDropZone song={song} timeline={timeline} drop={drop} />}
         {trackDrag.indicatorTop !== null && (
           <div
             aria-hidden="true"

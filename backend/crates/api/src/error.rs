@@ -38,6 +38,10 @@ pub enum ApiError {
     ChatRejected { code: &'static str, message: String },
     #[error("The song has no track with that id.")]
     InvalidTrack,
+    /// 400 rather than 422 because no document change fixes it: the request
+    /// asks for something audio tracks can never do.
+    #[error("Audio tracks cannot be generated into; choose an instrument track.")]
+    AudioTrackTarget,
     #[error("The range must lie within the song and span at most 32 measures; a song longer than 32 measures needs a range.")]
     InvalidRange,
     #[error("Something went wrong on our side. Please try again.")]
@@ -59,7 +63,9 @@ pub enum ApiError {
 impl ApiError {
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::InvalidJson | Self::ChatRejected { .. } => StatusCode::BAD_REQUEST,
+            Self::InvalidJson | Self::ChatRejected { .. } | Self::AudioTrackTarget => {
+                StatusCode::BAD_REQUEST
+            }
             Self::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
@@ -88,6 +94,7 @@ impl ApiError {
             Self::InvalidSongInstrument(_) => "invalid_instrument",
             Self::ChatRejected { code, .. } => code,
             Self::InvalidTrack => "invalid_track",
+            Self::AudioTrackTarget => "audio_track_target",
             Self::InvalidRange => "invalid_range",
             Self::Internal => "internal_error",
             Self::Validation(e) => e.code(),
@@ -109,6 +116,7 @@ impl From<TrackRequestError> for ApiError {
                 Self::InvalidSong(message)
             }
             TrackRequestError::InvalidTrack => Self::InvalidTrack,
+            TrackRequestError::AudioTrack => Self::AudioTrackTarget,
             TrackRequestError::Prompt(e) => Self::Validation(e),
             TrackRequestError::InvalidRange => Self::InvalidRange,
         }

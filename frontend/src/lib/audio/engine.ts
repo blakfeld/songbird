@@ -1,8 +1,11 @@
 import type { Row } from "@/generated/Row";
 import { stepToSeconds } from "@/lib/timing";
+import { createAudioTrackSource, type AudioTrackSource } from "./audioTrackSource";
+import { clipLengthSeconds, TICKS_PER_STEP } from "./clipSchedule";
 import { createMetronomeSource, type MetronomeSource } from "./metronomeSource";
 import { createPatternPlaybackModel } from "./patternPlaybackModel";
 import { getSoundSourceFactory } from "./registry";
+import { sharedSampleBuffers, type SampleBufferCache } from "./sampleBuffers";
 import { createInsertChain, type InsertChain } from "./insertChain";
 import { DEFAULT_VOICE_SOUND, type VoiceSound } from "./voiceSound";
 import type {
@@ -45,6 +48,8 @@ const targetDb = (voice: Voice) => (voice.audible ? voice.volumeDb : SILENT_DB);
 interface VoiceChannel {
   instrument: string;
   source: SoundSource;
+  // The same object as `source` on an audio track, kept typed so the clip scheduler needs no cast.
+  clips?: AudioTrackSource;
   channel: InstanceType<ToneModule["Channel"]>;
   volumeDb: number;
   pan: number;
@@ -128,6 +133,11 @@ interface ScheduledBar {
   // 0 marks the count-in bar, which sounds clicks only and is not part of the song.
   measure: number;
   beatSteps: number;
+  // Seconds into the bar up to which clip starts have been scheduled, so each tick covers only new ground.
+  clipCursor: number;
+  // Set when the bar does not follow the one before it (start, seek, loop wrap), so clips already under way
+  // there must be picked up mid-audio and the old position's clips cut.
+  entered: boolean;
 }
 
 // Enough to cover the gap between what is scheduled and what is audible.
@@ -168,6 +178,7 @@ export interface EngineDeps {
   loadTone?: () => Promise<ToneModule>;
   requestFrame?: (cb: () => void) => number;
   cancelFrame?: (id: number) => void;
+  sampleBuffers?: SampleBufferCache;
 }
 
 export function createPlaybackEngine(
@@ -179,6 +190,10 @@ export function createPlaybackEngine(
     deps.requestFrame ?? ((cb) => window.requestAnimationFrame(cb));
   const cancelFrame =
     deps.cancelFrame ?? ((id) => window.cancelAnimationFrame(id));
+
+  let sampleBuffers: SampleBufferCache | null = null;
+  // Held so a sample the song stops using is released, while one still used is never loaded twice.
+  const heldSamples = new Set<string>();
 
   let snapshot: PlaybackSnapshot = { isPlaying: false, status: "idle", error: null };
   const listeners = new Set<() => void>();
@@ -297,6 +312,7 @@ export function createPlaybackEngine(
         ? nextMeasure(timing, previous)
         : Math.min(Math.max(jumpTo, 1), timing.measures);
     if (!preRoll) jumpTo = null;
+    const entered = !preRoll && (previous === null || measure !== previous + 1);
     const steps = timing.stepsPerMeasure;
     const tempo = timing.tempo;
     // Steps per measure is even, so swing delays cancel at each barline.
@@ -312,6 +328,8 @@ export function createPlaybackEngine(
         swing: timing.swing,
         measure,
         beatSteps: timing.beatSteps ?? DEFAULT_BEAT_STEPS,
+        clipCursor: 0,
+        entered,
       },
     ].slice(-BARS_KEPT);
     if (afterPreRoll && tone) {
@@ -421,6 +439,19 @@ export function createPlaybackEngine(
     chain.output.connect(channel);
     const sound = voice.sound ?? DEFAULT_VOICE_SOUND;
     chain.apply(sound.effects, tempoOf());
+    if (voice.kind === "audio") {
+      const clips = createAudioTrackSource(t, chain.input, () => t.getContext().currentTime);
+      return {
+        instrument: voice.instrument,
+        source: clips,
+        clips,
+        channel,
+        volumeDb: db,
+        pan: voice.pan,
+        chain,
+        sound,
+      };
+    }
     return {
       instrument: voice.instrument,
       source: getSoundSourceFactory(voice.instrument)(t, chain.input, sound.tone),
@@ -508,6 +539,8 @@ export function createPlaybackEngine(
     const voice = voiceKey
       ? model.getVoices().find((v) => v.key === voiceKey)
       : undefined;
+    // An audio track has no instrument to play a note on, so a key press there must stay silent.
+    if (voice?.kind === "audio") return null;
     if (voice) {
       const preview = previewVoice(t, voice);
       return { source: preview.source, preview };
@@ -566,6 +599,58 @@ export function createPlaybackEngine(
     }
   };
 
+  const clipSampleIds = (voices: Voice[]) =>
+    voices.flatMap((v) => v.clips?.map((c) => c.clip.sample_id) ?? []);
+
+  // Best-effort like the instrument loads: a sample that cannot be read leaves its clips silent, not Play failed.
+  const loadSamples = async (t: ToneModule, voices: Voice[]) => {
+    const cache = (sampleBuffers ??= deps.sampleBuffers ?? sharedSampleBuffers(t));
+    const ids = clipSampleIds(voices);
+    const wanted = new Set(ids);
+    const fresh = [...wanted].filter((id) => !heldSamples.has(id));
+    const stale = [...heldSamples].filter((id) => !wanted.has(id));
+    cache.acquire(fresh);
+    fresh.forEach((id) => heldSamples.add(id));
+    cache.release(stale);
+    stale.forEach((id) => heldSamples.delete(id));
+    await cache.load(ids);
+  };
+
+  // Clip starts are found by time rather than step because swing moves odd steps, and clips ignore swing.
+  const scheduleClips = (
+    voices: { voice: Voice; entry: VoiceChannel }[],
+    bar: ScheduledBar,
+    relEnd: number,
+    audioNow: number,
+  ) => {
+    const cache = sampleBuffers;
+    if (bar.measure === 0 || !cache) return;
+    const entering = bar.entered;
+    bar.entered = false;
+    const sixteenth = stepToSeconds(1, bar.tempo, 0);
+    const barTicks = bar.firstStep * TICKS_PER_STEP;
+    const audioAt = (rel: number) => audioNow + (bar.transportStart + rel - tickTime);
+    for (const { voice, entry } of voices) {
+      if (!entry.clips) continue;
+      if (entering) entry.clips.stopClips(audioAt(0));
+      // Scheduled even while muted: the channel is what silences it, so an unmute mid-clip is heard at once.
+      for (const pc of voice.clips ?? []) {
+        const rel = ((pc.clip.start_ticks - barTicks) / TICKS_PER_STEP) * sixteenth;
+        const length = clipLengthSeconds(pc);
+        const starting = rel >= bar.clipCursor && rel < relEnd;
+        const underway = entering && rel < 0 && rel + length > 0;
+        if (!starting && !underway) continue;
+        const buffer = cache.get(pc.clip.sample_id);
+        if (!buffer) continue;
+        const position = starting ? 0 : Math.round(-rel * pc.sampleRate);
+        if (entry.clips.playClip(pc, buffer, audioAt(Math.max(rel, 0)), position)) {
+          lastNoteEnd = Math.max(lastNoteEnd, bar.transportStart + rel + length);
+        }
+      }
+    }
+    bar.clipCursor = Math.max(bar.clipCursor, relEnd);
+  };
+
   // A pending seek still wins so a jump requested during the last bar is honoured rather than ended.
   const isLastBarOfRun = (bar: ScheduledBar, timing: PlaybackTiming) =>
     !looping && jumpTo === null && bar.measure >= timing.measures;
@@ -590,7 +675,12 @@ export function createPlaybackEngine(
     const t = tone;
     // Applied every tick, not only when a step is due, so a mixer change lands
     // within one tick even between steps.
-    syncVoices(t, model.getVoices(), audioNow);
+    const voices = syncVoices(t, model.getVoices(), audioNow);
+    // A clip added mid-play is picked up on the next tick it is due, once its audio has loaded.
+    const wanted = new Set(clipSampleIds(voices.map((v) => v.voice)));
+    if (wanted.size !== heldSamples.size || [...wanted].some((id) => !heldSamples.has(id))) {
+      void loadSamples(t, voices.map((v) => v.voice));
+    }
     const horizon = tickTime + LOOKAHEAD_SECONDS;
     for (;;) {
       const bar = bars.at(-1);
@@ -605,6 +695,7 @@ export function createPlaybackEngine(
         stop();
         return;
       }
+      if (atBoundary && bar) scheduleClips(voices, bar, bar.duration, audioNow);
       if (atBoundary && bar && isLastBarOfRun(bar, timing)) {
         finishAfterTail(mySession);
         return;
@@ -618,6 +709,8 @@ export function createPlaybackEngine(
       );
       stepInBar += 1;
     }
+    const live = bars.at(-1);
+    if (live) scheduleClips(voices, live, Math.min(horizon - live.transportStart, live.duration), audioNow);
     tickTime += TICK_SECONDS;
     t.getTransport().scheduleOnce((time) => tick(mySession, time), tickTime);
   };
@@ -634,7 +727,10 @@ export function createPlaybackEngine(
       const t = (tone ??= await loadTone());
       await (alreadyStarted ?? t.start());
       const voices = syncVoices(t, model.getVoices());
-      await Promise.all(voices.map((v) => v.entry.source.load(v.voice.rows)));
+      await Promise.all([
+        ...voices.map((v) => v.entry.source.load(v.voice.rows)),
+        loadSamples(t, voices.map((v) => v.voice)),
+      ]);
       if (mySession !== session) return;
 
       const transport = t.getTransport();
@@ -713,9 +809,10 @@ export function createPlaybackEngine(
       try {
         const t = (tone ??= await loadTone());
         const voices = syncVoices(t, model.getVoices());
-        await Promise.all(
-          voices.map((v) => v.entry.source.load(rows ?? v.voice.rows)),
-        );
+        await Promise.all([
+          ...voices.map((v) => v.entry.source.load(rows ?? v.voice.rows)),
+          loadSamples(t, voices.map((v) => v.voice)),
+        ]);
       } catch {}
     },
     setLoop(range) {
@@ -903,6 +1000,8 @@ export function createPlaybackEngine(
       auditionSources.clear();
       metronome?.dispose();
       metronome = null;
+      sampleBuffers?.release(heldSamples);
+      heldSamples.clear();
     },
     getSnapshot: () => snapshot,
     subscribe(cb) {

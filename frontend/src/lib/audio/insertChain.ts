@@ -30,6 +30,8 @@ interface Stage<P> {
   output: Node;
   // `at` is the scheduling time when called from inside a transport callback, where Tone requires it.
   apply(params: P, bpm: number, at?: number): void;
+  // Only stages that build something slowly have anything to wait for.
+  ready?(): Promise<void>;
   dispose(): void;
 }
 
@@ -41,6 +43,8 @@ export interface InsertChain {
   // A fixed exit point so consumers can connect once and never see stages come and go.
   output: Node;
   apply(effects: ResolvedEffects, bpm: number, at?: number): void;
+  // An offline render starts at once and cannot wait for a reverb's impulse response the way live playback can.
+  ready(): Promise<void>;
   dispose(): void;
 }
 
@@ -258,7 +262,7 @@ const reverb = (t: ToneModule, initial: ResolvedEffects["reverb"]): Stage<Resolv
     send.gain.rampTo(wet, EFFECT_RAMP_SECONDS, at);
     dry.gain.rampTo(1 - wet, EFFECT_RAMP_SECONDS, at);
   };
-  void tank.node.ready.then(() => {
+  const firstReady = tank.node.ready.then(() => {
     if (disposed) return;
     ready = true;
     settle();
@@ -286,6 +290,7 @@ const reverb = (t: ToneModule, initial: ResolvedEffects["reverb"]): Stage<Resolv
   return {
     input,
     output,
+    ready: () => firstReady,
     apply(p, _bpm, at) {
       latest = p;
       settle(at);
@@ -351,6 +356,9 @@ export function createInsertChain(t: ToneModule): InsertChain {
   return {
     input,
     output,
+    async ready() {
+      await Promise.all([...slots.values()].map((slot) => slot.stage?.ready?.()));
+    },
     apply(effects, bpm, at) {
       let created = false;
       for (const key of ORDER) {

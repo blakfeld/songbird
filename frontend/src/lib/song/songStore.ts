@@ -7,13 +7,16 @@ import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { Row } from "@/generated/Row";
 import type { TimeSignature } from "@/generated/TimeSignature";
-import type { NoteGrid } from "../patternOps";
+import { TEMPO_RANGE, type NoteGrid } from "../patternOps";
 import { clampLoop, type LoopSetting } from "../loopRegion";
 import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
+import * as audioOps from "./audioClipOps";
 import * as ops from "./songOps";
 import { songLoop, withLiveChat, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
-import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey } from "./types";
+import type { AudioFailure, AudioOpResult } from "./audioClipOps";
+import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
+import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey, type Track } from "./types";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
@@ -42,6 +45,13 @@ export interface SongState {
   selectTrack: (trackId: string) => void;
   selectClip: (clipId: string | null) => void;
   addTrack: (instrument: Pick<InstrumentInfo, "id" | "name">, name?: string) => void;
+  addAudioTrack: (name?: string) => void;
+  // One entry point for every audio clip edit, so each is a single undo step and a drag replays on the pre-drag song.
+  audioEdit: (
+    trackId: string,
+    fn: (song: Song) => AudioOpResult & { trackId?: string },
+    options?: { transient?: boolean },
+  ) => AudioFailure | "generating" | null;
   deleteTrack: (trackId: string) => void;
   renameTrack: (trackId: string, name: string) => void;
   moveTrack: (trackId: string, toIndex: number) => void;
@@ -107,11 +117,12 @@ export interface SongState {
   cancelGesture: () => void;
   // Not an undo step: the region is a view setting, so undoing an edit must never move it.
   setLoop: (loop: LoopSetting) => void;
-  setTempo: (tempoBpm: number) => void;
+  // A refusal is returned rather than thrown because audio can make a tempo or meter change impossible.
+  setTempo: (tempoBpm: number) => "tempo_limit" | null;
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
   // Both are one undo step each; the UI asks for confirmation first when a meter change would drop notes.
-  setTimeSignature: (ts: TimeSignature) => void;
+  setTimeSignature: (ts: TimeSignature) => "meter_limit" | null;
   setKey: (key: SongKey) => void;
   addTrackFromPattern: (pattern: Pattern) => void;
   undo: () => void;
@@ -144,7 +155,7 @@ const validSelection = (
   const track = song.tracks.find((t) => t.id === trackId) ?? song.tracks[0];
   const clip =
     track?.id === trackId && clipId
-      ? track.clips.find((c) => c.id === clipId)
+      ? clipIds(track).find((c) => c.id === clipId)
       : undefined;
   return {
     selectedTrackId: track?.id ?? null,
@@ -152,10 +163,13 @@ const validSelection = (
   };
 };
 
+// Audio and note clips never share a track, so one selection id space serves both.
+const clipIds = (t: Track): { id: string }[] => (t.instrument === AUDIO_INSTRUMENT_ID ? (t.audio_clips ?? []) : t.clips);
+
 // Clips are sorted, so the first one is the earliest.
 const initialSelection = (song: Song | null) => ({
   selectedTrackId: song?.tracks[0]?.id ?? null,
-  selectedClipId: song?.tracks[0]?.clips[0]?.id ?? null,
+  selectedClipId: song?.tracks[0] ? (clipIds(song.tracks[0])[0]?.id ?? null) : null,
 });
 
 export function createSongStore(initial: Song | null = null): SongStore {
@@ -247,7 +261,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (!track) return s;
           // Re-selecting the current track keeps its selected clip so a header click never loses the user's place.
           if (s.selectedTrackId === trackId && s.selectedClipId) return s;
-          const clipId = track.clips[0]?.id ?? null;
+          const clipId = clipIds(track)[0]?.id ?? null;
           return s.selectedTrackId === trackId && s.selectedClipId === clipId
             ? s
             : { selectedTrackId: trackId, selectedClipId: clipId };
@@ -257,13 +271,36 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (clipId === null)
             return s.selectedClipId === null ? s : { selectedClipId: null };
           const track = s.song?.tracks.find((t) =>
-            t.clips.some((c) => c.id === clipId),
+            clipIds(t).some((c) => c.id === clipId),
           );
           if (!track) return s;
           return s.selectedTrackId === track.id && s.selectedClipId === clipId
             ? s
             : { selectedTrackId: track.id, selectedClipId: clipId };
         }),
+      addAudioTrack: (name) => {
+        const before = get().song;
+        edit((s) => audioOps.addAudioTrack(s, name)?.song ?? s);
+        const after = get().song;
+        if (after && after !== before) set({ selectedTrackId: after.tracks[after.tracks.length - 1].id, selectedClipId: null });
+      },
+      audioEdit: (trackId, fn, options) => {
+        let outcome: (AudioOpResult & { trackId?: string }) | null = null;
+        const error = run(
+          (song) => {
+            outcome = fn(song);
+            return outcome.song === null ? { song: null, reason: "not-found" } : { song: outcome.song, clipId: outcome.clipId };
+          },
+          trackId,
+          options,
+        );
+        const result = outcome as (AudioOpResult & { trackId?: string }) | null;
+        if (result && result.song === null) return result.reason;
+        if (error) return error === "generating" ? "generating" : "not-found";
+        if (result && result.song && result.clipId) set({ selectedTrackId: result.trackId ?? trackId, selectedClipId: result.clipId });
+        else if (result?.song && result.trackId) set({ selectedTrackId: result.trackId });
+        return null;
+      },
       addTrack: (instrument, name) => {
         const before = get().song;
         edit((s) => ops.addTrack(s, instrument, name));
@@ -459,10 +496,20 @@ export function createSongStore(initial: Song | null = null): SongStore {
             : s.gestureLoop;
           return next === s.song && gestureLoop === s.gestureLoop ? s : { song: next, gestureLoop };
         }),
-      setTempo: (t) => edit((s) => ops.setTempo(s, t)),
+      setTempo: (t) => {
+        const before = get().song;
+        edit((s) => ops.setTempo(s, t));
+        // Clamping can legitimately land on the current tempo, which is a no-op rather than a refusal.
+        const wanted = Math.min(TEMPO_RANGE.max, Math.max(TEMPO_RANGE.min, Math.round(t)));
+        return before && get().song === before && wanted !== before.tempo_bpm ? "tempo_limit" : null;
+      },
       setSwing: (w) => edit((s) => ops.setSwing(s, w)),
       renameSong: (name) => edit((s) => ops.renameSong(s, name)),
-      setTimeSignature: (ts) => edit((s) => ops.setTimeSignature(s, ts)),
+      setTimeSignature: (ts) => {
+        const before = get().song;
+        edit((s) => ops.setTimeSignature(s, ts));
+        return before && get().song === before && ts !== before.time_signature ? "meter_limit" : null;
+      },
       setKey: (key) => edit((s) => ops.setKey(s, key)),
       addTrackFromPattern: (p) => edit((s) => ops.addTrackFromPattern(s, p)),
       undo: () => {

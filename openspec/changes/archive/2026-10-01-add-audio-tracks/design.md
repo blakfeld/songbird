@@ -45,7 +45,8 @@
 - **Lengths:** `offset_samples`, `slice_samples`, and `length_samples` are in the sample's own frames, so they are exact and independent of tempo.
 - **End time:** a clip ends at `ticksToSeconds(start_ticks) + length_samples / sample_rate`. That end feeds `derivedMeasures`, overlap checks, and the 128-measure check.
 - **Swing:** it doesn't apply. Ticks map to straight time, and a unit test pins this.
-- **Tempo changes:** `setTempo` refuses a tempo that would push audio past measure 128, with code `tempo_limit`.
+- **Tempo changes:** `setTempo` refuses a tempo that would push audio past measure 128, with code `tempo_limit`. When a faster tempo would make touching clips overlap, it shortens the earlier clip to fit, in the same undo step.
+- **Time signature changes:** clips keep their measure and position within it. `setTimeSignature` refuses a change that would push audio past measure 128, with code `meter_limit`.
 
 ### D3. Sample ids are content hashes
 A sample's `id` is the first 32 hex characters of SHA-256 over its stored PCM bytes plus `sample_rate` and `channels`, computed in a worker at import.
@@ -110,6 +111,7 @@ Previews use one shared `Tone.Player` straight to the destination, so the song m
 ## Risks / Trade-offs
 
 - [IndexedDB quota and eviction] → `storage.persist()`, the pre-import space check, and the missing-audio state rather than a crash. Bundles serve as backups.
+- [Sample cleanup sees only its own tab's undo history] → With the same song open in two tabs, cleanup in one tab can delete audio that the other tab's undo would restore. Accepted: editing in several tabs is not supported elsewhere in the app either.
 - [Float32 storage is large, about 23 MB per stereo minute] → It is simple and lossless. FLAC or 16/24-bit storage can come with server storage later.
 - [The content-hash cost on huge files] → It runs in a worker, with progress.
 - [Decoding resamples to the context rate] → Inaudible for this use. Original-rate storage is possible later if the sampler needs it.

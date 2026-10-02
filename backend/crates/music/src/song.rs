@@ -22,6 +22,24 @@ pub const TRACK_NAME_MAX: usize = 40;
 pub const LOOP_NAME_MAX: usize = 40;
 pub const MAX_LOOPS: usize = 64;
 pub const MAX_CLIPS: usize = 256;
+/// Reserved so audio tracks need no extra field on `Track`; it is never in the
+/// instrument registry, so older builds reject such songs instead of silently
+/// dropping the audio.
+pub const AUDIO_INSTRUMENT_ID: &str = "audio";
+pub const MAX_SAMPLES: usize = 256;
+pub const MAX_AUDIO_CLIPS: usize = 256;
+pub const SAMPLE_NAME_MAX: usize = 80;
+pub const MIN_SAMPLE_RATE: u32 = 22_050;
+pub const MAX_SAMPLE_RATE: u32 = 192_000;
+pub const MAX_SAMPLE_SECONDS: u32 = 20 * 60;
+pub const MIN_CLIP_GAIN_DB: f64 = -24.0;
+pub const MAX_CLIP_GAIN_DB: f64 = 12.0;
+/// Four times finer than a step so clips keep sub-step placement while staying
+/// on the musical grid across tempo changes.
+pub const TICKS_PER_SIXTEENTH: u32 = 240;
+/// A sixteenth is a quarter of a quarter note, so one second holds
+/// `tempo_bpm / 60 * 4 * 240` ticks, which is `16 * tempo_bpm`.
+const TICKS_PER_SECOND_PER_BPM: u128 = 16;
 
 /// Snake_case and flat so the generated TypeScript matches the browser's
 /// hand-written shape field for field.
@@ -52,6 +70,11 @@ pub struct Song {
     #[ts(optional = nullable)]
     pub loop_region: Option<LoopRegion>,
     pub tracks: Vec<Track>,
+    /// Metadata only: the audio itself lives in the browser and never enters
+    /// the document, so the song stays small enough to post and export.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Sample>>", optional)]
+    pub samples: Vec<Sample>,
     /// The Studio's song chat, saved with the song so it survives a reload.
     /// Optional so songs saved before the chat existed stay valid and songs
     /// without a conversation serialize as they always did.
@@ -177,6 +200,11 @@ pub struct Track {
     /// Kept sorted by `start_measure` so overlap and neighbour lookups stay
     /// linear; the browser's clip operations depend on it.
     pub clips: Vec<Clip>,
+    /// Only audio tracks (instrument `audio`) hold these; they keep `loops` and
+    /// `clips` empty so every existing reader of those fields stays correct.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<AudioClip>>", optional)]
+    pub audio_clips: Vec<AudioClip>,
     /// Only overrides are stored, so an absent setting keeps following the
     /// instrument's preset and songs saved before track sound existed are
     /// unchanged. Unknown fields are ignored like the rest of the document.
@@ -338,6 +366,42 @@ pub struct Clip {
     pub measures: u32,
 }
 
+/// Lengths are in the sample's own frames so they are exact and independent of
+/// tempo.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Sample {
+    /// A content hash, so the same audio imported twice or opened from a bundle
+    /// in another browser maps to one id.
+    pub id: String,
+    pub name: String,
+    pub sample_rate: u32,
+    pub channels: u8,
+    pub length_samples: u32,
+    /// Open on purpose so later changes can add origins such as recordings
+    /// without a document version bump; `"import"` is the only one so far.
+    pub origin: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct AudioClip {
+    pub id: String,
+    pub sample_id: String,
+    /// Song time at 240 ticks per sixteenth step; swing does not apply to audio.
+    pub start_ticks: u32,
+    pub offset_samples: u32,
+    pub slice_samples: u32,
+    pub length_samples: u32,
+    /// Absent reads as false so a clip can be written without it.
+    #[serde(default, rename = "loop")]
+    pub looping: bool,
+    #[serde(default)]
+    pub gain_db: f64,
+    #[serde(default)]
+    pub fade_in_samples: u32,
+    #[serde(default)]
+    pub fade_out_samples: u32,
+}
+
 /// Stable names that tests and the browser's shared fixture compare against;
 /// the message text is free to change, these are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -370,6 +434,18 @@ pub enum SongErrorKind {
     ClipOverlap,
     ClipOutsideSong,
     Sound,
+    SampleCount,
+    DuplicateSampleId,
+    SampleName,
+    SampleRate,
+    SampleChannels,
+    SampleLength,
+    AudioTrackContent,
+    AudioClipCount,
+    AudioClipSample,
+    AudioClipRange,
+    AudioClipGain,
+    AudioClipFade,
 }
 
 impl SongErrorKind {
@@ -403,6 +479,18 @@ impl SongErrorKind {
             Self::ClipOverlap => "clip_overlap",
             Self::ClipOutsideSong => "clip_outside_song",
             Self::Sound => "sound",
+            Self::SampleCount => "sample_count",
+            Self::DuplicateSampleId => "duplicate_sample_id",
+            Self::SampleName => "sample_name",
+            Self::SampleRate => "sample_rate",
+            Self::SampleChannels => "sample_channels",
+            Self::SampleLength => "sample_length",
+            Self::AudioTrackContent => "audio_track_content",
+            Self::AudioClipCount => "audio_clip_count",
+            Self::AudioClipSample => "audio_clip_sample",
+            Self::AudioClipRange => "audio_clip_range",
+            Self::AudioClipGain => "audio_clip_gain",
+            Self::AudioClipFade => "audio_clip_fade",
         }
     }
 }
@@ -449,9 +537,33 @@ pub struct ValidSong<'a> {
 #[derive(Debug)]
 pub struct ValidTrack<'a> {
     pub track: &'a Track,
-    pub instrument: &'static Instrument,
+    pub instrument: TrackInstrument,
     /// Sorted by step so export and generation can stream them in time order.
+    /// Always empty for audio tracks.
     pub notes: Vec<Note>,
+}
+
+/// Audio tracks have no registry entry, so consumers must decide explicitly what
+/// to do with them instead of dereferencing an instrument that is not there.
+#[derive(Debug, Clone, Copy)]
+pub enum TrackInstrument {
+    Instrument(&'static Instrument),
+    Audio,
+}
+
+impl TrackInstrument {
+    pub fn instrument(self) -> Option<&'static Instrument> {
+        match self {
+            Self::Instrument(instrument) => Some(instrument),
+            Self::Audio => None,
+        }
+    }
+}
+
+impl ValidTrack<'_> {
+    pub fn is_audio(&self) -> bool {
+        matches!(self.instrument, TrackInstrument::Audio)
+    }
 }
 
 /// The browser measures names in UTF-16 units, so counting the same way keeps
@@ -483,12 +595,20 @@ impl Song {
             ));
         }
 
+        let samples = self.validate_samples()?;
+
         let mut loop_ids = HashSet::new();
         let mut clip_ids = HashSet::new();
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (index, track) in self.tracks.iter().enumerate() {
-            let instrument =
-                self.validate_track(index, track, registry, &mut loop_ids, &mut clip_ids)?;
+            let instrument = self.validate_track(
+                index,
+                track,
+                registry,
+                &samples,
+                &mut loop_ids,
+                &mut clip_ids,
+            )?;
             tracks.push(ValidTrack {
                 track,
                 instrument,
@@ -573,14 +693,69 @@ impl Song {
         Ok(())
     }
 
+    fn validate_samples(&self) -> Result<HashMap<&str, &Sample>, SongError> {
+        if self.samples.len() > MAX_SAMPLES {
+            return Err(invalid(
+                SongErrorKind::SampleCount,
+                format!(
+                    "samples: at most {MAX_SAMPLES} samples, got {}",
+                    self.samples.len()
+                ),
+            ));
+        }
+        let mut by_id = HashMap::new();
+        for sample in &self.samples {
+            let label = format!("samples: sample `{}`", sample.id);
+            if by_id.insert(sample.id.as_str(), sample).is_some() {
+                return Err(invalid(
+                    SongErrorKind::DuplicateSampleId,
+                    format!("{label} is used more than once"),
+                ));
+            }
+            if sample.name.is_empty() || name_len(&sample.name) > SAMPLE_NAME_MAX {
+                return Err(invalid(
+                    SongErrorKind::SampleName,
+                    format!("{label}: name must be 1-{SAMPLE_NAME_MAX} characters"),
+                ));
+            }
+            if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample.sample_rate) {
+                return Err(invalid(
+                    SongErrorKind::SampleRate,
+                    format!(
+                        "{label}: sample_rate must be {MIN_SAMPLE_RATE}-{MAX_SAMPLE_RATE}, got {}",
+                        sample.sample_rate
+                    ),
+                ));
+            }
+            if !(1..=2).contains(&sample.channels) {
+                return Err(invalid(
+                    SongErrorKind::SampleChannels,
+                    format!("{label}: channels must be 1 or 2, got {}", sample.channels),
+                ));
+            }
+            let max_length = u64::from(sample.sample_rate) * u64::from(MAX_SAMPLE_SECONDS);
+            if sample.length_samples < 1 || u64::from(sample.length_samples) > max_length {
+                return Err(invalid(
+                    SongErrorKind::SampleLength,
+                    format!(
+                        "{label}: length_samples must be 1-{max_length} (20 minutes), got {}",
+                        sample.length_samples
+                    ),
+                ));
+            }
+        }
+        Ok(by_id)
+    }
+
     fn validate_track(
         &self,
         index: usize,
         track: &Track,
         registry: &InstrumentRegistry,
+        samples: &HashMap<&str, &Sample>,
         loop_ids: &mut HashSet<String>,
         clip_ids: &mut HashSet<String>,
-    ) -> Result<&'static Instrument, SongError> {
+    ) -> Result<TrackInstrument, SongError> {
         let label = track_label(index, track);
         if name_len(&track.name) > TRACK_NAME_MAX {
             return Err(invalid(
@@ -603,12 +778,22 @@ impl Song {
                 format!("{label}: pan must be -1 to 1, got {}", track.pan),
             ));
         }
+        if track.instrument == AUDIO_INSTRUMENT_ID {
+            self.validate_audio_track(&label, track, samples, clip_ids)?;
+            return Ok(TrackInstrument::Audio);
+        }
         let instrument =
             registry
                 .get(&track.instrument)
                 .ok_or_else(|| SongError::UnknownInstrument {
                     message: format!("{label}: unknown instrument `{}`", track.instrument),
                 })?;
+        if !track.audio_clips.is_empty() {
+            return Err(invalid(
+                SongErrorKind::AudioTrackContent,
+                format!("{label}: audio clips belong on audio tracks only"),
+            ));
+        }
         if track.loops.len() > MAX_LOOPS {
             return Err(invalid(
                 SongErrorKind::LoopCount,
@@ -698,7 +883,117 @@ impl Song {
         if let Some(sound) = &track.sound {
             validate_sound(&label, sound, instrument)?;
         }
-        Ok(instrument)
+        Ok(TrackInstrument::Instrument(instrument))
+    }
+
+    fn validate_audio_track(
+        &self,
+        label: &str,
+        track: &Track,
+        samples: &HashMap<&str, &Sample>,
+        clip_ids: &mut HashSet<String>,
+    ) -> Result<(), SongError> {
+        if !track.loops.is_empty() || !track.clips.is_empty() {
+            return Err(invalid(
+                SongErrorKind::AudioTrackContent,
+                format!("{label}: an audio track holds audio clips, not loops or clips"),
+            ));
+        }
+        if track.audio_clips.len() > MAX_AUDIO_CLIPS {
+            return Err(invalid(
+                SongErrorKind::AudioClipCount,
+                format!(
+                    "{label}: at most {MAX_AUDIO_CLIPS} audio clips, got {}",
+                    track.audio_clips.len()
+                ),
+            ));
+        }
+        for clip in &track.audio_clips {
+            if !clip_ids.insert(clip.id.clone()) {
+                return Err(invalid(
+                    SongErrorKind::DuplicateClipId,
+                    format!("{label}: clip id `{}` is used more than once", clip.id),
+                ));
+            }
+            let sample = samples.get(clip.sample_id.as_str()).ok_or_else(|| {
+                invalid(
+                    SongErrorKind::AudioClipSample,
+                    format!(
+                        "{label}: clip `{}` names sample `{}`, which is not in samples",
+                        clip.id, clip.sample_id
+                    ),
+                )
+            })?;
+            validate_audio_clip_fields(label, clip, sample)?;
+            self.check_audio_clip_within_song(label, clip, sample)?;
+        }
+
+        let mut ordered: Vec<&AudioClip> = track.audio_clips.iter().collect();
+        ordered.sort_by_key(|c| c.start_ticks);
+        for pair in ordered.windows(2) {
+            // Sorted, so only a neighbour can overlap; the sample is known to
+            // exist from the loop above.
+            let sample = samples[pair[0].sample_id.as_str()];
+            let gap_ticks = u128::from(pair[1].start_ticks - pair[0].start_ticks);
+            let clip_ticks_times_rate = u128::from(pair[0].length_samples)
+                * TICKS_PER_SECOND_PER_BPM
+                * u128::from(self.tempo_bpm);
+            if clip_ticks_times_rate > gap_ticks * u128::from(sample.sample_rate) {
+                return Err(invalid(
+                    SongErrorKind::ClipOverlap,
+                    format!(
+                        "{label}: clip `{}` overlaps the clip before it at {} BPM",
+                        pair[1].id, self.tempo_bpm
+                    ),
+                ));
+            }
+        }
+
+        if let Some(sound) = &track.sound {
+            if let Some(tone) = &sound.tone {
+                return Err(invalid(
+                    SongErrorKind::Sound,
+                    format!(
+                        "{label}: {} applies to instrument tracks, not audio tracks",
+                        first_tone_field(tone)
+                    ),
+                ));
+            }
+            if let Some(effects) = &sound.effects {
+                validate_effects(label, effects)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Integer arithmetic on the clip's end in ticks scaled by the sample rate,
+    /// so no float rounding can make the browser and server disagree at a
+    /// measure boundary.
+    fn check_audio_clip_within_song(
+        &self,
+        label: &str,
+        clip: &AudioClip,
+        sample: &Sample,
+    ) -> Result<(), SongError> {
+        let rate = u128::from(sample.sample_rate);
+        let end = u128::from(clip.start_ticks) * rate
+            + u128::from(clip.length_samples)
+                * TICKS_PER_SECOND_PER_BPM
+                * u128::from(self.tempo_bpm);
+        let song_end = u128::from(self.measures)
+            * u128::from(self.steps_per_measure)
+            * u128::from(TICKS_PER_SIXTEENTH)
+            * rate;
+        if end > song_end {
+            return Err(invalid(
+                SongErrorKind::ClipOutsideSong,
+                format!(
+                    "{label}: clip `{}` ends after the song's {} measures at {} BPM (the limit is {MAX_MEASURES})",
+                    clip.id, self.measures, self.tempo_bpm
+                ),
+            ));
+        }
+        Ok(())
     }
 
     fn validate_loop(
@@ -832,9 +1127,14 @@ fn validate_sound(
         }
     }
 
-    let Some(effects) = &sound.effects else {
-        return Ok(());
-    };
+    match &sound.effects {
+        Some(effects) => validate_effects(label, effects),
+        None => Ok(()),
+    }
+}
+
+fn validate_effects(label: &str, effects: &Effects) -> Result<(), SongError> {
+    let check = SoundCheck { label };
     if let Some(eq) = &effects.eq {
         check.range("low_db", eq.low_db, -12.0, 12.0)?;
         check.range("mid_db", eq.mid_db, -12.0, 12.0)?;
@@ -869,6 +1169,73 @@ fn validate_sound(
         check.range("mix", reverb.mix, 0.0, 1.0)?;
     }
     Ok(())
+}
+
+fn validate_audio_clip_fields(
+    label: &str,
+    clip: &AudioClip,
+    sample: &Sample,
+) -> Result<(), SongError> {
+    let range_error = |detail: String| {
+        invalid(
+            SongErrorKind::AudioClipRange,
+            format!("{label}: clip `{}` {detail}", clip.id),
+        )
+    };
+    if clip.slice_samples < 1 {
+        return Err(range_error("must use at least 1 sample".into()));
+    }
+    if u64::from(clip.offset_samples) + u64::from(clip.slice_samples)
+        > u64::from(sample.length_samples)
+    {
+        return Err(range_error(format!(
+            "uses samples {}-{}, past the end of its sample ({} samples)",
+            clip.offset_samples,
+            u64::from(clip.offset_samples) + u64::from(clip.slice_samples),
+            sample.length_samples
+        )));
+    }
+    if clip.length_samples < 1 {
+        return Err(range_error("must play at least 1 sample".into()));
+    }
+    if !clip.looping && clip.length_samples > clip.slice_samples {
+        return Err(range_error(
+            "is longer than its slice, which only a looping clip may be".into(),
+        ));
+    }
+    if !(MIN_CLIP_GAIN_DB..=MAX_CLIP_GAIN_DB).contains(&clip.gain_db) {
+        return Err(invalid(
+            SongErrorKind::AudioClipGain,
+            format!(
+                "{label}: clip `{}` gain_db must be {MIN_CLIP_GAIN_DB}-{MAX_CLIP_GAIN_DB}, got {}",
+                clip.id, clip.gain_db
+            ),
+        ));
+    }
+    if u64::from(clip.fade_in_samples) + u64::from(clip.fade_out_samples)
+        > u64::from(clip.length_samples)
+    {
+        return Err(invalid(
+            SongErrorKind::AudioClipFade,
+            format!("{label}: clip `{}` fades are longer than the clip", clip.id),
+        ));
+    }
+    Ok(())
+}
+
+fn first_tone_field(tone: &Tone) -> &'static str {
+    let set = [
+        ("filter_cutoff_hz", tone.filter_cutoff_hz.is_some()),
+        ("filter_resonance", tone.filter_resonance.is_some()),
+        ("attack_s", tone.attack_s.is_some()),
+        ("decay_s", tone.decay_s.is_some()),
+        ("sustain", tone.sustain.is_some()),
+        ("release_s", tone.release_s.is_some()),
+        ("pitch_semitones", tone.pitch_semitones.is_some()),
+    ];
+    set.into_iter()
+        .find_map(|(name, present)| present.then_some(name))
+        .unwrap_or("tone")
 }
 
 /// A port of the browser's `resolveTrackNotes`, which is what the Studio
@@ -934,6 +1301,7 @@ pub(crate) mod tests {
             soloed: false,
             loops: vec![],
             clips: vec![],
+            audio_clips: vec![],
             sound: None,
         }
     }
@@ -969,6 +1337,7 @@ pub(crate) mod tests {
             measures,
             loop_region: None,
             tracks,
+            samples: vec![],
             chat: vec![],
         }
     }
@@ -1002,7 +1371,7 @@ pub(crate) mod tests {
         let s = two_track_song();
         let valid = s.validate(&InstrumentRegistry::builtin()).unwrap();
         assert_eq!(valid.tracks.len(), 2);
-        assert_eq!(valid.tracks[0].instrument.id, "drums");
+        assert_eq!(valid.tracks[0].instrument.instrument().unwrap().id, "drums");
         let kicks: Vec<u32> = valid.tracks[0].notes.iter().map(|n| n.step).collect();
         assert_eq!(kicks, vec![0, 16, 32, 48]);
         assert_eq!(valid.tracks[1].notes.len(), 1);
@@ -1284,6 +1653,92 @@ pub(crate) mod tests {
             stored.sort_by_key(key);
             assert_eq!(stored, expected, "{}: stored on ValidSong", case.name);
         }
+    }
+
+    fn audio_song() -> Song {
+        let mut s = two_track_song();
+        s.samples = vec![Sample {
+            id: "s1".into(),
+            name: "Break".into(),
+            sample_rate: 48_000,
+            channels: 2,
+            length_samples: 120_000,
+            origin: "import".into(),
+        }];
+        let mut loops = track("t3", "Loops", AUDIO_INSTRUMENT_ID);
+        loops.audio_clips = vec![AudioClip {
+            id: "a1".into(),
+            sample_id: "s1".into(),
+            start_ticks: 0,
+            offset_samples: 0,
+            slice_samples: 120_000,
+            length_samples: 120_000,
+            looping: false,
+            gain_db: 0.0,
+            fade_in_samples: 0,
+            fade_out_samples: 0,
+        }];
+        s.tracks.push(loops);
+        s
+    }
+
+    #[test]
+    fn audio_tracks_resolve_to_the_audio_variant_with_no_notes() {
+        let s = audio_song();
+        let valid = s.validate(&InstrumentRegistry::builtin()).unwrap();
+        assert!(valid.tracks[2].is_audio());
+        assert!(valid.tracks[2].notes.is_empty());
+        assert!(!valid.tracks[0].is_audio());
+    }
+
+    #[test]
+    fn audio_fields_are_absent_from_songs_without_audio() {
+        let value = serde_json::to_value(two_track_song()).unwrap();
+        assert!(value.get("samples").is_none());
+        assert!(value["tracks"][0].get("audio_clips").is_none());
+    }
+
+    #[test]
+    fn audio_clip_loop_and_defaults_use_the_wire_names() {
+        let clip: AudioClip = serde_json::from_value(json!({
+            "id": "a", "sample_id": "s", "start_ticks": 0, "offset_samples": 0,
+            "slice_samples": 10, "length_samples": 30, "loop": true,
+        }))
+        .unwrap();
+        assert!(clip.looping);
+        assert_eq!(
+            (clip.gain_db, clip.fade_in_samples, clip.fade_out_samples),
+            (0.0, 0, 0)
+        );
+        assert_eq!(serde_json::to_value(&clip).unwrap()["loop"], json!(true));
+    }
+
+    #[test]
+    fn audio_errors_name_the_track_and_the_setting() {
+        let mut s = audio_song();
+        s.tracks[2].audio_clips[0].sample_id = "nope".into();
+        let message = s
+            .validate(&InstrumentRegistry::builtin())
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("\"Loops\""), "{message}");
+
+        let mut s = audio_song();
+        s.tracks[2].sound = Some(TrackSound {
+            tone: Some(Tone {
+                filter_cutoff_hz: Some(2000.0),
+                ..Tone::default()
+            }),
+            effects: None,
+        });
+        let message = s
+            .validate(&InstrumentRegistry::builtin())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("\"Loops\"") && message.contains("filter_cutoff_hz"),
+            "{message}"
+        );
     }
 
     #[test]
