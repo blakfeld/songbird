@@ -57,6 +57,11 @@ export function TrackLane({
   onSeek: (trackId: string, measureIndex: number) => void;
 }) {
   const generating = generatingTrackId === track.id;
+  // The input row is a third header row, so audio lanes are taller to hold it.
+  const height =
+    instrument.state === "audio"
+      ? "h-28 max-md:h-32 pointer-coarse:h-32"
+      : "h-20 max-md:h-28 pointer-coarse:h-24";
   const info: InstrumentInfo | null = instrument.state === "ready" ? instrument.info : null;
   return (
     <div
@@ -66,7 +71,7 @@ export function TrackLane({
       data-dragging={dragging ? "true" : undefined}
       data-audible={audible ? "true" : "false"}
       data-selected={selected ? "true" : undefined}
-      className={`grid h-20 grid-cols-[var(--gutter-w)_minmax(0,1fr)] border-b border-zinc-200 max-md:h-28 pointer-coarse:h-24 dark:border-zinc-800 data-[dragging]:relative data-[dragging]:z-30 data-[dragging]:opacity-60 data-[dragging]:shadow-lg data-[dragging]:ring-2 data-[dragging]:ring-inset data-[dragging]:ring-zinc-900 dark:data-[dragging]:ring-zinc-50 ${
+      className={`grid ${height} grid-cols-[var(--gutter-w)_minmax(0,1fr)] border-b border-zinc-200 dark:border-zinc-800 data-[dragging]:relative data-[dragging]:z-30 data-[dragging]:opacity-60 data-[dragging]:shadow-lg data-[dragging]:ring-2 data-[dragging]:ring-inset data-[dragging]:ring-zinc-900 dark:data-[dragging]:ring-zinc-50 ${
         selected ? "bg-indigo-50 dark:bg-indigo-950/40" : ""
       }`}
     >
@@ -78,6 +83,7 @@ export function TrackLane({
         dragging={dragging}
         onMove={onMove}
         selected={selected}
+        audible={audible}
         instrument={instrument}
         actions={actions}
         soundOpen={soundOpen}

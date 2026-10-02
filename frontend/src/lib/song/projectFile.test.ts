@@ -2,10 +2,11 @@ import "fake-indexeddb/auto";
 import { Blob as NodeBlob } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { zipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { clear, createStore } from "idb-keyval";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { listLibrary } from "@/lib/audio/sampleLibrary";
+import { collectGarbage } from "@/lib/audio/sampleGc";
 import { listStoredSampleIds, putSample, readSamplePcm } from "@/lib/audio/sampleStore";
 import { encodeWavFloat32 } from "@/lib/audio/wavFloat";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
@@ -211,6 +212,43 @@ describe("project bundles", () => {
     const stored = await readSamplePcm(id);
     expect(stored?.channels).toBe(2);
     expect(Array.from(stored!.data)).toEqual(Array.from(pcm(1).data));
+  });
+
+  it("Take kept with the song: a recorded sample round-trips with its track and audio, outside the library", async () => {
+    const { id } = await putSample(pcm(21));
+    const song = withAudio(id, "Audio Take 1");
+    const trackId = song.tracks[1].id;
+    song.samples![0] = { ...song.samples![0], origin: "recording", track_id: trackId, recorded_at_ticks: 0 };
+    // An earlier take no clip plays is still part of the song.
+    const { id: older } = await putSample(pcm(22));
+    song.samples!.push({ id: older, name: "Audio Take 0", sample_rate: 48000, channels: 2, length_samples: FRAMES, origin: "recording", track_id: trackId, recorded_at_ticks: 0 });
+    const bytes = new Uint8Array(await (await createProjectBundle(song)).arrayBuffer());
+    expect(Object.keys(unzipSync(bytes)).sort()).toEqual(["project.json", `audio/${id}.wav`, `audio/${older}.wav`].sort());
+    await clear(createStore("songbird-samples.test-user", "samples"));
+
+    const result = await readProjectBundle(new File([bytes], "x.songbird.zip"), instruments);
+    if (!("ok" in result)) throw new Error(result.error);
+    expect(result.ok.samples).toEqual(song.samples);
+    expect(result.ok.samples?.[0]).toMatchObject({ origin: "recording", track_id: trackId, recorded_at_ticks: 0 });
+    expect(Array.from((await readSamplePcm(id))!.data)).toEqual(Array.from(pcm(21).data));
+    expect(await listLibrary()).toEqual([]);
+  });
+
+  it("pins the takes it stores until the caller has saved the song, then lets them go", async () => {
+    const { id } = await putSample(pcm(31));
+    const song = withAudio(id, "Audio Take 1");
+    song.samples![0] = { ...song.samples![0], origin: "recording", track_id: song.tracks[1].id, recorded_at_ticks: 0 };
+    const bytes = new Uint8Array(await (await createProjectBundle(song)).arrayBuffer());
+    await clear(createStore("songbird-samples.test-user", "samples"));
+    const result = await readProjectBundle(new File([bytes], "x.songbird.zip"), instruments);
+    if (!("ok" in result)) throw new Error(result.error);
+
+    const nothingElseHoldsIt = { libraryIds: async () => [], savedSongSampleIds: async () => [], openSongs: () => [] };
+    // Stored, in no library and in no saved song yet: only the pin keeps a cleanup pass from freeing it.
+    expect(await collectGarbage(nothingElseHoldsIt)).toEqual([]);
+    expect(await listStoredSampleIds()).toEqual([id]);
+    result.release?.();
+    expect(await collectGarbage(nothingElseHoldsIt)).toEqual([id]);
   });
 
   it("Bundle adds to the library: the sample is stored and listed in a browser that never had it", async () => {

@@ -1,14 +1,17 @@
 "use client";
 
 import type { AudioClip } from "@/generated/AudioClip";
+import type { Song } from "@/lib/song/types";
 import { menuItemClass } from "../Menu";
 import type { AudioActions } from "../useAudioActions";
+import { TakesMenuItems } from "./TakesMenuItems";
 
 const hintClass = "px-3 pb-2 text-xs text-zinc-600 dark:text-zinc-400";
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 // Shared by right-click, Shift+F10 and the dock's actions button so they offer the same things.
 export function AudioClipMenuItems({
+  song,
   trackId,
   clip,
   actions,
@@ -17,6 +20,8 @@ export function AudioClipMenuItems({
   focusResult,
   canDuplicate = true,
 }: {
+  // Needed for the track's takes; without it the Takes entry is simply not offered.
+  song?: Song;
   trackId: string;
   clip: AudioClip;
   actions: AudioActions;
@@ -44,6 +49,7 @@ export function AudioClipMenuItems({
         </span>
       </button>
       <div role="separator" className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+      {song && <TakesMenuItems song={song} trackId={trackId} clip={clip} actions={actions} close={close} />}
       <button
         type="button"
         role="menuitem"

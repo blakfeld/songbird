@@ -120,7 +120,13 @@ export function SongFileActions({
       }
       // The server assigns the id, so an imported file can never replace a song that already has its id.
       // A refused import is reported here with the server's reason, not as a failed autosave.
-      const created = await library.create(parsed.ok, { reportFailure: false });
+      let created;
+      try {
+        created = await library.create(parsed.ok, { reportFailure: false });
+      } finally {
+        // Saved, the song itself keeps the audio; failed, nothing will, and it may be cleaned up.
+        parsed.release?.();
+      }
       onAnnounce(`Opened "${created.name}" as a new song.`);
       onImported(created);
     } catch (e) {

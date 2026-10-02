@@ -31,12 +31,22 @@ When the selected track is an audio track, the transport's Record control SHALL 
 - **Undo:** each recording session SHALL be one undo step.
 - **Limits:**
   - Recording SHALL stop by itself after 20 minutes, or when the song would exceed 128 measures, and keep what was recorded.
+- **Past the end of the song:** with looping off, recording audio SHALL NOT stop when playback reaches the end of the song. Playback and recording SHALL continue, and the song SHALL be extended to the end of the recorded clip, up to 128 measures. With looping on, the loop region bounds each pass as usual.
+- **Seeking:** with looping off, moving the playhead while recording audio SHALL end the take, keeping what was recorded before the seek. Playback SHALL continue from the new position.
   - A session that would exceed the track's 64 takes, or the song's 256 samples, SHALL be refused before it starts.
   - Recording SHALL be refused, with the reason given, when no input is available.
 
 #### Scenario: Record a vocal from stopped
 - **WHEN** an audio track is selected, the count-in is on, and the user presses Record at measure 1, sings for 8 measures, and presses Stop
 - **THEN** one bar of clicks is heard, and then the track has its first take with one clip starting at measure 1 that plays the singing
+
+#### Scenario: Seek while recording
+- **WHEN** looping is off, the user is recording audio at measure 5, and clicks the timeline at measure 2
+- **THEN** the take ends with the audio recorded through measure 5, and playback continues from measure 2
+
+#### Scenario: Record past the end of a short song
+- **WHEN** looping is off, the song is 1 measure long, and the user records a vocal on an audio track for 4 measures and presses Stop
+- **THEN** recording did not stop at the end of measure 1, the clip covers the 4 measures, and the song is at least 4 measures long
 
 #### Scenario: Latency compensated
 - **WHEN** the browser reports 10 ms of output latency and 8 ms of input latency, and the user claps exactly on the beat of measure 2 while recording
@@ -51,11 +61,15 @@ When the selected track is an audio track, the transport's Record control SHALL 
 - **THEN** the new clip is gone, and the earlier clips are back as they were
 
 ### Requirement: Loop recording keeps every pass
-While looping is on, each full or partial pass of the loop region during one recording session SHALL be kept as its own take. The lane SHALL show one clip for the region, playing the latest pass's take. The earlier passes SHALL be listed in the clip's Takes list, so that the user can choose a better one. A loop session SHALL still be one undo step.
+While looping is on, each full or partial pass of the loop region during one recording session SHALL be kept as its own take. The lane SHALL show one clip for the region, playing the latest pass's take. A final pass shorter than one beat SHALL be discarded, and the clip SHALL play the pass before it. The earlier passes SHALL be listed in the clip's Takes list, so that the user can choose a better one. A loop session SHALL still be one undo step.
 
 #### Scenario: Three passes
 - **WHEN** looping is on over measures 1–4 and the user records three passes
 - **THEN** the track gains three takes, and the clip at measures 1–4 plays the third, with the first two offered in its Takes list
+
+#### Scenario: Stop just after the loop restarts
+- **WHEN** looping is on over measures 1–4, the user records two full passes, and presses Stop 100 ms into the third
+- **THEN** the track gains two takes, and the clip plays the second
 
 ### Requirement: Recording offset
 The Studio SHALL offer a recording offset setting from −200 ms to +200 ms, default 0, remembered in this browser. The offset SHALL be applied on top of reported latencies when placing new takes, so that users can correct a constant offset. Changing the offset SHALL NOT move takes that were already recorded.
@@ -76,17 +90,21 @@ Each audio track header SHALL have a Monitor toggle, off by default and not save
 - **THEN** the input is no longer heard
 
 ### Requirement: Recorded samples in the song document
-A song sample (see `songs/audio-tracks`, "Audio track and sample document") MAY have `origin` `"recording"`. Such a sample SHALL also have `track_id`, naming the audio track it was recorded on. A track SHALL have at most 64 recorded samples. Every check SHALL reject a recorded sample whose `track_id` names no audio track with `invalid_song`. Recorded samples SHALL follow the same storage and cleanup rules as imported ones. They SHALL appear in the sample library only after the user chooses "Add to library" from the Takes list.
+A song sample (see `songs/audio-tracks`, "Audio track and sample document") MAY have `origin` `"recording"`. Such a sample SHALL also have `track_id`, naming the audio track it was recorded on, and `recorded_at_ticks`, the song position of its first sample. Every check SHALL reject `recorded_at_ticks` on a sample that is not a recording, and a recording without it, with `invalid_song`. A track SHALL have at most 64 recorded samples. Every check SHALL reject a recorded sample whose `track_id` names no audio track with `invalid_song`. Recorded samples SHALL follow the same storage and cleanup rules as imported ones. Deleting an audio track SHALL, in the same undo step, remove its takes that nothing uses and turn takes still used elsewhere (by clips on other tracks, or by sampler pads or keys) into imported samples. They SHALL appear in the sample library only after the user chooses "Add to library" from the Takes list.
 
 #### Scenario: Take kept with the song
 - **WHEN** the user records a take and downloads a project bundle
 - **THEN** `project.json` lists the take with origin `"recording"` and the track's id, and the bundle holds its audio
 
+#### Scenario: Delete a track with takes
+- **WHEN** the user deletes an audio track with three takes, one of which a clip on another track uses
+- **THEN** the two unused takes are removed, the used one stays as an imported sample, the song stays valid, and one undo restores the track and all three takes
+
 ### Requirement: Takes list
 When a clip on an audio track is selected, the audio clip panel SHALL list every take recorded on that track, newest first, under "Takes". From this list, the user SHALL be able to:
-- choose a take for the clip, keeping the clip's position and length and limiting the length to what the take holds;
+- choose a take for the clip, keeping the clip's position and length, playing the chosen take's audio from the same song position it was recorded at (using `recorded_at_ticks`, with the offset clamped to what the take holds), and limiting the length to what the take holds;
 - rename a take;
-- delete a take that no clip uses;
+- delete a take that nothing in the song uses (no clip, sampler pad, or sampler key);
 - add a take to the sample library.
 
 These actions SHALL also be in the clip's context menu under "Takes". Each choice, rename, and delete SHALL be one undo step.
@@ -95,8 +113,12 @@ These actions SHALL also be in the clip's context menu under "Takes". Each choic
 - **WHEN** a clip plays the track's third take and the user chooses the second from the Takes list
 - **THEN** the clip plays the second take from the same song position, and one undo step was added
 
+#### Scenario: Switch keeps song time
+- **WHEN** take 1 was recorded from measure 1, a clip at measure 3 plays take 2, and the user chooses take 1 for that clip
+- **THEN** the clip plays what take 1 recorded at measure 3, not take 1's opening
+
 #### Scenario: Delete an unused take
-- **WHEN** no clip uses the first take and the user deletes it from the Takes list
+- **WHEN** nothing in the song uses the first take and the user deletes it from the Takes list
 - **THEN** it is removed from the song's samples
 
 #### Scenario: Add a take to the library

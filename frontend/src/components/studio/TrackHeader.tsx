@@ -7,6 +7,9 @@ import { isSamplerId } from "@/lib/song/sampler";
 import { isSoundCustomized } from "@/lib/song/soundDefaults";
 import { TRACK_NAME_MAX, type Song, type Track } from "@/lib/song/types";
 import { LaneMenuItems, defaultLaneMeasure } from "./ClipMenu";
+import { useAudioInput } from "./audio/AudioInputContext";
+import { AudioInputRow } from "./audio/AudioInputRow";
+import { useRecordingOverlay } from "@/lib/song/songStore";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { Menu, menuItemClass } from "./Menu";
@@ -33,6 +36,32 @@ export type InstrumentLookup =
   | { state: "audio" }
   | { state: "missing" };
 
+// Where "Generating…" shows for a part being written, a take being recorded shows its own cue in the same place.
+function RecordingSubline({ trackId, fallback }: { trackId: string; fallback: React.ReactNode }) {
+  const ctx = useAudioInput();
+  if (!ctx) return fallback;
+  return <RecordingCue store={ctx.store} trackId={trackId} fallback={fallback} />;
+}
+
+function RecordingCue({
+  store,
+  trackId,
+  fallback,
+}: {
+  store: NonNullable<ReturnType<typeof useAudioInput>>["store"];
+  trackId: string;
+  fallback: React.ReactNode;
+}) {
+  const recording = useRecordingOverlay(store, trackId);
+  if (!recording) return fallback;
+  return (
+    <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-300">
+      <span aria-hidden="true">●</span>
+      Recording…
+    </span>
+  );
+}
+
 export function TrackHeader({
   song,
   track,
@@ -42,6 +71,7 @@ export function TrackHeader({
   grip,
   dragging,
   selected,
+  audible = true,
   instrument,
   actions,
   soundOpen,
@@ -60,6 +90,7 @@ export function TrackHeader({
   grip: GripHandlers;
   dragging: boolean;
   selected: boolean;
+  audible?: boolean;
   instrument: InstrumentLookup;
   actions: TrackActions;
   soundOpen: boolean;
@@ -157,11 +188,16 @@ export function TrackHeader({
                 Generating…
               </span>
             ) : (
-              showInstrument && (
-                <span className="block truncate text-xs text-zinc-600 dark:text-zinc-400">
-                  {instrumentName}
-                </span>
-              )
+              <RecordingSubline
+                trackId={track.id}
+                fallback={
+                  showInstrument && (
+                    <span className="block truncate text-xs text-zinc-600 dark:text-zinc-400">
+                      {instrumentName}
+                    </span>
+                  )
+                }
+              />
             )}
           </button>
         )}
@@ -356,6 +392,7 @@ export function TrackHeader({
           {customized && <span aria-hidden="true" className={dotClass} />}
         </button>
       </div>
+      {isAudio && <AudioInputRow track={track} selected={selected} audible={audible} />}
       {soundOpen && (
         <div id={panelId}>
           <TrackSoundPanel

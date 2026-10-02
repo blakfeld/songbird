@@ -6,6 +6,8 @@ import {
   MAX_SAMPLE_SECONDS,
   SAMPLE_NAME_MAX,
   SAMPLE_RATE_RANGE,
+  MAX_TAKES_PER_TRACK,
+  RECORDING_ORIGIN,
   U32_MAX,
   clipsOverlap,
   scaledEnd,
@@ -23,6 +25,10 @@ export type AudioErrorKind =
   | "sample_rate"
   | "sample_channels"
   | "sample_length"
+  | "sample_origin"
+  | "sample_recorded_at"
+  | "sample_track"
+  | "sample_take_count"
   | "audio_track_content"
   | "audio_clip_count"
   | "audio_clip_sample"
@@ -50,6 +56,33 @@ interface RawSample {
   length: number;
 }
 
+// Mirrors `validate_sample_track` in song.rs: a take must name an audio track, and only a take may name one.
+function trackProblem(s: Raw, label: string, tracks: unknown[], takes: Map<string, number>): AudioProblem | null {
+  const recording = s.origin === RECORDING_ORIGIN;
+  const trackId = s.track_id;
+  if (trackId !== undefined && trackId !== null && typeof trackId !== "string")
+    return problem("malformed", `${label} has an invalid track_id`);
+  const named = typeof trackId === "string";
+  const at = s.recorded_at_ticks;
+  if (at !== undefined && at !== null && !isU32(at)) return problem("malformed", `${label} has an invalid recorded_at_ticks`);
+  const timed = at !== undefined && at !== null;
+  if (!recording) {
+    if (named) return problem("sample_origin", `${label}: track_id is only allowed on recordings`);
+    return timed ? problem("sample_origin", `${label}: recorded_at_ticks is only allowed on recordings`) : null;
+  }
+  if (!named) return problem("sample_track", `${label}: a recording needs a track_id`);
+  const track = tracks.find((t) => isObject(t) && t.id === trackId);
+  if (!track) return problem("sample_track", `${label}: track_id \`${trackId}\` names no track`);
+  if ((track as Raw).instrument !== AUDIO_INSTRUMENT_ID)
+    return problem("sample_track", `${label}: track_id \`${trackId}\` is not an audio track`);
+  if (!timed) return problem("sample_recorded_at", `${label}: a recording needs recorded_at_ticks`);
+  const count = (takes.get(trackId) ?? 0) + 1;
+  takes.set(trackId, count);
+  if (count > MAX_TAKES_PER_TRACK)
+    return problem("sample_take_count", `${label}: at most ${MAX_TAKES_PER_TRACK} recorded samples per track`);
+  return null;
+}
+
 // Order and kinds follow `validate_samples` in song.rs, so a document with several faults reports the same one on both sides.
 function checkSamples(raw: Raw): { samples: Map<string, RawSample> } | AudioProblem {
   const list = raw.samples ?? [];
@@ -57,6 +90,8 @@ function checkSamples(raw: Raw): { samples: Map<string, RawSample> } | AudioProb
   if (list.length > MAX_SAMPLES)
     return problem("sample_count", `samples: at most ${MAX_SAMPLES} samples, got ${list.length}`);
   const samples = new Map<string, RawSample>();
+  const takes = new Map<string, number>();
+  const tracks = Array.isArray(raw.tracks) ? raw.tracks : [];
   for (const s of list) {
     if (!isObject(s) || typeof s.id !== "string" || typeof s.name !== "string")
       return problem("malformed", "a sample is missing its id or name");
@@ -78,6 +113,8 @@ function checkSamples(raw: Raw): { samples: Map<string, RawSample> } | AudioProb
         "sample_length",
         `${label}: length_samples must be 1-${s.sample_rate * MAX_SAMPLE_SECONDS} (20 minutes), got ${s.length_samples}`,
       );
+    const bad = trackProblem(s, label, tracks, takes);
+    if (bad) return bad;
     samples.set(s.id, { rate: s.sample_rate, length: s.length_samples });
   }
   return { samples };

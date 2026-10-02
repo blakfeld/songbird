@@ -6,6 +6,8 @@ export const TICKS_PER_SIXTEENTH = 240;
 export const TICKS_PER_SECOND_PER_BPM = 16;
 
 export const MAX_SAMPLES = 256;
+export const MAX_TAKES_PER_TRACK = 64;
+export const RECORDING_ORIGIN = "recording";
 export const MAX_AUDIO_CLIPS = 256;
 export const SAMPLE_NAME_MAX = 80;
 export const SAMPLE_RATE_RANGE = { min: 22050, max: 192000 } as const;

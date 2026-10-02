@@ -74,9 +74,19 @@ export function createTake(baseNotes: Note[]): Take {
   };
 }
 
+// Why a recording stopped by itself, so the announcement can say it instead of leaving the user to wonder.
+export type AudioTakeLimit = "duration" | "song" | "takes" | "samples" | "input" | "seek";
+
+export type AudioTakeOutcome =
+  | { kind: "saved"; trackName: string; takeName: string; takes: number; measures: number; limit?: AudioTakeLimit }
+  | { kind: "empty"; trackName: string; limit?: AudioTakeLimit }
+  | { kind: "failed"; reason: "storage" | "song" };
+
 export interface TakeSummary {
   recorded: number;
   dropped: Partial<Record<DropReason, number>>;
+  // Audio is hashed and stored after the take ends, so its result arrives later than a note take's.
+  settled?: Promise<AudioTakeOutcome>;
 }
 
 // What the input router drives, so it never needs to know which page owns the notes.
@@ -87,4 +97,6 @@ export interface TakeTarget {
   end: () => TakeSummary;
   // Used when the take is abandoned, such as Stop during the count-in.
   discard: () => void;
+  // Lets a take that hits a limit ask the page to stop, since only the page owns the transport.
+  onLimit?: (cb: (limit: AudioTakeLimit) => void) => () => void;
 }

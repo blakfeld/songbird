@@ -11,6 +11,7 @@ import { TEMPO_RANGE, type NoteGrid } from "../patternOps";
 import { clampLoop, type LoopSetting } from "../loopRegion";
 import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
+import type { RecordingOverlay } from "../recording/recordingOverlay";
 import * as audioOps from "./audioClipOps";
 import * as ops from "./songOps";
 import * as samplerOps from "./samplerOps";
@@ -42,6 +43,9 @@ export interface SongState {
   generationToken: number | null;
   // Bumped on every load so an in-flight response can tell it was requested for a song that is no longer open.
   loadEpoch: number;
+  // The take being recorded, drawn by its lane; outside history because it is not yet part of the song.
+  recording: RecordingOverlay | null;
+  setRecordingOverlay: (overlay: RecordingOverlay | null) => void;
 
   loadSong: (song: Song) => void;
   selectTrack: (trackId: string) => void;
@@ -251,6 +255,8 @@ export function createSongStore(initial: Song | null = null): SongStore {
       generatingTrackId: null,
       generationToken: null,
       loadEpoch: 0,
+      recording: null,
+      setRecordingOverlay: (recording) => set({ recording }),
 
       loadSong: (song) =>
         set((s) => ({
@@ -606,4 +612,9 @@ export function useSongStore<T>(
   selector: (state: SongState) => T,
 ): T {
   return useStore(store, selector);
+}
+
+// Null for every other track, so only the lane being recorded onto re-renders when a take starts or ends.
+export function useRecordingOverlay(store: SongStore, trackId: string): RecordingOverlay | null {
+  return useStore(store, (s) => (s.recording?.trackId === trackId ? s.recording : null));
 }

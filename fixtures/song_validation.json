@@ -23881,6 +23881,3543 @@
         ]
       },
       "error": "malformed"
+    },
+    {
+      "name": "Recorded sample on an audio track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Sixty-four recordings on one track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r0",
+            "name": "Loops Take 0",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r2",
+            "name": "Loops Take 2",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r3",
+            "name": "Loops Take 3",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r4",
+            "name": "Loops Take 4",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r5",
+            "name": "Loops Take 5",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r6",
+            "name": "Loops Take 6",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r7",
+            "name": "Loops Take 7",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r8",
+            "name": "Loops Take 8",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r9",
+            "name": "Loops Take 9",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r10",
+            "name": "Loops Take 10",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r11",
+            "name": "Loops Take 11",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r12",
+            "name": "Loops Take 12",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r13",
+            "name": "Loops Take 13",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r14",
+            "name": "Loops Take 14",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r15",
+            "name": "Loops Take 15",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r16",
+            "name": "Loops Take 16",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r17",
+            "name": "Loops Take 17",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r18",
+            "name": "Loops Take 18",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r19",
+            "name": "Loops Take 19",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r20",
+            "name": "Loops Take 20",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r21",
+            "name": "Loops Take 21",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r22",
+            "name": "Loops Take 22",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r23",
+            "name": "Loops Take 23",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r24",
+            "name": "Loops Take 24",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r25",
+            "name": "Loops Take 25",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r26",
+            "name": "Loops Take 26",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r27",
+            "name": "Loops Take 27",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r28",
+            "name": "Loops Take 28",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r29",
+            "name": "Loops Take 29",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r30",
+            "name": "Loops Take 30",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r31",
+            "name": "Loops Take 31",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r32",
+            "name": "Loops Take 32",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r33",
+            "name": "Loops Take 33",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r34",
+            "name": "Loops Take 34",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r35",
+            "name": "Loops Take 35",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r36",
+            "name": "Loops Take 36",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r37",
+            "name": "Loops Take 37",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r38",
+            "name": "Loops Take 38",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r39",
+            "name": "Loops Take 39",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r40",
+            "name": "Loops Take 40",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r41",
+            "name": "Loops Take 41",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r42",
+            "name": "Loops Take 42",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r43",
+            "name": "Loops Take 43",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r44",
+            "name": "Loops Take 44",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r45",
+            "name": "Loops Take 45",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r46",
+            "name": "Loops Take 46",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r47",
+            "name": "Loops Take 47",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r48",
+            "name": "Loops Take 48",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r49",
+            "name": "Loops Take 49",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r50",
+            "name": "Loops Take 50",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r51",
+            "name": "Loops Take 51",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r52",
+            "name": "Loops Take 52",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r53",
+            "name": "Loops Take 53",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r54",
+            "name": "Loops Take 54",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r55",
+            "name": "Loops Take 55",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r56",
+            "name": "Loops Take 56",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r57",
+            "name": "Loops Take 57",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r58",
+            "name": "Loops Take 58",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r59",
+            "name": "Loops Take 59",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r60",
+            "name": "Loops Take 60",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r61",
+            "name": "Loops Take 61",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r62",
+            "name": "Loops Take 62",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r63",
+            "name": "Loops Take 63",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Sixty-four recordings on each of two tracks",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          },
+          {
+            "id": "t10",
+            "name": "Vocals",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": []
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r0",
+            "name": "Loops Take 0",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r2",
+            "name": "Loops Take 2",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r3",
+            "name": "Loops Take 3",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r4",
+            "name": "Loops Take 4",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r5",
+            "name": "Loops Take 5",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r6",
+            "name": "Loops Take 6",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r7",
+            "name": "Loops Take 7",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r8",
+            "name": "Loops Take 8",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r9",
+            "name": "Loops Take 9",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r10",
+            "name": "Loops Take 10",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r11",
+            "name": "Loops Take 11",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r12",
+            "name": "Loops Take 12",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r13",
+            "name": "Loops Take 13",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r14",
+            "name": "Loops Take 14",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r15",
+            "name": "Loops Take 15",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r16",
+            "name": "Loops Take 16",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r17",
+            "name": "Loops Take 17",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r18",
+            "name": "Loops Take 18",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r19",
+            "name": "Loops Take 19",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r20",
+            "name": "Loops Take 20",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r21",
+            "name": "Loops Take 21",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r22",
+            "name": "Loops Take 22",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r23",
+            "name": "Loops Take 23",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r24",
+            "name": "Loops Take 24",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r25",
+            "name": "Loops Take 25",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r26",
+            "name": "Loops Take 26",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r27",
+            "name": "Loops Take 27",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r28",
+            "name": "Loops Take 28",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r29",
+            "name": "Loops Take 29",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r30",
+            "name": "Loops Take 30",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r31",
+            "name": "Loops Take 31",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r32",
+            "name": "Loops Take 32",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r33",
+            "name": "Loops Take 33",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r34",
+            "name": "Loops Take 34",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r35",
+            "name": "Loops Take 35",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r36",
+            "name": "Loops Take 36",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r37",
+            "name": "Loops Take 37",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r38",
+            "name": "Loops Take 38",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r39",
+            "name": "Loops Take 39",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r40",
+            "name": "Loops Take 40",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r41",
+            "name": "Loops Take 41",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r42",
+            "name": "Loops Take 42",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r43",
+            "name": "Loops Take 43",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r44",
+            "name": "Loops Take 44",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r45",
+            "name": "Loops Take 45",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r46",
+            "name": "Loops Take 46",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r47",
+            "name": "Loops Take 47",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r48",
+            "name": "Loops Take 48",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r49",
+            "name": "Loops Take 49",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r50",
+            "name": "Loops Take 50",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r51",
+            "name": "Loops Take 51",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r52",
+            "name": "Loops Take 52",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r53",
+            "name": "Loops Take 53",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r54",
+            "name": "Loops Take 54",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r55",
+            "name": "Loops Take 55",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r56",
+            "name": "Loops Take 56",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r57",
+            "name": "Loops Take 57",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r58",
+            "name": "Loops Take 58",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r59",
+            "name": "Loops Take 59",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r60",
+            "name": "Loops Take 60",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r61",
+            "name": "Loops Take 61",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r62",
+            "name": "Loops Take 62",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r63",
+            "name": "Loops Take 63",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r100",
+            "name": "Loops Take 100",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r101",
+            "name": "Loops Take 101",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r102",
+            "name": "Loops Take 102",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r103",
+            "name": "Loops Take 103",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r104",
+            "name": "Loops Take 104",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r105",
+            "name": "Loops Take 105",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r106",
+            "name": "Loops Take 106",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r107",
+            "name": "Loops Take 107",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r108",
+            "name": "Loops Take 108",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r109",
+            "name": "Loops Take 109",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r110",
+            "name": "Loops Take 110",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r111",
+            "name": "Loops Take 111",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r112",
+            "name": "Loops Take 112",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r113",
+            "name": "Loops Take 113",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r114",
+            "name": "Loops Take 114",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r115",
+            "name": "Loops Take 115",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r116",
+            "name": "Loops Take 116",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r117",
+            "name": "Loops Take 117",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r118",
+            "name": "Loops Take 118",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r119",
+            "name": "Loops Take 119",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r120",
+            "name": "Loops Take 120",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r121",
+            "name": "Loops Take 121",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r122",
+            "name": "Loops Take 122",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r123",
+            "name": "Loops Take 123",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r124",
+            "name": "Loops Take 124",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r125",
+            "name": "Loops Take 125",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r126",
+            "name": "Loops Take 126",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r127",
+            "name": "Loops Take 127",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r128",
+            "name": "Loops Take 128",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r129",
+            "name": "Loops Take 129",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r130",
+            "name": "Loops Take 130",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r131",
+            "name": "Loops Take 131",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r132",
+            "name": "Loops Take 132",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r133",
+            "name": "Loops Take 133",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r134",
+            "name": "Loops Take 134",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r135",
+            "name": "Loops Take 135",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r136",
+            "name": "Loops Take 136",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r137",
+            "name": "Loops Take 137",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r138",
+            "name": "Loops Take 138",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r139",
+            "name": "Loops Take 139",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r140",
+            "name": "Loops Take 140",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r141",
+            "name": "Loops Take 141",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r142",
+            "name": "Loops Take 142",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r143",
+            "name": "Loops Take 143",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r144",
+            "name": "Loops Take 144",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r145",
+            "name": "Loops Take 145",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r146",
+            "name": "Loops Take 146",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r147",
+            "name": "Loops Take 147",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r148",
+            "name": "Loops Take 148",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r149",
+            "name": "Loops Take 149",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r150",
+            "name": "Loops Take 150",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r151",
+            "name": "Loops Take 151",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r152",
+            "name": "Loops Take 152",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r153",
+            "name": "Loops Take 153",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r154",
+            "name": "Loops Take 154",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r155",
+            "name": "Loops Take 155",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r156",
+            "name": "Loops Take 156",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r157",
+            "name": "Loops Take 157",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r158",
+            "name": "Loops Take 158",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r159",
+            "name": "Loops Take 159",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r160",
+            "name": "Loops Take 160",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r161",
+            "name": "Loops Take 161",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r162",
+            "name": "Loops Take 162",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r163",
+            "name": "Loops Take 163",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t10",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Sixty-five recordings on one track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r0",
+            "name": "Loops Take 0",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r2",
+            "name": "Loops Take 2",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r3",
+            "name": "Loops Take 3",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r4",
+            "name": "Loops Take 4",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r5",
+            "name": "Loops Take 5",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r6",
+            "name": "Loops Take 6",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r7",
+            "name": "Loops Take 7",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r8",
+            "name": "Loops Take 8",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r9",
+            "name": "Loops Take 9",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r10",
+            "name": "Loops Take 10",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r11",
+            "name": "Loops Take 11",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r12",
+            "name": "Loops Take 12",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r13",
+            "name": "Loops Take 13",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r14",
+            "name": "Loops Take 14",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r15",
+            "name": "Loops Take 15",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r16",
+            "name": "Loops Take 16",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r17",
+            "name": "Loops Take 17",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r18",
+            "name": "Loops Take 18",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r19",
+            "name": "Loops Take 19",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r20",
+            "name": "Loops Take 20",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r21",
+            "name": "Loops Take 21",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r22",
+            "name": "Loops Take 22",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r23",
+            "name": "Loops Take 23",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r24",
+            "name": "Loops Take 24",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r25",
+            "name": "Loops Take 25",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r26",
+            "name": "Loops Take 26",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r27",
+            "name": "Loops Take 27",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r28",
+            "name": "Loops Take 28",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r29",
+            "name": "Loops Take 29",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r30",
+            "name": "Loops Take 30",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r31",
+            "name": "Loops Take 31",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r32",
+            "name": "Loops Take 32",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r33",
+            "name": "Loops Take 33",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r34",
+            "name": "Loops Take 34",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r35",
+            "name": "Loops Take 35",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r36",
+            "name": "Loops Take 36",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r37",
+            "name": "Loops Take 37",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r38",
+            "name": "Loops Take 38",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r39",
+            "name": "Loops Take 39",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r40",
+            "name": "Loops Take 40",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r41",
+            "name": "Loops Take 41",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r42",
+            "name": "Loops Take 42",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r43",
+            "name": "Loops Take 43",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r44",
+            "name": "Loops Take 44",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r45",
+            "name": "Loops Take 45",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r46",
+            "name": "Loops Take 46",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r47",
+            "name": "Loops Take 47",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r48",
+            "name": "Loops Take 48",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r49",
+            "name": "Loops Take 49",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r50",
+            "name": "Loops Take 50",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r51",
+            "name": "Loops Take 51",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r52",
+            "name": "Loops Take 52",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r53",
+            "name": "Loops Take 53",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r54",
+            "name": "Loops Take 54",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r55",
+            "name": "Loops Take 55",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r56",
+            "name": "Loops Take 56",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r57",
+            "name": "Loops Take 57",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r58",
+            "name": "Loops Take 58",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r59",
+            "name": "Loops Take 59",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r60",
+            "name": "Loops Take 60",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r61",
+            "name": "Loops Take 61",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r62",
+            "name": "Loops Take 62",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r63",
+            "name": "Loops Take 63",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          },
+          {
+            "id": "r64",
+            "name": "Loops Take 64",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": "sample_take_count"
+    },
+    {
+      "name": "Recording without a track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": "sample_track"
+    },
+    {
+      "name": "Recording on a track that does not exist",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "nope",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": "sample_track"
+    },
+    {
+      "name": "Recording on an instrument track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t1",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": "sample_track"
+    },
+    {
+      "name": "Import naming a track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import",
+            "track_id": "t9"
+          }
+        ]
+      },
+      "error": "sample_origin"
+    },
+    {
+      "name": "Recording without recorded_at_ticks",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "recording",
+            "track_id": "t9"
+          }
+        ]
+      },
+      "error": "sample_recorded_at"
+    },
+    {
+      "name": "Import naming a recorded_at_ticks",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Loops",
+            "instrument": "audio",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "audio_clips": [
+              {
+                "id": "a1",
+                "sample_id": "s1",
+                "start_ticks": 0,
+                "offset_samples": 0,
+                "slice_samples": 120000,
+                "length_samples": 120000,
+                "loop": false,
+                "gain_db": 0,
+                "fade_in_samples": 0,
+                "fade_out_samples": 0
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Break",
+            "sample_rate": 48000,
+            "channels": 2,
+            "length_samples": 120000,
+            "origin": "import"
+          },
+          {
+            "id": "r1",
+            "name": "Loops Take 1",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import",
+            "recorded_at_ticks": 0
+          }
+        ]
+      },
+      "error": "sample_origin"
     }
   ]
 }

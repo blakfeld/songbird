@@ -28,6 +28,7 @@
 - *Why:* MediaRecorder produces lossy, compressed, variable-latency output with no sample-clock timestamps. The worklet gives raw PCM on the same `AudioContext` clock as playback, which is what makes D4 possible.
 - `getUserMedia` constraints are `{deviceId, channelCount: 1|2, echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: ctx.sampleRate}`.
 - The `AudioContext` is created with `latencyHint: "interactive"`, which is already the Tone default.
+- **The Content Security Policy is unchanged.** Tone's `standardized-audio-context` wrapper loads worklet modules through blob URLs, which `script-src` blocks. The worklet is therefore loaded on, and its node built against, the native `AudioContext` beneath Tone's wrapper, so the module loads from `'self'`. Wrapper and native nodes can't be connected, so each input stream gets two sources: a native one feeding the recorder, and a wrapper one feeding the monitor gain and `InsertChain`. That also keeps recordings dry by construction. *Alternative:* adding `blob:` to `script-src`. It was rejected so that recording doesn't weaken the policy.
 
 ### D2. Latency compensation and placement
 - The recording start is the context frame at which the transport reached the punch-in point. The engine records `{transportSeconds, contextTime}` when the take begins.
@@ -47,6 +48,10 @@
   2. Inside one store gesture, recorded `samples` entries (`origin: "recording"`, `track_id`) are added, overlapping clips in the recorded span are trimmed or split (a new `replaceSpan` in the foundation's `audioClipOps`), and one clip is added for the span, playing the last pass.
   3. `endGesture` → one undo step.
 - If writing audio fails (quota), the take is discarded, an error is shown, and the song is unchanged.
+- **Past the end:** with looping off, an audio take suppresses the transport's stop-at-end, so playback runs on past the last measure. When the take ends, the same gesture extends the song to cover the clip, capped at 128 measures, which is where the auto-stop fires. This keeps a fresh 1-measure song usable for recording. MIDI takes keep the existing stop-at-end.
+- **Takes stay in song time:** each recorded sample stores `recorded_at_ticks`, the song position of its first frame after placement. Switching a clip to another take sets `offset_samples` from the clip's song position minus that take's `recorded_at_ticks`, clamped to the take. That way, a punched-in or split clip keeps playing what was recorded at that moment. *Alternative:* deriving the start from the clip that created the take. It was rejected because later edits erase it.
+- **Seeks and sliver passes:** with looping off, a seek's `"wrap"` event ends the take instead of starting a pass. A final loop pass shorter than one beat is dropped, so a Stop just after the restart doesn't replace a full pass on the lane.
+- **Deleting a track:** `deleteTrack` removes the track's unused takes and turns takes still used elsewhere into imports, so the song never holds a dangling `track_id`.
 
 ### D4. Monitoring
 - While Monitor is on, the track's `MediaStreamAudioSourceNode` is connected into a monitor `Gain` → the track `InsertChain` input. The connection is made once per track while monitoring, and is independent of the transport.

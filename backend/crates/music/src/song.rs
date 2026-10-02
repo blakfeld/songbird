@@ -36,6 +36,8 @@ pub const MAX_PAD_GAIN_DB: f64 = 12.0;
 pub const MAX_PAD_PITCH_SEMITONES: i32 = 24;
 pub const DEFAULT_ROOT_NOTE: i32 = 60;
 pub const MAX_SAMPLES: usize = 256;
+pub const MAX_TAKES_PER_TRACK: usize = 64;
+pub const RECORDING_ORIGIN: &str = "recording";
 pub const MAX_AUDIO_CLIPS: usize = 256;
 pub const SAMPLE_NAME_MAX: usize = 80;
 pub const MIN_SAMPLE_RATE: u32 = 22_050;
@@ -455,9 +457,21 @@ pub struct Sample {
     pub sample_rate: u32,
     pub channels: u8,
     pub length_samples: u32,
-    /// Open on purpose so later changes can add origins such as recordings
-    /// without a document version bump; `"import"` is the only one so far.
+    /// Open on purpose so later changes can add origins without a document
+    /// version bump; `"import"` and `"recording"` are the ones so far.
     pub origin: String,
+    /// Names the audio track a take was recorded on, so a track's takes can be
+    /// listed and capped. Only recordings carry it; an import belongs to the
+    /// song, and allowing it there would make the document ambiguous.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub track_id: Option<String>,
+    /// Song position of the take's first frame, so a take swapped onto a clip
+    /// can play what was recorded at the clip's own song time. Only
+    /// recordings carry it; an import has no song position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recorded_at_ticks: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
@@ -519,6 +533,10 @@ pub enum SongErrorKind {
     SampleRate,
     SampleChannels,
     SampleLength,
+    SampleOrigin,
+    SampleTrack,
+    SampleRecordedAt,
+    SampleTakeCount,
     SamplerContent,
     SamplerPadCount,
     SamplerPadRow,
@@ -570,6 +588,10 @@ impl SongErrorKind {
             Self::SampleRate => "sample_rate",
             Self::SampleChannels => "sample_channels",
             Self::SampleLength => "sample_length",
+            Self::SampleOrigin => "sample_origin",
+            Self::SampleTrack => "sample_track",
+            Self::SampleRecordedAt => "sample_recorded_at",
+            Self::SampleTakeCount => "sample_take_count",
             Self::SamplerContent => "sampler_content",
             Self::SamplerPadCount => "sampler_pad_count",
             Self::SamplerPadRow => "sampler_pad_row",
@@ -841,6 +863,7 @@ impl Song {
             ));
         }
         let mut by_id = HashMap::new();
+        let mut takes_per_track: HashMap<&str, usize> = HashMap::new();
         for sample in &self.samples {
             let label = format!("samples: sample `{}`", sample.id);
             if by_id.insert(sample.id.as_str(), sample).is_some() {
@@ -880,8 +903,71 @@ impl Song {
                     ),
                 ));
             }
+            self.validate_sample_track(sample, &label, &mut takes_per_track)?;
         }
         Ok(by_id)
+    }
+
+    fn validate_sample_track<'a>(
+        &self,
+        sample: &'a Sample,
+        label: &str,
+        takes_per_track: &mut HashMap<&'a str, usize>,
+    ) -> Result<(), SongError> {
+        let track_id = match (
+            sample.origin == RECORDING_ORIGIN,
+            sample.track_id.as_deref(),
+        ) {
+            (true, Some(track_id)) => track_id,
+            (true, None) => {
+                return Err(invalid(
+                    SongErrorKind::SampleTrack,
+                    format!("{label}: a recording needs a track_id"),
+                ));
+            }
+            (false, Some(_)) => {
+                return Err(invalid(
+                    SongErrorKind::SampleOrigin,
+                    format!("{label}: track_id is only allowed on recordings"),
+                ));
+            }
+            (false, None) => {
+                if sample.recorded_at_ticks.is_some() {
+                    return Err(invalid(
+                        SongErrorKind::SampleOrigin,
+                        format!("{label}: recorded_at_ticks is only allowed on recordings"),
+                    ));
+                }
+                return Ok(());
+            }
+        };
+        let Some(track) = self.tracks.iter().find(|t| t.id == track_id) else {
+            return Err(invalid(
+                SongErrorKind::SampleTrack,
+                format!("{label}: track_id `{track_id}` names no track"),
+            ));
+        };
+        if track.instrument != AUDIO_INSTRUMENT_ID {
+            return Err(invalid(
+                SongErrorKind::SampleTrack,
+                format!("{label}: track_id `{track_id}` is not an audio track"),
+            ));
+        }
+        if sample.recorded_at_ticks.is_none() {
+            return Err(invalid(
+                SongErrorKind::SampleRecordedAt,
+                format!("{label}: a recording needs recorded_at_ticks"),
+            ));
+        }
+        let takes = takes_per_track.entry(track_id).or_default();
+        *takes += 1;
+        if *takes > MAX_TAKES_PER_TRACK {
+            return Err(invalid(
+                SongErrorKind::SampleTakeCount,
+                format!("{label}: at most {MAX_TAKES_PER_TRACK} recorded samples per track"),
+            ));
+        }
+        Ok(())
     }
 
     fn validate_track(
@@ -1925,6 +2011,8 @@ pub(crate) mod tests {
             channels: 2,
             length_samples: 120_000,
             origin: "import".into(),
+            track_id: None,
+            recorded_at_ticks: None,
         }];
         let mut loops = track("t3", "Loops", AUDIO_INSTRUMENT_ID);
         loops.audio_clips = vec![AudioClip {
@@ -1974,6 +2062,92 @@ pub(crate) mod tests {
         assert_eq!(serde_json::to_value(&clip).unwrap()["loop"], json!(true));
     }
 
+    fn take(id: &str, track_id: Option<&str>, origin: &str) -> Sample {
+        Sample {
+            id: id.into(),
+            name: format!("Take {id}"),
+            sample_rate: 48_000,
+            channels: 1,
+            length_samples: 48_000,
+            origin: origin.into(),
+            track_id: track_id.map(Into::into),
+            recorded_at_ticks: (origin == "recording").then_some(0),
+        }
+    }
+
+    fn sample_error(s: &Song) -> &'static str {
+        s.validate(&InstrumentRegistry::builtin())
+            .unwrap_err()
+            .kind()
+            .as_str()
+    }
+
+    #[test]
+    fn recorded_samples_on_an_audio_track_are_valid() {
+        let mut s = audio_song();
+        s.samples.push(take("r1", Some("t3"), "recording"));
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        let value = serde_json::to_value(&s.samples[1]).unwrap();
+        assert_eq!(value["origin"], "recording");
+        assert_eq!(value["track_id"], "t3");
+        assert!(serde_json::to_value(&s.samples[0])
+            .unwrap()
+            .get("track_id")
+            .is_none());
+    }
+
+    #[test]
+    fn recorded_samples_need_an_existing_audio_track() {
+        for track_id in [None, Some("missing"), Some("t1")] {
+            let mut s = audio_song();
+            s.samples.push(take("r1", track_id, "recording"));
+            assert_eq!(sample_error(&s), "sample_track", "{track_id:?}");
+        }
+    }
+
+    #[test]
+    fn recordings_need_recorded_at_ticks() {
+        let mut s = audio_song();
+        let mut r = take("r1", Some("t3"), "recording");
+        r.recorded_at_ticks = Some(960);
+        s.samples.push(r);
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&s.samples[1]).unwrap()["recorded_at_ticks"],
+            960
+        );
+        s.samples[1].recorded_at_ticks = None;
+        assert_eq!(sample_error(&s), "sample_recorded_at");
+    }
+
+    #[test]
+    fn imports_cannot_have_recorded_at_ticks() {
+        let mut s = audio_song();
+        s.samples[0].recorded_at_ticks = Some(0);
+        assert_eq!(sample_error(&s), "sample_origin");
+    }
+
+    #[test]
+    fn imports_cannot_name_a_track() {
+        let mut s = audio_song();
+        s.samples.push(take("i2", Some("t3"), "import"));
+        assert_eq!(sample_error(&s), "sample_origin");
+    }
+
+    #[test]
+    fn a_track_holds_at_most_64_recorded_samples() {
+        let mut s = audio_song();
+        let mut other = track("t4", "Other", AUDIO_INSTRUMENT_ID);
+        other.audio_clips = vec![];
+        s.tracks.push(other);
+        s.samples
+            .extend((0..64).map(|i| take(&format!("r{i}"), Some("t3"), "recording")));
+        s.samples.push(take("o1", Some("t4"), "recording"));
+        s.validate(&InstrumentRegistry::builtin()).unwrap();
+        s.samples.push(take("r64", Some("t3"), "recording"));
+        assert_eq!(sample_error(&s), "sample_take_count");
+    }
+
     #[test]
     fn audio_errors_name_the_track_and_the_setting() {
         let mut s = audio_song();
@@ -2011,6 +2185,8 @@ pub(crate) mod tests {
             channels: 1,
             length_samples: 48_000,
             origin: "import".into(),
+            track_id: None,
+            recorded_at_ticks: None,
         }];
         s.tracks.push(track("t3", "Sampler", instrument));
         s
