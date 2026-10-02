@@ -10,14 +10,16 @@
 - [ ] 2.1 Write `deploy/compose.yaml`:
   - Caddy is the only service with ports, and the other services sit on an internal network.
   - Images are `ghcr.io/blakfeld/songbird-{backend,frontend}:${SONGBIRD_TAG}`.
+  - The backend's `environment:` hard-sets `SONGBIRD_ENV: production` (D2).
   - Use per-service `env_file`, `restart: unless-stopped`, log rotation, the `caddy-data`/`caddy-config` volumes, and health-ordered `depends_on` (D2, D8). No data volume.
   - Once the foundation ships: `SONGBIRD_DATABASE_URL: ${SONGBIRD_DATABASE_URL:?}` on the backend and a read-only mount of `certs/` for the database CA (D2, D6).
 
-  Verify that `docker compose -f deploy/compose.yaml config` validates.
-- [ ] 2.2 Write `deploy/Caddyfile`: the domain, HSTS, compression, `basic_auth` on everything but `/healthz` when `SONGBIRD_GATE` is on, and `reverse_proxy frontend:3000` with no `trusted_proxies` (D2, D3). Write `deploy/.env.example` documenting every variable, including `SONGBIRD_DATABASE_URL` as a secret with `sslmode=verify-full&sslrootcert=`, and `SONGBIRD_TRUST_PROXY=true` with a comment that it is valid only while Caddy is outermost. Verify the stack locally with `SONGBIRD_DOMAIN=localhost`, using Caddy's internal CA and locally built images tagged `local`:
+  Verify that `docker compose -f deploy/compose.yaml config` validates, and that it shows `SONGBIRD_ENV: production` for the backend even when the env file sets `SONGBIRD_ENV=development`.
+- [ ] 2.2 Write `deploy/Caddyfile`: the domain, HSTS, compression, `basic_auth` on everything but `/healthz` when `SONGBIRD_GATE` is on, and `reverse_proxy frontend:3000` with no `trusted_proxies` (D2, D3). Write `deploy/.env.example` documenting every variable, including `SONGBIRD_DATABASE_URL` as a secret with `sslmode=verify-full&sslrootcert=`, `SONGBIRD_TRUST_PROXY=true` with a comment that it is valid only while Caddy is outermost, `SONGBIRD_MASTER_KEYS` as a secret generated with `api keys generate-master-key`, and the optional `SONGBIRD_OPENAI_MODEL`. It has no `ANTHROPIC_API_KEY` or `SONGBIRD_AI_PROVIDER` (D8). Verify the stack locally with `SONGBIRD_DOMAIN=localhost`, using Caddy's internal CA and locally built images tagged `local`:
   - `/healthz` returns 200 without credentials;
   - `/studio` and `POST /api/v1/patterns/generate` return 401 without credentials and work with them;
-  - a 3-minute mock delay completes, using `SONGBIRD_AI_PROVIDER=mock` with an artificial delay or a long timeout setting;
+  - a 3-minute mock delay completes. Production mode rejects mock providers, so run this with an uncommitted local compose override that sets `SONGBIRD_ENV=development`, `SONGBIRD_AI_PROVIDER=user-mock`, a test-only keyring, and an artificial delay or a long timeout setting;
+  - with a non-blank `ANTHROPIC_API_KEY` in the env file, the backend refuses to start and the error names it;
   - a request sent with `X-Forwarded-For: 203.0.113.9` reaches the backend with the real client address as the first entry and without `203.0.113.9` (check with a request-logging echo container in place of the backend, or the backend's debug log). This also confirms that the Next rewrite keeps Caddy's entry first;
   - with `SONGBIRD_DATABASE_URL` unset (once the guard is in), `docker compose up` fails naming it.
 - [ ] 2.3 Set up the managed Postgres (D6), once `add-database-foundation` has merged: an instance in the VPS's region with automated backups and point-in-time restore of at least 7 days, TLS-only connections, trusted sources limited to the VPS, a `songbird_app` role with `CONNECT` on `songbird` and ownership of its `public` schema only, and the provider CA in `/opt/songbird/certs/`. Write the role SQL and the restore runbook into `deploy/README.md`. Verify:
@@ -53,7 +55,9 @@
   - cloud-init usage;
   - creating `.env` (hash generation with `caddy hash-password`);
   - GitHub secrets and the environment;
-  - setting the Anthropic spend limit;
+  - per-user AI keys: users add their own key at `/settings/ai-keys`, and AI actions stay disabled until they do;
+  - generating `SONGBIRD_MASTER_KEYS`, keeping it out of the repo and database backups with an offline copy, rotating it (`api keys rotate`), recovering from its loss (`api keys purge --version`), and that backups keep encrypted user keys until they age out;
+  - a post-deploy step to revoke the old operator Anthropic key in the Anthropic console;
   - deploy, manual redeploy, and rollback;
   - choosing a managed Postgres provider, creating the least-privilege role, the TLS and trusted-sources setup, and the connection-limit headroom for `SONGBIRD_DATABASE_MAX_CONNECTIONS`;
   - the restore procedure (point-in-time to the `deploys.log` time, or a snapshot), the snapshot checklist for releases that add a migration, and that deleted data stays in backups until it ages out;
@@ -69,9 +73,11 @@
   - 401 without credentials;
   - `/healthz` 200 without credentials;
   - ports 3000 and 8080 closed from outside;
-  - the Studio loads and a generation succeeds with credentials;
+  - the Studio loads, and a generation succeeds for a user who has added their own key;
+  - a user without a key sees AI actions disabled, with a link to `/settings/ai-keys`;
+  - the old operator Anthropic key shows as revoked in the Anthropic console;
   - after a reboot, `/healthz` is 200 again;
   - once `add-user-accounts` is live, a login with a spoofed `X-Forwarded-For` is throttled by the real client address.
 
   Verify that every check passes and record the results in the PR.
-- [ ] 5.3 Run `code-reviewer` on the branch, with attention to secret handling, the forced-command script, the firewall, the database role and TLS settings, and the proxy-trust setting. Verify that the review findings are resolved.
+- [ ] 5.3 Run `code-reviewer` on the branch, with attention to secret handling (including the master key and the absence of any operator AI key), the hard-set `SONGBIRD_ENV`, the forced-command script, the firewall, the database role and TLS settings, and the proxy-trust setting. Verify that the review findings are resolved.

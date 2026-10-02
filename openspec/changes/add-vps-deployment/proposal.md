@@ -2,7 +2,7 @@
 
 ## Why
 
-Songbird only runs on a developer's machine. To use it from anywhere, or show it to anyone, it needs a production deployment. The app is two stateless containers, so one small VPS is the cheapest fit, at about $5 a month, with the data in a provider-managed Postgres whose automated backups the provider runs. Serverless hosting doesn't fit well: long AI requests run up to 10 minutes through the Next proxy. Every API endpoint is currently unauthenticated and the AI provider is paid, so the deployment must also keep strangers out until `add-user-accounts` ships.
+Songbird only runs on a developer's machine. To use it from anywhere, or show it to anyone, it needs a production deployment. The app is two stateless containers, so one small VPS is the cheapest fit, at about $5 a month, with the data in a provider-managed Postgres whose automated backups the provider runs. Serverless hosting doesn't fit well: long AI requests run up to 10 minutes through the Next proxy. Every API endpoint is currently unauthenticated, so the deployment must also keep strangers out until `add-user-accounts` ships. AI requests run on each user's own provider key (`add-user-api-keys`), so the deployment must never hold an operator AI key, and must not be switchable into the development mode that would accept one.
 
 ## What Changes
 
@@ -13,6 +13,7 @@ Songbird only runs on a developer's machine. To use it from anywhere, or show it
   - restart policies and log rotation;
   - Caddy replaces any client-supplied `X-Forwarded-For`, so the backend can trust it for login throttling (`SONGBIRD_TRUST_PROXY=true` on this server only).
 - **Access gate.** Caddy puts HTTP basic auth in front of every path except `/healthz`. The credentials are configured on the server and never stored in the repo. Turning the gate off is a single setting, for after accounts ship.
+- **Per-user AI keys.** The production compose file hard-sets `SONGBIRD_ENV: production` for the backend, so editing `.env` on the server cannot switch it to development mode, where operator providers are allowed. The server holds no `ANTHROPIC_API_KEY` or `SONGBIRD_AI_PROVIDER`; production rejects both. `SONGBIRD_MASTER_KEYS`, which encrypts users' stored keys, is a server-only secret kept out of the repository and out of database backups.
 - **Images built in CI.** A GitHub Actions workflow builds the backend and frontend images on each push to `main` that passes CI, and pushes them to GHCR, tagged with the commit SHA and `main`.
 - **Deploy and rollback.** The same workflow then deploys over SSH, with a forced-command deploy key: the server pulls the SHA-tagged images, restarts, and waits for `/healthz`. If the health check fails, it rolls back to the previous SHA. Any earlier SHA can be redeployed by hand.
 - **Server provisioning.** A `cloud-init` file sets up a fresh Ubuntu VPS:
@@ -21,7 +22,7 @@ Songbird only runs on a developer's machine. To use it from anywhere, or show it
 - **Database and backups.** Once `add-database-foundation` lands, production uses a provider-managed Postgres with the provider's automated backups and point-in-time restore. `SONGBIRD_DATABASE_URL` is a server-only secret; the connection requires verified TLS; the app uses a least-privilege role; and only the VPS may connect. Each deploy records a restore point, and rolling back a release that migrated the database is a provider point-in-time restore or a snapshot taken before it. A documented, rehearsed restore procedure is included.
 - **Docs.** `deploy/README.md` covers:
   - choosing a VPS, DNS, first-time setup, and secrets;
-  - setting the AI provider and an Anthropic spend limit;
+  - per-user AI keys (users add theirs at `/settings/ai-keys`), generating, storing, rotating, and recovering from loss of the master key, and revoking the old operator Anthropic key;
   - setting up the managed database (role, TLS, trusted sources) and when `SONGBIRD_TRUST_PROXY` is safe;
   - deploying, rolling back, restoring, and rotating the basic-auth password;
   - cost estimates.
@@ -56,5 +57,5 @@ Songbird only runs on a developer's machine. To use it from anywhere, or show it
   - a VPS of about $4–6 a month (Hetzner CX22 class);
   - a managed Postgres plan with automated backups and point-in-time restore, from about $15 a month at the smallest size;
   - a domain;
-  - AI provider usage, which is the main variable cost.
+  - no AI provider usage for the operator: each user pays for their own key.
 - **No application code changes.**
