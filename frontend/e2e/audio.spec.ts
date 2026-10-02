@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { unzipSync } from "fflate";
 import { expect, test, type Page } from "@playwright/test";
 
 // A stereo sine with identical channels, written as 16-bit PCM so any browser can decode it.
@@ -184,4 +185,46 @@ test("measure how loud a centre-panned stereo sample is in the rendered mix", as
   testInfo.annotations.push({ type: "level", description: `mix RMS ${mixDb.toFixed(2)} dB, source RMS ${sourceDb.toFixed(2)} dB, diff ${diff.toFixed(2)} dB` });
   console.log(`LEVEL mix=${mixDb.toFixed(2)} source=${sourceDb.toFixed(2)} diff=${diff.toFixed(2)}`);
   expect(Number.isFinite(mixDb)).toBe(true);
+});
+
+test("assign a sample to a pad, play a note on it, and find the sample in the downloaded bundle", async ({ page }, testInfo) => {
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(e.message));
+  await trackSourceStarts(page);
+
+  await page.goto("/studio");
+  await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
+  const { row } = await importTone(page);
+
+  await page.getByRole("button", { name: "Add track" }).click();
+  await page.getByRole("menuitem", { name: "Sampler (pads)", exact: true }).click();
+  const dock = page.getByRole("region", { name: /^Editor:/ });
+  const pad1 = dock.getByRole("button", { name: "Pad 1, empty", exact: true });
+  await expect(pad1).toBeVisible();
+
+  await row.dragTo(pad1);
+  await expect(dock.getByRole("button", { name: "Pad 1, tone", exact: true })).toBeVisible();
+
+  const cell = dock.getByRole("button", { name: "Pad 1, measure 1, step 1", exact: true });
+  await cell.click();
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+
+  // Placing a note auditions the pad, so the count is taken after that and Play must add a start beyond it.
+  await expect.poll(() => starts(page)).toBeGreaterThan(0);
+  const auditioned = await starts(page);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(() => starts(page), { timeout: 10_000 }).toBeGreaterThan(auditioned);
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download project" }).click();
+  const bundle = await download;
+  expect(bundle.suggestedFilename()).toMatch(/\.songbird\.zip$/);
+  const path = testInfo.outputPath("pads-bundle.zip");
+  await bundle.saveAs(path);
+  const entries = Object.keys(unzipSync(new Uint8Array(readFileSync(path))));
+  expect(entries).toContain("project.json");
+  expect(entries.filter((n) => /^audio\/.+\.wav$/.test(n))).toHaveLength(1);
+  expect(problems).toEqual([]);
 });

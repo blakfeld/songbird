@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::instruments::sampler::{KEYS_ID, PADS_ID, PAD_COUNT, SAMPLER_KEYS, SAMPLER_PADS};
 use crate::instruments::{Instrument, InstrumentKind, InstrumentRegistry};
 use crate::meter::{TimeSignature, MAX_SWING, MAX_TEMPO_BPM, MIN_SWING, MIN_TEMPO_BPM};
 use crate::pattern::Note;
@@ -26,6 +27,14 @@ pub const MAX_CLIPS: usize = 256;
 /// instrument registry, so older builds reject such songs instead of silently
 /// dropping the audio.
 pub const AUDIO_INSTRUMENT_ID: &str = "audio";
+/// Reserved like `audio`: never in the registry, so older builds reject such
+/// songs instead of playing them silently.
+pub const SAMPLER_KEYS_ID: &str = KEYS_ID;
+pub const SAMPLER_PADS_ID: &str = PADS_ID;
+pub const MIN_PAD_GAIN_DB: f64 = -24.0;
+pub const MAX_PAD_GAIN_DB: f64 = 12.0;
+pub const MAX_PAD_PITCH_SEMITONES: i32 = 24;
+pub const DEFAULT_ROOT_NOTE: i32 = 60;
 pub const MAX_SAMPLES: usize = 256;
 pub const MAX_AUDIO_CLIPS: usize = 256;
 pub const SAMPLE_NAME_MAX: usize = 80;
@@ -211,6 +220,68 @@ pub struct Track {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub sound: Option<TrackSound>,
+    /// Only sampler tracks hold this; it stays empty elsewhere so songs
+    /// without samplers serialize exactly as before.
+    #[serde(default, skip_serializing_if = "SamplerSettings::is_empty")]
+    #[ts(as = "Option<SamplerSettings>", optional)]
+    pub sampler: SamplerSettings,
+}
+
+/// Each half belongs to one sampler kind, so a track never carries the other
+/// kind's settings.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct SamplerSettings {
+    /// Optional because a keys track is valid before any setting is touched;
+    /// an explicit null is malformed so the browser and server agree on it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "reject_null_keys"
+    )]
+    #[ts(optional)]
+    pub keys: Option<KeysSettings>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PadSettings>>", optional)]
+    pub pads: Vec<PadSettings>,
+}
+
+fn reject_null_keys<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<KeysSettings>, D::Error> {
+    KeysSettings::deserialize(deserializer).map(Some)
+}
+
+impl SamplerSettings {
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_none() && self.pads.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct KeysSettings {
+    /// Null when no sample is chosen, so the track plays silently.
+    #[serde(default)]
+    pub sample_id: Option<String>,
+    /// A wide integer on the wire so an out-of-range value is reported as
+    /// `sampler_range` rather than failing deserialization.
+    #[serde(default = "default_root_note")]
+    pub root_note: i32,
+    #[serde(default)]
+    pub one_shot: bool,
+}
+
+fn default_root_note() -> i32 {
+    DEFAULT_ROOT_NOTE
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct PadSettings {
+    pub row_id: String,
+    pub sample_id: String,
+    #[serde(default)]
+    pub gain_db: f64,
+    #[serde(default)]
+    pub pitch_semitones: i32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
@@ -440,6 +511,11 @@ pub enum SongErrorKind {
     SampleRate,
     SampleChannels,
     SampleLength,
+    SamplerContent,
+    SamplerPadCount,
+    SamplerPadRow,
+    SamplerSample,
+    SamplerRange,
     AudioTrackContent,
     AudioClipCount,
     AudioClipSample,
@@ -485,6 +561,11 @@ impl SongErrorKind {
             Self::SampleRate => "sample_rate",
             Self::SampleChannels => "sample_channels",
             Self::SampleLength => "sample_length",
+            Self::SamplerContent => "sampler_content",
+            Self::SamplerPadCount => "sampler_pad_count",
+            Self::SamplerPadRow => "sampler_pad_row",
+            Self::SamplerSample => "sampler_sample",
+            Self::SamplerRange => "sampler_range",
             Self::AudioTrackContent => "audio_track_content",
             Self::AudioClipCount => "audio_clip_count",
             Self::AudioClipSample => "audio_clip_sample",
@@ -543,18 +624,55 @@ pub struct ValidTrack<'a> {
     pub notes: Vec<Note>,
 }
 
-/// Audio tracks have no registry entry, so consumers must decide explicitly what
-/// to do with them instead of dereferencing an instrument that is not there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SamplerKind {
+    Keys,
+    Pads,
+}
+
+impl SamplerKind {
+    pub fn instrument(self) -> &'static Instrument {
+        match self {
+            Self::Keys => &SAMPLER_KEYS,
+            Self::Pads => &SAMPLER_PADS,
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Self> {
+        match id {
+            SAMPLER_KEYS_ID => Some(Self::Keys),
+            SAMPLER_PADS_ID => Some(Self::Pads),
+            _ => None,
+        }
+    }
+}
+
+/// Audio and sampler tracks have no registry entry, so consumers must decide
+/// explicitly what to do with them instead of dereferencing an instrument that
+/// is not there.
 #[derive(Debug, Clone, Copy)]
 pub enum TrackInstrument {
     Instrument(&'static Instrument),
     Audio,
+    Sampler(SamplerKind),
 }
 
 impl TrackInstrument {
+    /// Registry instruments only: samplers are deliberately absent so the chat
+    /// planner and generation never treat them as something a model can write.
     pub fn instrument(self) -> Option<&'static Instrument> {
         match self {
             Self::Instrument(instrument) => Some(instrument),
+            Self::Audio | Self::Sampler(_) => None,
+        }
+    }
+
+    /// Everything that has rows to hold notes, which includes the built-in
+    /// sampler row sets.
+    pub fn rows_definition(self) -> Option<&'static Instrument> {
+        match self {
+            Self::Instrument(instrument) => Some(instrument),
+            Self::Sampler(kind) => Some(kind.instrument()),
             Self::Audio => None,
         }
     }
@@ -563,6 +681,10 @@ impl TrackInstrument {
 impl ValidTrack<'_> {
     pub fn is_audio(&self) -> bool {
         matches!(self.instrument, TrackInstrument::Audio)
+    }
+
+    pub fn is_sampler(&self) -> bool {
+        matches!(self.instrument, TrackInstrument::Sampler(_))
     }
 }
 
@@ -778,21 +900,43 @@ impl Song {
                 format!("{label}: pan must be -1 to 1, got {}", track.pan),
             ));
         }
+        let sampler_kind = SamplerKind::from_id(&track.instrument);
+        let misplaced_sampler = sampler_kind.is_none() && !track.sampler.is_empty();
+        let misplaced = || {
+            invalid(
+                SongErrorKind::SamplerContent,
+                format!("{label}: sampler settings belong on sampler tracks only"),
+            )
+        };
         if track.instrument == AUDIO_INSTRUMENT_ID {
+            if misplaced_sampler {
+                return Err(misplaced());
+            }
             self.validate_audio_track(&label, track, samples, clip_ids)?;
             return Ok(TrackInstrument::Audio);
         }
-        let instrument =
-            registry
-                .get(&track.instrument)
-                .ok_or_else(|| SongError::UnknownInstrument {
-                    message: format!("{label}: unknown instrument `{}`", track.instrument),
+        let (instrument, resolved) = match sampler_kind {
+            Some(kind) => (kind.instrument(), TrackInstrument::Sampler(kind)),
+            None => {
+                let instrument = registry.get(&track.instrument).ok_or_else(|| {
+                    SongError::UnknownInstrument {
+                        message: format!("{label}: unknown instrument `{}`", track.instrument),
+                    }
                 })?;
+                (instrument, TrackInstrument::Instrument(instrument))
+            }
+        };
         if !track.audio_clips.is_empty() {
             return Err(invalid(
                 SongErrorKind::AudioTrackContent,
                 format!("{label}: audio clips belong on audio tracks only"),
             ));
+        }
+        if misplaced_sampler {
+            return Err(misplaced());
+        }
+        if let Some(kind) = sampler_kind {
+            validate_sampler_settings(&label, kind, &track.sampler, samples)?;
         }
         if track.loops.len() > MAX_LOOPS {
             return Err(invalid(
@@ -883,7 +1027,7 @@ impl Song {
         if let Some(sound) = &track.sound {
             validate_sound(&label, sound, instrument)?;
         }
-        Ok(TrackInstrument::Instrument(instrument))
+        Ok(resolved)
     }
 
     fn validate_audio_track(
@@ -1171,6 +1315,105 @@ fn validate_effects(label: &str, effects: &Effects) -> Result<(), SongError> {
     Ok(())
 }
 
+fn validate_sampler_settings(
+    label: &str,
+    kind: SamplerKind,
+    settings: &SamplerSettings,
+    samples: &HashMap<&str, &Sample>,
+) -> Result<(), SongError> {
+    let wrong_half =
+        |detail: &str| invalid(SongErrorKind::SamplerContent, format!("{label}: {detail}"));
+    let missing_sample = |what: String, id: &str| {
+        invalid(
+            SongErrorKind::SamplerSample,
+            format!("{label}: {what} names sample `{id}`, which is not in samples"),
+        )
+    };
+    match kind {
+        SamplerKind::Keys => {
+            if !settings.pads.is_empty() {
+                return Err(wrong_half("a keys sampler has no pads"));
+            }
+            let Some(keys) = &settings.keys else {
+                return Ok(());
+            };
+            if let Some(id) = &keys.sample_id {
+                if !samples.contains_key(id.as_str()) {
+                    return Err(missing_sample("keys".into(), id));
+                }
+            }
+            if !(0..=127).contains(&keys.root_note) {
+                return Err(invalid(
+                    SongErrorKind::SamplerRange,
+                    format!("{label}: root_note must be 0-127, got {}", keys.root_note),
+                ));
+            }
+        }
+        SamplerKind::Pads => {
+            if settings.keys.is_some() {
+                return Err(wrong_half("a pads sampler has no keys settings"));
+            }
+            if settings.pads.len() > PAD_COUNT {
+                return Err(invalid(
+                    SongErrorKind::SamplerPadCount,
+                    format!(
+                        "{label}: at most {PAD_COUNT} pads, got {}",
+                        settings.pads.len()
+                    ),
+                ));
+            }
+            let mut seen = HashSet::new();
+            for pad in &settings.pads {
+                if SAMPLER_PADS.row_index(&pad.row_id).is_none() {
+                    return Err(invalid(
+                        SongErrorKind::SamplerPadRow,
+                        format!(
+                            "{label}: pad row `{}` is not one of pad-1 to pad-{PAD_COUNT}",
+                            pad.row_id
+                        ),
+                    ));
+                }
+                if !seen.insert(pad.row_id.as_str()) {
+                    return Err(invalid(
+                        SongErrorKind::SamplerPadRow,
+                        format!(
+                            "{label}: pad row `{}` is assigned more than once",
+                            pad.row_id
+                        ),
+                    ));
+                }
+                if !samples.contains_key(pad.sample_id.as_str()) {
+                    return Err(missing_sample(
+                        format!("pad `{}`", pad.row_id),
+                        &pad.sample_id,
+                    ));
+                }
+                if !(MIN_PAD_GAIN_DB..=MAX_PAD_GAIN_DB).contains(&pad.gain_db) {
+                    return Err(invalid(
+                        SongErrorKind::SamplerRange,
+                        format!(
+                            "{label}: pad `{}` gain_db must be {MIN_PAD_GAIN_DB}-{MAX_PAD_GAIN_DB}, got {}",
+                            pad.row_id, pad.gain_db
+                        ),
+                    ));
+                }
+                if !(-MAX_PAD_PITCH_SEMITONES..=MAX_PAD_PITCH_SEMITONES)
+                    .contains(&pad.pitch_semitones)
+                {
+                    return Err(invalid(
+                        SongErrorKind::SamplerRange,
+                        format!(
+                            "{label}: pad `{}` pitch_semitones must be -{MAX_PAD_PITCH_SEMITONES} to {MAX_PAD_PITCH_SEMITONES}, got {}",
+                            pad.row_id, pad.pitch_semitones
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_audio_clip_fields(
     label: &str,
     clip: &AudioClip,
@@ -1303,6 +1546,7 @@ pub(crate) mod tests {
             clips: vec![],
             audio_clips: vec![],
             sound: None,
+            sampler: SamplerSettings::default(),
         }
     }
 
@@ -1599,17 +1843,18 @@ pub(crate) mod tests {
         for case in fixture.cases {
             let actual = match serde_json::from_value::<Song>(case.song.clone()) {
                 Ok(song) => song.validate(&registry).err().map(|e| e.kind().as_str()),
-                Err(e) => {
+                Err(_) => {
                     // The key is typed, so a bad tonic or mode is refused while
                     // deserializing; the browser reports the same case as `key`.
                     let mut without_key = case.song.clone();
                     without_key.as_object_mut().unwrap().remove("key");
-                    assert!(
-                        serde_json::from_value::<Song>(without_key).is_ok(),
-                        "{}: does not deserialize: {e}",
-                        case.name
-                    );
-                    Some("key")
+                    if serde_json::from_value::<Song>(without_key).is_ok() {
+                        Some("key")
+                    } else {
+                        // Not a rule of its own: the browser reports a null
+                        // where an object or array belongs the same way.
+                        Some("malformed")
+                    }
                 }
             };
             assert_eq!(actual, case.error.as_deref(), "{}", case.name);
@@ -1739,6 +1984,210 @@ pub(crate) mod tests {
             message.contains("\"Loops\"") && message.contains("filter_cutoff_hz"),
             "{message}"
         );
+    }
+
+    fn sampler_song(instrument: &str) -> Song {
+        let mut s = two_track_song();
+        s.samples = vec![Sample {
+            id: "s1".into(),
+            name: "Hit".into(),
+            sample_rate: 48_000,
+            channels: 1,
+            length_samples: 48_000,
+            origin: "import".into(),
+        }];
+        s.tracks.push(track("t3", "Sampler", instrument));
+        s
+    }
+
+    fn pad(row: &str, sample: &str) -> PadSettings {
+        PadSettings {
+            row_id: row.into(),
+            sample_id: sample.into(),
+            gain_db: 0.0,
+            pitch_semitones: 0,
+        }
+    }
+
+    fn keys(sample: Option<&str>, root_note: i32) -> KeysSettings {
+        KeysSettings {
+            sample_id: sample.map(Into::into),
+            root_note,
+            one_shot: false,
+        }
+    }
+
+    fn sampler_error(s: &Song) -> (&'static str, String) {
+        let e = s.validate(&InstrumentRegistry::builtin()).unwrap_err();
+        (e.kind().as_str(), e.to_string())
+    }
+
+    #[test]
+    fn keys_row_range() {
+        let s = sampler_song(SAMPLER_KEYS_ID);
+        let valid = s.validate(&InstrumentRegistry::builtin()).unwrap();
+        let TrackInstrument::Sampler(kind) = valid.tracks[2].instrument else {
+            panic!("expected a sampler track");
+        };
+        let rows = kind.instrument().rows;
+        assert_eq!(rows.len(), 73);
+        assert_eq!(rows[0].id, "C7");
+        assert_eq!(rows[72].id, "C1");
+    }
+
+    #[test]
+    fn sampler_ids_are_not_in_the_registry() {
+        let registry = InstrumentRegistry::builtin();
+        assert!(registry.get(SAMPLER_KEYS_ID).is_none());
+        assert!(registry.get(SAMPLER_PADS_ID).is_none());
+    }
+
+    #[test]
+    fn a_keys_track_may_have_no_settings_or_no_sample() {
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+        s.tracks[2].sampler.keys = Some(keys(None, 60));
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+        s.tracks[2].sampler.keys = Some(keys(Some("s1"), 127));
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    #[test]
+    fn sampler_settings_default_to_middle_c_and_neutral_pads() {
+        let k: KeysSettings = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(k, keys(None, 60));
+        let p: PadSettings =
+            serde_json::from_value(json!({"row_id": "pad-1", "sample_id": "s1"})).unwrap();
+        assert_eq!(p, pad("pad-1", "s1"));
+    }
+
+    #[test]
+    fn songs_without_samplers_serialize_without_the_sampler_field() {
+        let value = serde_json::to_value(two_track_song()).unwrap();
+        assert!(value["tracks"][0].get("sampler").is_none());
+    }
+
+    #[test]
+    fn pad_sample_must_be_in_the_song() {
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        s.tracks[2].sampler.pads = vec![pad("pad-3", "missing")];
+        let (kind, message) = sampler_error(&s);
+        assert_eq!(kind, "sampler_sample");
+        assert!(
+            message.contains("\"Sampler\"") && message.contains("pad-3"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn keys_sample_must_be_in_the_song() {
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        s.tracks[2].sampler.keys = Some(keys(Some("missing"), 60));
+        assert_eq!(sampler_error(&s).0, "sampler_sample");
+    }
+
+    #[test]
+    fn wrong_kind_tone_knob() {
+        let tone = |tone: Tone| {
+            Some(TrackSound {
+                tone: Some(tone),
+                effects: None,
+            })
+        };
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        s.tracks[2].sound = tone(Tone {
+            attack_s: Some(0.1),
+            ..Tone::default()
+        });
+        let (kind, message) = sampler_error(&s);
+        assert_eq!(kind, "sound");
+        assert!(
+            message.contains("\"Sampler\"") && message.contains("attack_s"),
+            "{message}"
+        );
+
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        s.tracks[2].sound = tone(Tone {
+            pitch_semitones: Some(2.0),
+            ..Tone::default()
+        });
+        let (kind, message) = sampler_error(&s);
+        assert_eq!(kind, "sound");
+        assert!(message.contains("pitch_semitones"), "{message}");
+
+        s.tracks[2].sound = tone(Tone {
+            attack_s: Some(0.1),
+            filter_cutoff_hz: Some(800.0),
+            ..Tone::default()
+        });
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    #[test]
+    fn sampler_settings_must_match_the_track_kind() {
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        s.tracks[2].sampler.pads = vec![pad("pad-1", "s1")];
+        assert_eq!(sampler_error(&s).0, "sampler_content");
+
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        s.tracks[2].sampler.keys = Some(keys(Some("s1"), 60));
+        assert_eq!(sampler_error(&s).0, "sampler_content");
+
+        let mut s = sampler_song("piano");
+        s.tracks[2].sampler.keys = Some(keys(None, 60));
+        assert_eq!(sampler_error(&s).0, "sampler_content");
+    }
+
+    #[test]
+    fn pad_rows_must_be_valid_unique_and_at_most_sixteen() {
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        s.tracks[2].sampler.pads = vec![pad("pad-17", "s1")];
+        assert_eq!(sampler_error(&s).0, "sampler_pad_row");
+        s.tracks[2].sampler.pads = vec![pad("pad-1", "s1"), pad("pad-1", "s1")];
+        assert_eq!(sampler_error(&s).0, "sampler_pad_row");
+        s.tracks[2].sampler.pads = (1..=16).map(|i| pad(&format!("pad-{i}"), "s1")).collect();
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+        s.tracks[2].sampler.pads.push(pad("pad-1", "s1"));
+        assert_eq!(sampler_error(&s).0, "sampler_pad_count");
+    }
+
+    #[test]
+    fn sampler_ranges_are_enforced() {
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        for root in [-1, 128] {
+            s.tracks[2].sampler.keys = Some(keys(None, root));
+            assert_eq!(sampler_error(&s).0, "sampler_range");
+        }
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        for (gain, pitch) in [(12.5, 0), (-24.5, 0), (0.0, 25), (0.0, -25)] {
+            s.tracks[2].sampler.pads = vec![PadSettings {
+                gain_db: gain,
+                pitch_semitones: pitch,
+                ..pad("pad-1", "s1")
+            }];
+            assert_eq!(sampler_error(&s).0, "sampler_range", "{gain} {pitch}");
+        }
+        s.tracks[2].sampler.pads = vec![PadSettings {
+            gain_db: 12.0,
+            pitch_semitones: -24,
+            ..pad("pad-1", "s1")
+        }];
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    #[test]
+    fn sampler_notes_must_use_the_instruments_rows() {
+        let mut s = sampler_song(SAMPLER_PADS_ID);
+        s.tracks[2].loops = vec![lp("l9", 1, vec![note("C4", 0, 1)])];
+        assert_eq!(sampler_error(&s).0, "loop_note_row");
+        s.tracks[2].loops = vec![lp("l9", 1, vec![note("pad-16", 0, 1)])];
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+
+        let mut s = sampler_song(SAMPLER_KEYS_ID);
+        s.tracks[2].loops = vec![lp("l9", 1, vec![note("C0", 0, 1)])];
+        assert_eq!(sampler_error(&s).0, "loop_note_row");
+        s.tracks[2].loops = vec![lp("l9", 1, vec![note("C1", 0, 1)])];
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
     }
 
     #[test]

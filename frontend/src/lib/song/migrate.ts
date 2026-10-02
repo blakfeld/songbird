@@ -4,6 +4,8 @@ import { normalizeNotes } from "../patternOps";
 import { normalizeLoopRegion } from "./songLoop";
 import { audioProblem } from "./audioValidation";
 import { derivedMeasures } from "./songOps";
+import { DEFAULT_ROOT_NOTE, usesDrumTone } from "./sampler";
+import { samplerProblem } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
   LOOP_MEASURE_RANGE,
@@ -17,6 +19,7 @@ import {
   type Clip,
   type Song,
   type SongKey,
+  type Track,
 } from "./types";
 
 type Raw = Record<string, unknown>;
@@ -172,15 +175,33 @@ function withAudioDefaults(clips: AudioClip[] | undefined): AudioClip[] | undefi
   return clips.map((c) => ({ ...defaults, ...c }));
 }
 
+// The server fills these on load, so a valid document may omit them, and everything downstream reads them as present.
+function withSamplerDefaults(sampler: Track["sampler"]): Track["sampler"] {
+  if (!sampler) return sampler;
+  const { keys, pads } = sampler;
+  const keysDone = keys && keys.root_note !== undefined && keys.one_shot !== undefined;
+  const padsDone = !pads || pads.every((p) => p.gain_db !== undefined && p.pitch_semitones !== undefined);
+  if (keysDone !== false && padsDone) return sampler;
+  return {
+    ...sampler,
+    ...(keys && { keys: { ...keys, root_note: keys.root_note ?? DEFAULT_ROOT_NOTE, one_shot: keys.one_shot ?? false } }),
+    ...(pads && { pads: pads.map((p) => ({ ...p, gain_db: p.gain_db ?? 0, pitch_semitones: p.pitch_semitones ?? 0 })) }),
+  };
+}
+
 function migrate(raw: unknown): Song | null {
   if (!isObject(raw)) return null;
   if (raw.version === 1) return fromV1(raw);
-  if (raw.version !== 2 || validateClips(raw) !== null || audioProblem(raw) !== null) return null;
+  if (raw.version !== 2 || validateClips(raw) !== null || audioProblem(raw) !== null || samplerProblem(raw) !== null)
+    return null;
   const song = raw as unknown as Song;
   const tracks = song.tracks.map((t) => {
     const clips = sortedByStart(t.clips);
     const audio = withAudioDefaults(t.audio_clips);
-    return clips === t.clips && audio === t.audio_clips ? t : { ...t, clips, ...(audio && { audio_clips: audio }) };
+    const sampler = withSamplerDefaults(t.sampler);
+    return clips === t.clips && audio === t.audio_clips && sampler === t.sampler
+      ? t
+      : { ...t, clips, ...(audio && { audio_clips: audio }), ...(sampler && { sampler }) };
   });
   return finish(
     tracks.every((t, i) => t === song.tracks[i]) ? song : { ...song, tracks },
@@ -191,10 +212,10 @@ function migrate(raw: unknown): Song | null {
 export function migrateSong(raw: unknown): Song | null {
   try {
     const song = migrate(raw);
-    // Only the drums instrument is a drum kit and the library has no registry to ask, so a stored
+    // Only the drums instrument and the pads sampler take drum knobs and the library has no registry to ask, so a stored
     // wrong-kind setting is told apart by id; project import checks against the real instrument kind.
     const ok = song?.tracks.every(
-      (t) => t.sound === undefined || soundProblem(t.sound, t.instrument === "drums") === null,
+      (t) => t.sound === undefined || soundProblem(t.sound, usesDrumTone(t.instrument)) === null,
     );
     return ok ? song : null;
   } catch {

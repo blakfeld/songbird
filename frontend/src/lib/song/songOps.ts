@@ -8,6 +8,7 @@ import type { TrackSound } from "@/generated/TrackSound";
 import type { TimeSignature } from "@/generated/TimeSignature";
 import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { TICKS_PER_SECOND_PER_BPM, TICKS_PER_SIXTEENTH, clipEndMeasure, clipsOverlap, sampleMap } from "./audioTiming";
+import { usesDrumTone } from "./sampler";
 import { songLoop, withSongLoop } from "./songLoop";
 import {
   LOOP_NAME_MAX,
@@ -266,7 +267,7 @@ export function setSound(song: Song, trackId: string, rawPatch: SoundPatch): Son
     const patch =
       t.instrument === "audio"
         ? (({ tone: _tone, ...rest }) => (void _tone, rest))(rawPatch)
-        : forKind(rawPatch, t.instrument === "drums");
+        : forKind(rawPatch, usesDrumTone(t.instrument));
     const merged = mergePatch((t.sound ?? undefined) as Plain | undefined, patch as Plain) as TrackSound | undefined;
     // A stored null means the same as absent, so an empty result must not replace it or a drag that
     // ends where it began would still count as a change.

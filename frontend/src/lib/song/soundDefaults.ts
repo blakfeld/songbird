@@ -1,5 +1,6 @@
 import type { Track } from "@/generated/Track";
 import { fallbackPreset, presets } from "../audio/presets";
+import { SAMPLER_KEYS_ENVELOPE, SAMPLER_KEYS_ID } from "./sampler";
 import { SOUND_RANGES as R } from "./trackSound";
 
 // A preset with no filter is "open", which is inaudible, so the knob rests at its top.
@@ -21,7 +22,8 @@ const within = (v: number, r: { min: number; max: number }) => Math.min(r.max, M
 // showing a value beyond its own range could not be dragged back to where it started.
 export function toneDefaults(instrumentId: string) {
   const preset = presets[instrumentId] ?? fallbackPreset;
-  const { envelope } = preset.defaults;
+  // A sampler has no synth preset; its own envelope keeps the sample from fading in like the fallback synth would.
+  const envelope = instrumentId === SAMPLER_KEYS_ID ? SAMPLER_KEYS_ENVELOPE : preset.defaults.envelope;
   return {
     filter_cutoff_hz: within(preset.defaults.filterCutoffHz ?? OPEN_CUTOFF_HZ, R.filter_cutoff_hz),
     filter_resonance: 0,

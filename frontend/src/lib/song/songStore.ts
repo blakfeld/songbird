@@ -13,6 +13,8 @@ import * as clipOps from "./clipOps";
 import type { ClipFailure, ClipOpResult } from "./clipOps";
 import * as audioOps from "./audioClipOps";
 import * as ops from "./songOps";
+import * as samplerOps from "./samplerOps";
+import type { SamplerKind } from "./sampler";
 import { songLoop, withLiveChat, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
 import type { AudioFailure, AudioOpResult } from "./audioClipOps";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
@@ -46,6 +48,13 @@ export interface SongState {
   selectClip: (clipId: string | null) => void;
   addTrack: (instrument: Pick<InstrumentInfo, "id" | "name">, name?: string) => void;
   addAudioTrack: (name?: string) => void;
+  // The track, its starting loop and clip are one undo step, and the clip is selected so the roll opens at once.
+  addSamplerTrack: (kind: SamplerKind) => { trackId: string; clipId: string } | null;
+  // Every sampler setting goes through here so each is one undo step, and a knob drag replays on the pre-drag song.
+  samplerEdit: (
+    fn: (song: Song) => samplerOps.SamplerResult | samplerOps.PadsResult,
+    options?: { transient?: boolean },
+  ) => samplerOps.SamplerFailure | null;
   // One entry point for every audio clip edit, so each is a single undo step and a drag replays on the pre-drag song.
   audioEdit: (
     trackId: string,
@@ -283,6 +292,44 @@ export function createSongStore(initial: Song | null = null): SongStore {
         edit((s) => audioOps.addAudioTrack(s, name)?.song ?? s);
         const after = get().song;
         if (after && after !== before) set({ selectedTrackId: after.tracks[after.tracks.length - 1].id, selectedClipId: null });
+      },
+      addSamplerTrack: (kind) => {
+        const current = get().song;
+        const added = current ? samplerOps.addSamplerTrack(current, kind) : null;
+        if (!added) return null;
+        edit(() => added.song);
+        set({ selectedTrackId: added.trackId, selectedClipId: added.clipId });
+        return { trackId: added.trackId, clipId: added.clipId };
+      },
+      samplerEdit: (fn, options) => {
+        let failure: samplerOps.SamplerFailure | null = null;
+        const apply = (song: Song) => {
+          const result = fn(song);
+          if (result.song === null) {
+            failure = result.reason;
+            return song;
+          }
+          return result.song;
+        };
+        if (!options?.transient) {
+          edit(apply);
+          return failure;
+        }
+        set((s) => {
+          if (!s.song) return s;
+          const base = s.gestureBase;
+          const applied = apply(base ?? s.song);
+          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          if (next === s.song) return s;
+          return {
+            song: next,
+            gestureBase: base ?? s.song,
+            gestureFuture: base ? s.gestureFuture : s.future,
+            gestureLoop: base ? s.gestureLoop : songLoop(s.song),
+            future: [],
+          };
+        });
+        return failure;
       },
       audioEdit: (trackId, fn, options) => {
         let outcome: (AudioOpResult & { trackId?: string }) | null = null;

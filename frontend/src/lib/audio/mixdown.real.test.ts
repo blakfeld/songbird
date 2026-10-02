@@ -2,8 +2,9 @@ import { loadRealTone } from "@/test/webAudio";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AudioClip } from "@/generated/AudioClip";
 import { drums } from "@/test/fixtures";
+import { SAMPLER_INFOS } from "@/lib/song/sampler";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
-import { newTrack, type Song } from "@/lib/song/types";
+import { newTrack, type Song, type Track } from "@/lib/song/types";
 import { renderMixdown } from "./mixdown";
 import { registerSoundSource } from "./registry";
 import { createSampleBufferCache } from "./sampleBuffers";
@@ -21,7 +22,7 @@ beforeAll(async () => {
 
 const DC = "real-dc";
 const SINE = "real-sine";
-const instruments = [DC, SINE].map((id) => ({ ...drums, id }));
+const instruments = [...[DC, SINE].map((id) => ({ ...drums, id })), ...SAMPLER_INFOS];
 
 // A constant burst: a note is a sharp step, so its onset is easy to locate in the output.
 registerSoundSource(DC, (t, output) => {
@@ -297,5 +298,131 @@ describe("real offline renders", () => {
     const parts = await mix(song(spec), { segmentSeconds: 2 });
     const diff = whole.left.map((x, i) => x - parts.left[i]);
     expect(rmsDb(diff, whole.left)).toBeLessThan(-60);
+  });
+});
+
+describe("real offline renders of samplers", () => {
+  const samplerSong = (instrument: string, sampler: Track["sampler"], notes: { row: string; step: number; length: number }[]) => {
+    const s = song({});
+    s.tracks = [
+      {
+        ...newTrack(instrument, "Sampler"),
+        sampler,
+        loops: [
+          {
+            id: "l",
+            name: "L",
+            measures: 1,
+            notes: notes.map((n) => ({ row_id: n.row, step: n.step, length_steps: n.length, velocity: 127 })),
+          },
+        ],
+        clips: [{ id: "k", loop_id: "l", start_measure: 1, measures: 1 }],
+      },
+    ];
+    return s;
+  };
+  const pads = { pads: [{ row_id: "pad-1", sample_id: "s1", gain_db: 0, pitch_semitones: 0 }] };
+  const keys = (one_shot: boolean) => ({ keys: { sample_id: "s1", root_note: 60, one_shot } });
+
+  it("renders a pad's whole sample from the note's start, unaltered", async () => {
+    const g = await centreGain();
+    pcm.set("s1", ramp(24000));
+    const { left } = await mix(samplerSong("sampler-pads", pads, [{ row: "pad-1", step: 4, length: 1 }]));
+    const start = 4 * 0.125 * SR;
+    expect(Math.abs(left[start - 10])).toBeLessThan(0.001);
+    for (const n of [3000, 12000, 21000]) expect(Math.abs(left[start + n] - (n / 24000) * 0.8 * g)).toBeLessThan(0.01);
+  });
+
+  it("renders keys an octave up at double speed", async () => {
+    const g = await centreGain();
+    pcm.set("s1", ramp(24000));
+    const { left } = await mix(samplerSong("sampler-keys", keys(true), [{ row: "C5", step: 0, length: 1 }]));
+    // At double speed frame n of the output is frame 2n of the ramp, and the sample is over after 12000 frames.
+    for (const n of [1500, 6000, 10500]) expect(Math.abs(left[n] - ((2 * n) / 24000) * 0.8 * g)).toBeLessThan(0.01);
+    expect(Math.abs(left[13000])).toBeLessThan(0.001);
+  });
+
+  it("cuts a sustained note after its release but lets a one-shot play on", async () => {
+    pcm.set("s1", ramp(24000));
+    const note = [{ row: "C4", step: 0, length: 1 }];
+    const sustained = await mix(samplerSong("sampler-keys", keys(false), note));
+    const oneShot = await mix(samplerSong("sampler-keys", keys(true), note));
+    const late = Math.round(0.3 * SR);
+    expect(Math.abs(sustained.left[late])).toBeLessThan(0.001);
+    expect(Math.abs(oneShot.left[late])).toBeGreaterThan(0.1);
+  });
+
+  it("a dense one-shot pattern renders joins exactly without pulling any window back to the start", async () => {
+    pcm.set("s1", ramp(24000));
+    // A half-second hit on every sixteenth: each one is still ringing when the next three begin.
+    const notes = Array.from({ length: 64 }, (_, step) => ({ row: "pad-1", step, length: 1 }));
+    const spec = samplerSong("sampler-pads", pads, notes);
+    spec.measures = 4;
+    const windows: number[] = [];
+    const spied = new Proxy(tone, {
+      get(target, key) {
+        if (key !== "OfflineContext") return Reflect.get(target, key);
+        return new Proxy(target.OfflineContext, {
+          construct(Ctor, args) {
+            windows.push(args[1] as number);
+            return Reflect.construct(Ctor, args);
+          },
+        });
+      },
+    });
+    const render = async (options: { segmentSeconds: number; preRollSeconds: number }, t: Tone) => {
+      const result = await renderMixdown(spec, () => {}, undefined, { instruments, loadTone: async () => t, sampleBuffers: buffers(), ...options });
+      const view = new DataView(await read(result.wav));
+      return Float32Array.from({ length: (view.byteLength - 44) / 4 }, (_, i) => view.getInt16(44 + i * 4, true) / 32768);
+    };
+    const whole = await render({ segmentSeconds: 1000, preRollSeconds: 0 }, tone);
+    windows.length = 0;
+    const parts = await render({ segmentSeconds: 2, preRollSeconds: 0 }, spied as Tone);
+    expect(parts.length).toBe(whole.length);
+    expect(whole.reduce((m, x, i) => Math.max(m, Math.abs(x - parts[i])), 0)).toBeLessThan(0.001);
+    // Without stretching, no window reaches further back than the longest ring, so none is the whole song.
+    expect(Math.max(...windows)).toBeLessThan(2 + 0.5 + 0.2);
+  });
+
+  // Whole against segmented with no pre-roll, so anything a join gets wrong is heard as a difference.
+  const joinsMatch = async (spec: Song) => {
+    const whole = await mix(spec, { segmentSeconds: 1000, preRollSeconds: 0 });
+    const parts = await mix(spec, { segmentSeconds: 2, preRollSeconds: 0 });
+    expect(parts.left.length).toBe(whole.left.length);
+    return whole.left.reduce((m, x, i) => Math.max(m, Math.abs(x - parts.left[i])), 0);
+  };
+
+  it("resumes a pad pitched up an octave at the right place in its sample", async () => {
+    pcm.set("s1", ramp(24000));
+    const up = { pads: [{ row_id: "pad-1", sample_id: "s1", gain_db: 0, pitch_semitones: 12 }] };
+    const notes = [30, 31, 32, 33].map((step) => ({ row: "pad-1", step, length: 1 }));
+    expect(await joinsMatch(samplerSong("sampler-pads", up, notes))).toBeLessThan(0.001);
+  });
+
+  it("resumes a one-shot key an octave above its root at the right place in its sample", async () => {
+    pcm.set("s1", ramp(24000));
+    const notes = [30, 31, 32].map((step) => ({ row: "C5", step, length: 1 }));
+    expect(await joinsMatch(samplerSong("sampler-keys", keys(true), notes))).toBeLessThan(0.001);
+  });
+
+  it("keeps only the notes the whole render would not have stolen when more than 32 are ringing at a join", async () => {
+    // An 8 s hit on each of 48 sixteenths: 48 are ringing at 6 s, and the whole render has stolen the oldest 16 by then.
+    pcm.set("s1", ramp(8 * SR));
+    const notes = Array.from({ length: 48 }, (_, step) => ({ row: "pad-1", step, length: 1 }));
+    const spec = samplerSong("sampler-pads", pads, notes);
+    spec.measures = 4;
+    const whole = await mix(spec, { segmentSeconds: 1000, preRollSeconds: 0 });
+    const parts = await mix(spec, { segmentSeconds: 6, preRollSeconds: 0 });
+    const worst = whole.left.reduce((m, x, i) => Math.max(m, Math.abs(x - parts.left[i])), 0);
+    expect(worst).toBeLessThan(0.002);
+  });
+
+  it("a pad hit still ringing at a segment join matches the whole render", async () => {
+    pcm.set("s1", ramp(24000));
+    const spec = samplerSong("sampler-pads", pads, [{ row: "pad-1", step: 14, length: 1 }]);
+    const whole = await mix(spec, { segmentSeconds: 1000 });
+    const parts = await mix(spec, { segmentSeconds: 2, preRollSeconds: 0 });
+    const diff = whole.left.map((x, i) => x - parts.left[i]);
+    expect(Math.max(...diff.map(Math.abs))).toBeLessThan(0.001);
   });
 });

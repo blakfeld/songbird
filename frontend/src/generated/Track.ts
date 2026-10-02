@@ -2,6 +2,7 @@
 import type { AudioClip } from "./AudioClip";
 import type { Clip } from "./Clip";
 import type { Loop } from "./Loop";
+import type { SamplerSettings } from "./SamplerSettings";
 import type { TrackSound } from "./TrackSound";
 
 export type Track = { id: string, name: string, instrument: string, volume_db: number, pan: number, muted: boolean, soloed: boolean, 
@@ -25,4 +26,9 @@ audio_clips?: Array<AudioClip>,
  * instrument's preset and songs saved before track sound existed are
  * unchanged. Unknown fields are ignored like the rest of the document.
  */
-sound?: TrackSound, };
+sound?: TrackSound, 
+/**
+ * Only sampler tracks hold this; it stays empty elsewhere so songs
+ * without samplers serialize exactly as before.
+ */
+sampler?: SamplerSettings, };

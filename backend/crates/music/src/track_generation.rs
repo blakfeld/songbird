@@ -75,6 +75,8 @@ pub enum TrackRequestError {
     InvalidTrack,
     #[error("Audio tracks cannot be generated into; choose an instrument track.")]
     AudioTrack,
+    #[error("Sampler tracks cannot be generated into; choose an instrument track.")]
+    SamplerTrack,
     #[error(transparent)]
     Prompt(#[from] ValidationError),
     #[error("The range must lie within the song and span at most {MAX_RANGE_MEASURES} measures; a song longer than {MAX_RANGE_MEASURES} measures needs a range.")]
@@ -87,6 +89,7 @@ impl TrackRequestError {
             Self::Song(_) => "invalid_song",
             Self::InvalidTrack => "invalid_track",
             Self::AudioTrack => "audio_track_target",
+            Self::SamplerTrack => "invalid_target",
             Self::Prompt(e) => e.code(),
             Self::InvalidRange => "invalid_range",
         }
@@ -118,6 +121,9 @@ impl TrackGenerateBody {
             .ok_or(TrackRequestError::InvalidTrack)?;
         if song.tracks[target].is_audio() {
             return Err(TrackRequestError::AudioTrack);
+        }
+        if song.tracks[target].is_sampler() {
+            return Err(TrackRequestError::SamplerTrack);
         }
         let prompt = validate_prompt(&self.prompt, max_input_tokens)?;
         let range = resolve_range(self.range, self.song.measures)?;

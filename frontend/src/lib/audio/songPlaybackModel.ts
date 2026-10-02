@@ -1,7 +1,9 @@
+import type { SamplerSettings } from "@/generated/SamplerSettings";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { beatSteps } from "@/lib/pianoRoll";
 import type { SongStore } from "@/lib/song/songStore";
 import { resolveTrackNotes } from "@/lib/song/clipOps";
+import { isSamplerId } from "@/lib/song/sampler";
 import { audibleTracks } from "@/lib/song/songOps";
 import { songLoop } from "@/lib/song/songLoop";
 import type { Song, Track } from "@/lib/song/types";
@@ -16,6 +18,8 @@ function loopingMeasures(song: Song): number {
 }
 
 const AUDIO_INSTRUMENT = "audio";
+// One shared object so a sampler track with nothing assigned does not look edited on every read.
+const NO_SAMPLER: SamplerSettings = {};
 
 // Keyed on the clip array so an unchanged track hands the scheduler the same list each tick.
 const clipCache = new WeakMap<object, { samples: Song["samples"]; clips: PlaybackClip[] }>();
@@ -87,6 +91,7 @@ export function createSongPlaybackModel(
             kind: "instrument",
             instrument: t.instrument,
             rows: info.rows,
+            ...(isSamplerId(t.instrument) && { sampler: t.sampler ?? NO_SAMPLER }),
             notes: resolveTrackNotes(song, t),
             volumeDb: t.volume_db,
             pan: t.pan,

@@ -3,7 +3,7 @@ use midly::{MetaMessage, MidiMessage, TrackEvent, TrackEventKind};
 
 use crate::instruments::{Instrument, InstrumentKind};
 use crate::midi::{conductor_track, meta, note_events, program_change, write_smf, MidiError};
-use crate::song::{ValidSong, ValidTrack};
+use crate::song::{SamplerKind, TrackInstrument, ValidSong, ValidTrack};
 use crate::timing::step_to_ticks;
 
 const DRUM_CHANNEL: u8 = 9;
@@ -29,6 +29,15 @@ pub fn assign_channels(kinds: &[InstrumentKind]) -> Vec<u4> {
             }
         })
         .collect()
+}
+
+/// Pads are a drums-kind instrument for the editor, but exporting them on
+/// channel 10 would make a DAW play its drum kit instead of the user's samples.
+fn channel_kind(track: TrackInstrument, instrument: &Instrument) -> InstrumentKind {
+    match track {
+        TrackInstrument::Sampler(SamplerKind::Pads) => InstrumentKind::Melodic,
+        _ => instrument.kind,
+    }
 }
 
 /// A 40*log10 curve rather than 20*log10 because most DAWs map CC7 close to
@@ -71,9 +80,12 @@ pub fn song_to_midi(valid: &ValidSong<'_>) -> Result<Vec<u8>, MidiError> {
     let midi_tracks: Vec<(&ValidTrack<'_>, &Instrument)> = valid
         .tracks
         .iter()
-        .filter_map(|t| t.instrument.instrument().map(|i| (t, i)))
+        .filter_map(|t| t.instrument.rows_definition().map(|i| (t, i)))
         .collect();
-    let kinds: Vec<InstrumentKind> = midi_tracks.iter().map(|(_, i)| i.kind).collect();
+    let kinds: Vec<InstrumentKind> = midi_tracks
+        .iter()
+        .map(|(t, i)| channel_kind(t.instrument, i))
+        .collect();
     let channels = assign_channels(&kinds);
 
     let mut tracks = vec![conductor_track(

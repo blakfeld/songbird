@@ -6,6 +6,21 @@ import { scheduleGarbageCollection, setOpenSongSource } from "@/lib/audio/sample
 import { migrateSong } from "./migrate";
 import { newId, type Song } from "./types";
 
+interface RawSongSamples {
+  samples?: { id?: unknown }[];
+  tracks?: { sampler?: { keys?: { sample_id?: unknown }; pads?: { sample_id?: unknown }[] } }[];
+}
+
+// A saved song's sampler assignments count as uses beside its sample list, so audio only a pad plays is never freed.
+function rawSampleIds(raw: RawSongSamples | undefined): string[] {
+  const ids: unknown[] = (raw?.samples ?? []).map((s) => s?.id);
+  for (const t of raw?.tracks ?? []) {
+    ids.push(t?.sampler?.keys?.sample_id);
+    for (const p of t?.sampler?.pads ?? []) ids.push(p?.sample_id);
+  }
+  return ids.filter((id): id is string => typeof id === "string");
+}
+
 const KEY_PREFIX = "songbird.songs.v1.";
 export const INDEX_KEY = `${KEY_PREFIX}index`;
 export const LAST_SONG_KEY = "songbird.studio.lastSong";
@@ -272,10 +287,8 @@ export function createSongLibrary(
       await flush();
       const ids = new Set<string>();
       for (const entry of await readIndex()) {
-        const raw = (await kv.get(songKey(entry.id))) as { samples?: { id?: unknown }[] } | undefined;
-        for (const sample of raw?.samples ?? []) {
-          if (typeof sample?.id === "string") ids.add(sample.id);
-        }
+        const raw = (await kv.get(songKey(entry.id))) as RawSongSamples | undefined;
+        for (const id of rawSampleIds(raw)) ids.add(id);
       }
       return [...ids];
     },
@@ -285,8 +298,8 @@ export function createSongLibrary(
       await flush();
       let count = 0;
       for (const entry of await readIndex()) {
-        const raw = (await kv.get(songKey(entry.id))) as { samples?: { id?: unknown }[] } | undefined;
-        if ((raw?.samples ?? []).some((sample) => sample?.id === sampleId)) count++;
+        const raw = (await kv.get(songKey(entry.id))) as RawSongSamples | undefined;
+        if (rawSampleIds(raw).includes(sampleId)) count++;
       }
       return count;
     },

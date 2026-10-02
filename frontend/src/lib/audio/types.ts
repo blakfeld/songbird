@@ -1,6 +1,8 @@
 import type { AudioClip } from "@/generated/AudioClip";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
+import type { SamplerSettings } from "@/generated/SamplerSettings";
+import type { SampleBufferCache } from "./sampleBuffers";
 import type { VoiceSound } from "./voiceSound";
 
 export type LoopRange = { start: number; end: number };
@@ -49,6 +51,8 @@ export interface SoundSource {
     startSeconds: number,
     endSeconds: number,
     velocity: number,
+    // Only samplers use it: how far into the note a render window opens, so a ringing sample joins mid-audio.
+    offsetSeconds?: number,
   ): void;
   // For live play, where the end is unknown until the key is released.
   noteOn(row: Row, startSeconds: number, velocity: number): NoteHandle;
@@ -56,6 +60,9 @@ export interface SoundSource {
   stopAll(): void;
   // Replaces rather than patches the controls, so omitted fields fall back to defaults and a reset needs no special case.
   setTone?(controls: ToneControls): void;
+  // Only samplers have assignments; the cache is passed in so the engine and a mixdown each choose where buffers
+  // come from, and the source starts loading what it now needs.
+  setSamples?(settings: SamplerSettings, buffers: SampleBufferCache): void;
   // Nodes stay connected to the channel until released, so a removed voice would keep running unheard.
   dispose?(): void;
 }
@@ -87,6 +94,8 @@ export interface Voice {
   notes: Note[];
   // Only audio voices have clips; absent on instrument voices so single-instrument models need not mention them.
   clips?: PlaybackClip[];
+  // Only sampler tracks carry assignments; a reference that is stable until the track is edited lets the engine diff it.
+  sampler?: SamplerSettings;
   volumeDb: number;
   pan: number;
   // Resolved by the model because solo depends on every other track, which a single voice cannot see.

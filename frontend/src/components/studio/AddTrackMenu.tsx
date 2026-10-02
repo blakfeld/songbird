@@ -3,6 +3,7 @@
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { Spinner } from "@/components/ui/Spinner";
 import { focusRing } from "@/components/ui/classes";
+import { BUILT_IN_IDS } from "@/lib/song/sampler";
 import { MAX_TRACKS } from "@/lib/song/types";
 import type { ResourceState } from "@/lib/useApiResource";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
@@ -15,17 +16,21 @@ export function AddTrackMenu({
   trackCount,
   onAdd,
   onAddAudio,
+  onAddSampler,
 }: {
   instruments: ResourceState<InstrumentInfo[]>;
   onRetry: () => void;
   trackCount: number;
   onAdd: (instrument: InstrumentInfo) => void;
   onAddAudio: () => void;
+  onAddSampler: (kind: "keys" | "pads") => void;
 }) {
   const full = trackCount >= MAX_TRACKS;
+  // The samplers share the drums and melodic kinds, so without this they would also be listed under those groups.
+  const listed = instruments.data?.filter((i) => !BUILT_IN_IDS.has(i.id)) ?? [];
   const groups = [
-    { title: "Drums", items: instruments.data?.filter((i) => i.kind === "drums") ?? [] },
-    { title: "Melodic", items: instruments.data?.filter((i) => i.kind === "melodic") ?? [] },
+    { title: "Drums", items: listed.filter((i) => i.kind === "drums") },
+    { title: "Melodic", items: listed.filter((i) => i.kind === "melodic") },
   ];
 
   return (
@@ -43,7 +48,7 @@ export function AddTrackMenu({
       >
         {(close) => (
           <>
-            {/* Above the loading and error states because adding audio never needs the instruments request. */}
+            {/* Above the loading and error states because adding audio or a sampler never needs the instruments request. */}
             <div role="group" aria-label="Audio">
               <p aria-hidden="true" className="px-3 pt-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
                 Audio
@@ -60,6 +65,21 @@ export function AddTrackMenu({
                 <InstrumentIcon instrumentId="audio" kind={null} className="size-6" />
                 Audio
               </button>
+              {(["keys", "pads"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => {
+                    close();
+                    onAddSampler(kind);
+                  }}
+                >
+                  <InstrumentIcon instrumentId={`sampler-${kind}`} kind={null} className="size-6" />
+                  Sampler ({kind})
+                </button>
+              ))}
             </div>
             <div role="separator" className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
             {instruments.status === "loading" && (

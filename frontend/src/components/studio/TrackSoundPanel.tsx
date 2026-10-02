@@ -7,6 +7,7 @@ import type { Effects } from "@/generated/Effects";
 import type { Tone } from "@/generated/Tone";
 import type { Track } from "@/generated/Track";
 import { focusRing, hintClass } from "@/components/ui/classes";
+import { usesDrumTone } from "@/lib/song/sampler";
 import { EFFECT_DEFAULTS, isSoundCustomized, toneDefaults } from "@/lib/song/soundDefaults";
 import type { SoundPatch } from "@/lib/song/songOps";
 import { DELAY_TIMES, SOUND_RANGES } from "@/lib/song/trackSound";
@@ -19,14 +20,14 @@ const hz = (v: number) =>
   v < 1000 ? `${Math.round(v)} Hz` : v < 10000 ? `${(v / 1000).toFixed(1)} kHz` : `${Math.round(v / 1000)} kHz`;
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 const seconds = (v: number) => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(2)} s`);
-const semitones = (v: number) => `${signed(v, String(Math.abs(v)))} st`;
-const decibels = (v: number) => `${signed(v, Math.abs(v) % 1 === 0 && v === 0 ? "0" : Math.abs(v).toFixed(1))} dB`;
+export const semitones = (v: number) => `${signed(v, String(Math.abs(v)))} st`;
+export const decibels = (v: number) => `${signed(v, Math.abs(v) % 1 === 0 && v === 0 ? "0" : Math.abs(v).toFixed(1))} dB`;
 const rate = (v: number) => `${Number(v.toFixed(1))} Hz`;
 
 // Screen readers drop the minus glyph and the abbreviations, so the spoken text is spelled out.
-const spokenSemitones = (v: number) =>
+export const spokenSemitones = (v: number) =>
   `${v < 0 ? "minus " : v > 0 ? "plus " : ""}${Math.abs(v)} semitone${Math.abs(v) === 1 ? "" : "s"}`;
-const spokenDecibels = (v: number) =>
+export const spokenDecibels = (v: number) =>
   `${v < 0 ? "minus " : v > 0 ? "plus " : ""}${Number(Math.abs(v).toFixed(1))} decibels`;
 
 interface Spec {
@@ -137,7 +138,7 @@ export function TrackSoundPanel({
 
   // Decided from the id, as the validator does, because the instrument lookup is empty while loading or
   // after a failed fetch and a wrong guess would write fields the document rejects.
-  const drums = track.instrument === "drums";
+  const drums = usesDrumTone(track.instrument);
   const toneDef = toneDefaults(track.instrument);
   const sound = track.sound;
 

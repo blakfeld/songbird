@@ -5,6 +5,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Playback } from "@/lib/audio/types";
 import type { LoopSetting } from "@/lib/loopRegion";
 import { beatSteps } from "@/lib/pianoRoll";
+import { SAMPLER_INFOS } from "@/lib/song/sampler";
 import { audibleTracks } from "@/lib/song/songOps";
 import type { Song } from "@/lib/song/types";
 import type { ResourceState } from "@/lib/useApiResource";
@@ -69,6 +70,7 @@ export function Arrangement({
   generatingTrackId,
   onAddTrack,
   onAddAudio,
+  onAddSampler,
   onSeek,
   sectionId,
 }: {
@@ -90,6 +92,7 @@ export function Arrangement({
   generatingTrackId: string | null;
   onAddTrack: (instrument: InstrumentInfo) => void;
   onAddAudio: () => void;
+  onAddSampler: (kind: "keys" | "pads") => void;
   onSeek: (trackId: string, measureIndex: number) => void;
   sectionId: string;
 }) {
@@ -140,6 +143,9 @@ export function Arrangement({
 
   const lookup = (instrument: string): InstrumentLookup => {
     if (instrument === "audio") return { state: "audio" };
+    // Checked before the request status, because the samplers are built in and need nothing from the server.
+    const builtIn = SAMPLER_INFOS.find((i) => i.id === instrument);
+    if (builtIn) return { state: "ready", info: builtIn };
     if (instruments.status !== "ready") return { state: "loading" };
     const info = instruments.data.find((i) => i.id === instrument);
     return info ? { state: "ready", info } : { state: "missing" };
@@ -174,6 +180,7 @@ export function Arrangement({
             trackCount={song.tracks.length}
             onAdd={onAddTrack}
             onAddAudio={onAddAudio}
+            onAddSampler={onAddSampler}
           />
         </div>
         <div ref={rulerCell} className="@container min-w-0">

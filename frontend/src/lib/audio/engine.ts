@@ -1,4 +1,5 @@
 import type { Row } from "@/generated/Row";
+import type { SamplerSettings } from "@/generated/SamplerSettings";
 import { stepToSeconds } from "@/lib/timing";
 import { createAudioTrackSource, type AudioTrackSource } from "./audioTrackSource";
 import { clipLengthSeconds, TICKS_PER_STEP } from "./clipSchedule";
@@ -56,6 +57,8 @@ interface VoiceChannel {
   // Shared by playback and previews so a track has one set of effects, not one per way of playing it.
   chain: InsertChain;
   sound: VoiceSound;
+  // The assignments the source was last given, compared by reference against the model's.
+  sampler?: SamplerSettings;
 }
 
 // A preview is routed through its track's chain, so it only owns the source and the mixer-faithful channel.
@@ -75,6 +78,7 @@ interface PreviewChannel {
   volumeDb: number;
   pan: number;
   sound: VoiceSound;
+  sampler?: SamplerSettings;
 }
 
 const DEFAULT_TEMPO = 120;
@@ -404,6 +408,19 @@ export function createPlaybackEngine(
     updateTap(entry);
   };
 
+  const bufferCache = (t: ToneModule) => (sampleBuffers ??= deps.sampleBuffers ?? sharedSampleBuffers(t));
+
+  // A source cannot see the song, so edits to its assignments reach it here, on the same tick as other live edits.
+  const applySampler = (
+    t: ToneModule,
+    entry: { source: SoundSource; sampler?: SamplerSettings },
+    voice: Voice,
+  ) => {
+    if (!voice.sampler || entry.sampler === voice.sampler) return;
+    entry.source.setSamples?.(voice.sampler, bufferCache(t));
+    entry.sampler = voice.sampler;
+  };
+
   const applyMixer = (entry: VoiceChannel, voice: Voice, at?: number) => {
     const db = targetDb(voice);
     if (entry.volumeDb !== db) {
@@ -452,7 +469,7 @@ export function createPlaybackEngine(
         sound,
       };
     }
-    return {
+    const entry: VoiceChannel = {
       instrument: voice.instrument,
       source: getSoundSourceFactory(voice.instrument)(t, chain.input, sound.tone),
       channel,
@@ -461,6 +478,8 @@ export function createPlaybackEngine(
       chain,
       sound,
     };
+    applySampler(t, entry, voice);
+    return entry;
   };
 
   // Created lazily and per key so a voice added mid-play needs no restart, and
@@ -481,6 +500,9 @@ export function createPlaybackEngine(
     } else {
       applyMixer(entry, voice, at);
       applySound(entry, voice, tempo, at);
+      applySampler(t, entry, voice);
+      const preview = previews.get(voice.key);
+      if (preview) applySampler(t, preview, voice);
     }
     return entry;
   };
@@ -518,6 +540,7 @@ export function createPlaybackEngine(
         pan: voice.pan,
         sound,
       };
+      applySampler(t, entry, voice);
       previews.set(voice.key, entry);
     } else {
       entry.channel.volume.rampTo(voice.volumeDb, MIXER_RAMP_SECONDS);
@@ -604,7 +627,7 @@ export function createPlaybackEngine(
 
   // Best-effort like the instrument loads: a sample that cannot be read leaves its clips silent, not Play failed.
   const loadSamples = async (t: ToneModule, voices: Voice[]) => {
-    const cache = (sampleBuffers ??= deps.sampleBuffers ?? sharedSampleBuffers(t));
+    const cache = bufferCache(t);
     const ids = clipSampleIds(voices);
     const wanted = new Set(ids);
     const fresh = [...wanted].filter((id) => !heldSamples.has(id));
@@ -987,7 +1010,11 @@ export function createPlaybackEngine(
       const tempo = tempoOf();
       for (const voice of model.getVoices()) {
         const entry = channels.get(voice.key);
-        if (entry) applySound(entry, voice, tempo);
+        if (!entry) continue;
+        applySound(entry, voice, tempo);
+        applySampler(tone, entry, voice);
+        const preview = previews.get(voice.key);
+        if (preview) applySampler(tone, preview, voice);
       }
     },
     dispose() {

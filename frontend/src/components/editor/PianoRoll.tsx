@@ -169,6 +169,7 @@ export function PianoRoll({
   subscribePosition,
   className,
   gutterClassName,
+  renderRowLabels,
   corner: cornerContent,
   beatLabels,
   describedBy,
@@ -208,6 +209,8 @@ export function PianoRoll({
   // Replaces the default bordered frame so a host can make the roll fill its region.
   className?: string;
   gutterClassName?: string;
+  // Lets a host own the label column, as a sampler does to put a drop target on each pad.
+  renderRowLabels?: (props: { rows: Row[]; gutterClassName?: string }) => ReactNode;
   corner?: ReactNode;
   beatLabels?: boolean;
   // Lets a host add context the grid alone doesn't convey, such as that edits reach several clips.
@@ -377,7 +380,8 @@ export function PianoRoll({
 
   // Measuring per frame would force layout 60 times a second.
   useEffect(() => {
-    const el = labels.current;
+    // The corner shares the label column's grid track, so it has the gutter's width when a host owns the labels.
+    const el = labels.current ?? corner.current;
     if (!el) return;
     labelWidth.current = el.offsetWidth;
     if (typeof ResizeObserver === "undefined") return;
@@ -891,15 +895,19 @@ export function PianoRoll({
               />
             )}
           </MeasureRuler>
-          <RowLabels
-            ref={labels}
-            rows={grid.rows}
-            kind={kind}
-            onAudition={onAudition}
-            gutterClassName={gutterClassName}
-            keyHighlight={keyHighlight}
-            rowTints={rowTints}
-          />
+          {renderRowLabels ? (
+            renderRowLabels({ rows: grid.rows, gutterClassName })
+          ) : (
+            <RowLabels
+              ref={labels}
+              rows={grid.rows}
+              kind={kind}
+              onAudition={onAudition}
+              gutterClassName={gutterClassName}
+              keyHighlight={keyHighlight}
+              rowTints={rowTints}
+            />
+          )}
           <div
             ref={gridRef}
             data-testid="roll-grid"

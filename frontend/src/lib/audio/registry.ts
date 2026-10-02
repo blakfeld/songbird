@@ -1,6 +1,8 @@
+import { SAMPLER_KEYS_ID, SAMPLER_PADS_ID } from "@/lib/song/sampler";
 import type { SoundSource, ToneControls } from "./types";
 import { createDrumsSource } from "./drumsSource";
 import { fallbackPreset, presets } from "./presets";
+import { createSamplerSource } from "./samplerSource";
 import { createSynthSource } from "./synthSource";
 
 type ToneModule = typeof import("tone");
@@ -15,6 +17,8 @@ export type SoundSourceFactory = (
 
 const factories = new Map<string, SoundSourceFactory>([
   ["drums", createDrumsSource],
+  [SAMPLER_KEYS_ID, createSamplerSource("keys")],
+  [SAMPLER_PADS_ID, createSamplerSource("pads")],
   ...Object.entries(presets).map(
     ([id, preset]): [string, SoundSourceFactory] => [id, createSynthSource(preset)],
   ),
