@@ -12,10 +12,22 @@ services:
       SONGBIRD_OLLAMA_MODEL: ${SONGBIRD_OLLAMA_MODEL:-qwen2.5:7b-instruct}
       SONGBIRD_GENERATION_TIMEOUT_SECS: ${SONGBIRD_GENERATION_TIMEOUT_SECS:-60}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # SQLite on the songbird-data volume by default. To use Postgres, start with
+      # `--profile postgres` and set SONGBIRD_COMPOSE_DATABASE_URL to
+      # postgres://songbird:songbird@postgres:5432/songbird. A separate variable is
+      # used because the localhost URL that `just dev-pg` prints would point the
+      # container at its own loopback.
+      SONGBIRD_DATABASE_URL: ${SONGBIRD_COMPOSE_DATABASE_URL:-}
+    volumes:
+      - songbird-data:/app/data
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     # The ollama provider fails startup while Ollama is still booting.
     restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
 
   frontend:
     build:
@@ -23,9 +35,26 @@ services:
       args:
         SONGBIRD_API_URL: http://backend:8080
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - backend
+
+  postgres:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: songbird
+      POSTGRES_PASSWORD: songbird
+      POSTGRES_DB: songbird
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U songbird -d songbird"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   ollama:
     image: ollama/ollama
@@ -33,7 +62,9 @@ services:
     volumes:
       - ollama:/root/.ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
 
 volumes:
   ollama:
+  songbird-data:
+  pg-data:

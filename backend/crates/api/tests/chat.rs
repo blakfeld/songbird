@@ -1,8 +1,10 @@
+mod common;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS};
+use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS, MAX_CONCURRENT_GENERATIONS};
 use api::provider::Providers;
 use api::state::AppState;
 use async_trait::async_trait;
@@ -104,7 +106,8 @@ impl PlanProvider for UnknownInstrument {
     }
 }
 
-fn app_with(providers: Providers, extra: &[(&str, &str)]) -> axum::Router {
+async fn app_with(providers: Providers, extra: &[(&str, &str)]) -> axum::Router {
+    let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| {
         if k == AI_PROVIDER {
             return Some("mock".into());
@@ -115,11 +118,13 @@ fn app_with(providers: Providers, extra: &[(&str, &str)]) -> axum::Router {
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    api::app(AppState {
+    let router = api::app(AppState {
         providers,
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
-    })
+        db: db.clone(),
+    });
+    db.keep_alive_with(router)
 }
 
 async fn chat(app: axum::Router, body: Value) -> (StatusCode, Value) {
@@ -186,7 +191,7 @@ async fn a_request_for_a_part_adds_a_track() {
     let patterns = RecordingPatterns::default();
     let seen = patterns.seen.clone();
     let (status, response) = chat(
-        app_with(Providers::with_patterns(patterns), &[]),
+        app_with(Providers::with_patterns(patterns), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("give me the drums to match")]}),
     )
     .await;
@@ -216,7 +221,7 @@ async fn a_request_for_a_part_adds_a_track() {
 #[tokio::test]
 async fn an_empty_song_is_not_rejected_for_its_track_count() {
     let (status, response) = chat(
-        app_with(Providers::mock(), &[]),
+        app_with(Providers::mock(), &[]).await,
         json!({"song": song(4, vec![]), "messages": [user("give me the drums")]}),
     )
     .await;
@@ -228,7 +233,7 @@ async fn a_question_gets_a_reply_and_no_generation() {
     let patterns = RecordingPatterns::default();
     let seen = patterns.seen.clone();
     let (status, response) = chat(
-        app_with(Providers::with_patterns(patterns), &[]),
+        app_with(Providers::with_patterns(patterns), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("what tempo is this song?")]}),
     )
     .await;
@@ -245,7 +250,7 @@ async fn the_conversation_reaches_the_planner_and_the_rewritten_prompt_reaches_g
     let plans = RecordingPlans::default();
     let planned = plans.seen.clone();
     let (status, _) = chat(
-        app_with(Providers::new(patterns, plans), &[]),
+        app_with(Providers::new(patterns, plans), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [
             user("give me a piano that plays slow jazzy chords"),
             assistant("Added a Piano track."),
@@ -271,7 +276,7 @@ async fn the_conversation_reaches_the_planner_and_the_rewritten_prompt_reaches_g
 #[tokio::test]
 async fn an_unknown_instrument_twice_is_502() {
     let (status, response) = chat(
-        app_with(Providers::new(MockProvider, UnknownInstrument), &[]),
+        app_with(Providers::new(MockProvider, UnknownInstrument), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a kazoo")]}),
     )
     .await;
@@ -286,7 +291,7 @@ async fn the_server_enforces_the_track_limit() {
     let patterns = RecordingPatterns::default();
     let seen = patterns.seen.clone();
     let (status, response) = chat(
-        app_with(Providers::with_patterns(patterns), &[]),
+        app_with(Providers::with_patterns(patterns), &[]).await,
         json!({"song": song(4, tracks), "messages": [user("give me a bass")]}),
     )
     .await;
@@ -302,7 +307,7 @@ async fn too_many_messages_are_rejected_before_any_provider_call() {
     let calls = plans.calls.clone();
     let messages: Vec<Value> = (0..21).map(|_| user("hi")).collect();
     let (status, response) = chat(
-        app_with(Providers::new(MockProvider, plans), &[]),
+        app_with(Providers::new(MockProvider, plans), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": messages}),
     )
     .await;
@@ -315,7 +320,7 @@ async fn too_many_messages_are_rejected_before_any_provider_call() {
 async fn every_invalid_body_is_400_with_its_own_code() {
     let app = || app_with(Providers::mock(), &[]);
     let (status, response) = chat(
-        app(),
+        app().await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("hi"), assistant("hello")]}),
     )
     .await;
@@ -324,7 +329,7 @@ async fn every_invalid_body_is_400_with_its_own_code() {
         (StatusCode::BAD_REQUEST, &json!("invalid_request"))
     );
     let (status, response) = chat(
-        app(),
+        app().await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("  ")]}),
     )
     .await;
@@ -334,7 +339,11 @@ async fn every_invalid_body_is_400_with_its_own_code() {
     );
     let mut bad_song = song(4, vec![piano_track("t1")]);
     bad_song["tempo_bpm"] = json!(1000);
-    let (status, response) = chat(app(), json!({"song": bad_song, "messages": [user("hi")]})).await;
+    let (status, response) = chat(
+        app().await,
+        json!({"song": bad_song, "messages": [user("hi")]}),
+    )
+    .await;
     assert_eq!(
         (status, &response["error"]["code"]),
         (StatusCode::BAD_REQUEST, &json!("invalid_song"))
@@ -342,7 +351,7 @@ async fn every_invalid_body_is_400_with_its_own_code() {
     let mut bad_instrument = song(4, vec![piano_track("t1")]);
     bad_instrument["tracks"][0]["instrument"] = json!("kazoo");
     let (status, response) = chat(
-        app(),
+        app().await,
         json!({"song": bad_instrument, "messages": [user("hi")]}),
     )
     .await;
@@ -351,7 +360,7 @@ async fn every_invalid_body_is_400_with_its_own_code() {
         (StatusCode::BAD_REQUEST, &json!("invalid_instrument"))
     );
     let (status, response) = chat(
-        app(),
+        app().await,
         json!({"song": song(48, vec![piano_track("t1")]), "messages": [user("a bass")],
                "range": {"start_measure": 40, "end_measure": 60}}),
     )
@@ -361,7 +370,7 @@ async fn every_invalid_body_is_400_with_its_own_code() {
         (StatusCode::BAD_REQUEST, &json!("invalid_range"))
     );
     let (status, response) = chat(
-        app(),
+        app().await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user(&"a".repeat(1025))]}),
     )
     .await;
@@ -377,7 +386,7 @@ async fn a_long_song_needs_a_loop_range() {
     let seen = patterns.seen.clone();
     let long = || song(48, vec![piano_track("t1")]);
     let (status, response) = chat(
-        app_with(Providers::with_patterns(patterns.clone()), &[]),
+        app_with(Providers::with_patterns(patterns.clone()), &[]).await,
         json!({"song": long(), "messages": [user("give me a bass part")]}),
     )
     .await;
@@ -387,7 +396,7 @@ async fn a_long_song_needs_a_loop_range() {
     assert!(seen.lock().unwrap().is_empty());
 
     let (status, response) = chat(
-        app_with(Providers::with_patterns(patterns), &[]),
+        app_with(Providers::with_patterns(patterns), &[]).await,
         json!({"song": long(), "messages": [user("give me a bass part")],
                "range": {"start_measure": 9, "end_measure": 16}}),
     )
@@ -402,13 +411,18 @@ async fn a_long_song_needs_a_loop_range() {
     }
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn a_hanging_planner_is_504() {
+    let app = app_with(
+        Providers::new(MockProvider, SlowPlans),
+        &[(GENERATION_TIMEOUT_SECS, "1")],
+    )
+    .await;
+    // Paused only after setup: the pool's connect timeout would otherwise fire
+    // instantly against real file I/O.
+    tokio::time::pause();
     let (status, response) = chat(
-        app_with(
-            Providers::new(MockProvider, SlowPlans),
-            &[(GENERATION_TIMEOUT_SECS, "1")],
-        ),
+        app,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass")]}),
     )
     .await;
@@ -416,13 +430,16 @@ async fn a_hanging_planner_is_504() {
     assert_eq!(response["error"]["code"], "generation_timeout");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn hanging_generation_is_504_after_a_successful_plan() {
+    let app = app_with(
+        Providers::with_patterns(SlowPatterns),
+        &[(GENERATION_TIMEOUT_SECS, "1")],
+    )
+    .await;
+    tokio::time::pause();
     let (status, response) = chat(
-        app_with(
-            Providers::with_patterns(SlowPatterns),
-            &[(GENERATION_TIMEOUT_SECS, "1")],
-        ),
+        app,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass")]}),
     )
     .await;
@@ -452,7 +469,7 @@ fn empty_track() -> Value {
 #[tokio::test]
 async fn a_named_length_grows_a_one_measure_song() {
     let (status, response) = chat(
-        app_with(Providers::mock(), &[]),
+        app_with(Providers::mock(), &[]).await,
         json!({"song": one_measure_song(vec![drum_track_with_one_clip()]),
                "messages": [user("16 bars of slow jazzy piano")]}),
     )
@@ -470,7 +487,7 @@ async fn a_named_length_grows_a_one_measure_song() {
 #[tokio::test]
 async fn an_empty_song_defaults_to_eight_measures() {
     let (status, response) = chat(
-        app_with(Providers::mock(), &[]),
+        app_with(Providers::mock(), &[]).await,
         json!({"song": one_measure_song(vec![empty_track()]),
                "messages": [user("give me a drum beat")]}),
     )
@@ -486,7 +503,7 @@ async fn an_empty_song_defaults_to_eight_measures() {
 #[tokio::test]
 async fn without_a_named_length_a_song_with_clips_uses_its_own_length() {
     let (status, response) = chat(
-        app_with(Providers::mock(), &[]),
+        app_with(Providers::mock(), &[]).await,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass please")]}),
     )
     .await;
@@ -520,7 +537,7 @@ async fn chat_ignores_audio_tracks() {
     let plans = RecordingPlans::default();
     let planned = plans.seen.clone();
     let (status, response) = chat(
-        app_with(Providers::new(patterns, plans), &[]),
+        app_with(Providers::new(patterns, plans), &[]).await,
         json!({"song": s, "messages": [user("give me a bass part")]}),
     )
     .await;
@@ -542,10 +559,109 @@ async fn audio_tracks_count_toward_the_chat_track_limit() {
     let mut s = song(4, tracks);
     s["samples"] = json!([sample]);
     let (status, response) = chat(
-        app_with(Providers::mock(), &[]),
+        app_with(Providers::mock(), &[]).await,
         json!({"song": s, "messages": [user("give me a bass")]}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{response}");
     assert_eq!(response["track"], Value::Null);
+}
+
+struct BlockingPatterns(Arc<tokio::sync::Notify>);
+
+#[async_trait]
+impl PatternProvider for BlockingPatterns {
+    async fn generate(
+        &self,
+        _: &GenerateRequest,
+        _: &Instrument,
+    ) -> Result<PatternDraft, ProviderError> {
+        self.0.notify_one();
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        unreachable!("the test aborts the request")
+    }
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+async fn post_status(app: &axum::Router, uri: &str, body: Value) -> StatusCode {
+    let req = Request::post(uri)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    app.clone().oneshot(req).await.unwrap().status()
+}
+
+async fn single_slot_app() -> (axum::Router, Arc<tokio::sync::Notify>) {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let app = app_with(
+        Providers::with_patterns(BlockingPatterns(started.clone())),
+        &[
+            (MAX_CONCURRENT_GENERATIONS, "1"),
+            (GENERATION_TIMEOUT_SECS, "3600"),
+        ],
+    )
+    .await;
+    (app, started)
+}
+
+fn chat_body() -> Value {
+    json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("give me the drums to match")]})
+}
+
+#[tokio::test]
+async fn all_generation_routes_share_one_budget_and_cheap_routes_stay_available() {
+    let (app, started) = single_slot_app().await;
+    let first = tokio::spawn(chat(app.clone(), chat_body()));
+    started.notified().await;
+
+    // The limiter runs before body validation, so any body shows the shed.
+    for uri in [
+        CHAT_URI,
+        "/api/v1/patterns/generate",
+        "/api/v1/songs/tracks/generate",
+    ] {
+        assert_eq!(
+            post_status(&app, uri, json!({})).await,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{uri}"
+        );
+    }
+    let (_, response) = chat(app.clone(), chat_body()).await;
+    assert_eq!(response["error"]["code"], "generation_busy");
+
+    for uri in [
+        "/healthz",
+        "/api/v1/songs/limits",
+        "/api/v1/patterns/limits",
+    ] {
+        let res = app
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{uri}");
+    }
+    first.abort();
+}
+
+#[tokio::test]
+async fn the_slot_is_released_when_a_generation_is_abandoned() {
+    let (app, started) = single_slot_app().await;
+    let first = tokio::spawn(chat(app.clone(), chat_body()));
+    started.notified().await;
+    first.abort();
+    let _ = first.await;
+
+    // Reaching the provider again (and so blocking) proves the slot was free; a shed returns at once.
+    let next = tokio::time::timeout(
+        Duration::from_millis(300),
+        post_status(&app, CHAT_URI, chat_body()),
+    )
+    .await;
+    assert!(
+        next.is_err(),
+        "expected the request to be running, got {next:?}"
+    );
 }

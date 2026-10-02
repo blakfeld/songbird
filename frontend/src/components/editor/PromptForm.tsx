@@ -105,7 +105,7 @@ export function PromptForm({
           value={prompt}
           onChange={(e) => getPatternStore(instrumentId).getState().setPrompt(e.target.value)}
           placeholder="e.g. laid-back boom bap with ghost-note snares and an open hat on the 'and' of 4"
-          aria-describedby={`${id}-hint prompt-token-count`}
+          aria-describedby={`${id}-hint ${id}-token-count`}
           aria-invalid={overLimit}
           className={`${inputClass} h-auto w-full resize-y py-2`}
         />
@@ -114,7 +114,7 @@ export function PromptForm({
         <p id={`${id}-hint`} className="text-xs text-zinc-600 dark:text-zinc-400">
           Rhythm, feel, genre, fills…
         </p>
-        <TokenCounter count={count} max={max} />
+        <TokenCounter id={`${id}-token-count`} count={count} max={max} />
       </div>
       <div className="grid grid-cols-3 items-end gap-3 sm:flex sm:flex-wrap sm:gap-4">
         <Field label="Measures" htmlFor={`${id}-measures`}>

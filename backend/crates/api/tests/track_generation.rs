@@ -1,3 +1,5 @@
+mod common;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -58,7 +60,11 @@ impl PatternProvider for Slow {
     }
 }
 
-fn app_with(provider: impl PatternProvider + 'static, extra: &[(&str, &str)]) -> axum::Router {
+async fn app_with(
+    provider: impl PatternProvider + 'static,
+    extra: &[(&str, &str)],
+) -> axum::Router {
+    let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| {
         if k == AI_PROVIDER {
             return Some("mock".into());
@@ -69,11 +75,13 @@ fn app_with(provider: impl PatternProvider + 'static, extra: &[(&str, &str)]) ->
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    api::app(AppState {
+    let router = api::app(AppState {
         providers: Providers::with_patterns(provider),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
-    })
+        db: db.clone(),
+    });
+    db.keep_alive_with(router)
 }
 
 async fn call(app: axum::Router, req: Request<Body>) -> (StatusCode, Value) {
@@ -148,7 +156,7 @@ fn bass_row_ids() -> Vec<String> {
 #[tokio::test]
 async fn whole_song_generation_succeeds_within_the_song() {
     let (status, response) = generate(
-        app_with(MockProvider, &[]),
+        app_with(MockProvider, &[]).await,
         body(drums_and_empty_bass(8), None),
     )
     .await;
@@ -171,7 +179,7 @@ async fn whole_song_generation_succeeds_within_the_song() {
 #[tokio::test]
 async fn range_generation_counts_steps_from_the_range_start() {
     let (status, response) = generate(
-        app_with(MockProvider, &[]),
+        app_with(MockProvider, &[]).await,
         body(drums_and_empty_bass(16), Some((5, 8))),
     )
     .await;
@@ -188,15 +196,15 @@ async fn range_generation_counts_steps_from_the_range_start() {
 #[tokio::test]
 async fn the_mock_is_deterministic_for_track_generation() {
     let request = body(drums_and_empty_bass(8), Some((1, 4)));
-    let (_, first) = generate(app_with(MockProvider, &[]), request.clone()).await;
-    let (_, second) = generate(app_with(MockProvider, &[]), request).await;
+    let (_, first) = generate(app_with(MockProvider, &[]).await, request.clone()).await;
+    let (_, second) = generate(app_with(MockProvider, &[]).await, request).await;
     assert_eq!(first, second);
 }
 
 async fn rejected(request: Value) -> (StatusCode, Value, usize) {
     let provider = Recording::default();
     let calls = provider.calls.clone();
-    let (status, response) = generate(app_with(provider, &[]), request).await;
+    let (status, response) = generate(app_with(provider, &[]).await, request).await;
     (
         status,
         response["error"]["code"].clone(),
@@ -243,7 +251,7 @@ async fn a_range_past_the_song_end_is_generated() {
     let mut one_measure = drums_and_empty_bass(1);
     one_measure["tracks"][0]["clips"][0]["measures"] = json!(1);
     let (status, response) = generate(
-        app_with(MockProvider, &[]),
+        app_with(MockProvider, &[]).await,
         body(one_measure, Some((1, 16))),
     )
     .await;
@@ -279,13 +287,13 @@ async fn prompt_and_song_rules_apply_before_the_provider() {
     );
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn a_hanging_provider_is_504() {
-    let (status, response) = generate(
-        app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]),
-        body(drums_and_empty_bass(8), None),
-    )
-    .await;
+    let app = app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]).await;
+    // Paused only after setup: the pool's connect timeout would otherwise fire
+    // instantly against real file I/O.
+    tokio::time::pause();
+    let (status, response) = generate(app, body(drums_and_empty_bass(8), None)).await;
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
     assert_eq!(response["error"]["code"], "generation_timeout");
 }
@@ -295,7 +303,11 @@ async fn limits_reflect_configuration() {
     let req = Request::get("/api/v1/songs/limits")
         .body(Body::empty())
         .unwrap();
-    let (status, response) = call(app_with(MockProvider, &[(MAX_INPUT_TOKENS, "128")]), req).await;
+    let (status, response) = call(
+        app_with(MockProvider, &[(MAX_INPUT_TOKENS, "128")]).await,
+        req,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         response,
@@ -312,7 +324,7 @@ async fn other_tracks_and_the_key_reach_the_provider() {
     let seen = provider.seen.clone();
     let mut request = body(drums_and_empty_bass(8), Some((1, 4)));
     request["song"]["key"] = json!({"tonic": "E", "mode": "minor"});
-    let (status, _) = generate(app_with(provider, &[]), request).await;
+    let (status, _) = generate(app_with(provider, &[]).await, request).await;
     assert_eq!(status, StatusCode::OK);
     let seen = seen.lock().unwrap();
     let context = seen[0].context.as_deref().expect("context is sent");
@@ -328,7 +340,7 @@ async fn a_zero_context_budget_sends_no_context() {
     let provider = Recording::default();
     let seen = provider.seen.clone();
     let (status, _) = generate(
-        app_with(provider, &[(MAX_CONTEXT_TOKENS, "0")]),
+        app_with(provider, &[(MAX_CONTEXT_TOKENS, "0")]).await,
         body(drums_and_empty_bass(8), None),
     )
     .await;
@@ -371,7 +383,7 @@ async fn audio_tracks_are_not_sent_as_generation_context() {
     s["samples"] = json!([sample]);
     let provider = Recording::default();
     let seen = provider.seen.clone();
-    let (status, response) = generate(app_with(provider, &[]), body(s, None)).await;
+    let (status, response) = generate(app_with(provider, &[]).await, body(s, None)).await;
     assert_eq!(status, StatusCode::OK, "{response}");
     let seen = seen.lock().unwrap();
     let context = seen[0].context.as_deref().unwrap();

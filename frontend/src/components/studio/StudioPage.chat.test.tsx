@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -121,6 +121,16 @@ describe("assistant chat", () => {
     expect(second.messages[2].content).toBe("now the drums");
     expect(second.range).toBeUndefined();
     expect(screen.getAllByText(/^Added track:/)).toHaveLength(2);
+  });
+
+  it("does not send on the Enter that confirms IME composition, including Safari's keyCode 229", async () => {
+    await renderStudio(songOf(4));
+    const input = screen.getByRole("textbox", { name: "Message the assistant" });
+    await userEvent.type(input, "a bass");
+    fireEvent.keyDown(input, { key: "Enter", isComposing: false, keyCode: 229 });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(input).toHaveValue("a bass");
+    expect(api.sendChat).not.toHaveBeenCalled();
   });
 
   it("shows the sent message at once and empties the input while the reply is pending", async () => {

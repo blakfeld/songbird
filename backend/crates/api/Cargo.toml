@@ -9,14 +9,18 @@ async-trait.workspace = true
 axum = "0.8.9"
 dotenvy = "0.15.7"
 music = { path = "../music" }
+percent-encoding = "2.3.2"
 secrecy = "0.10.3"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sqlx = { version = "0.8.6", default-features = false, features = ["any", "sqlite", "postgres", "runtime-tokio", "tls-rustls", "migrate", "macros"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+url = "2.5.8"
+uuid = { version = "1.26.1", features = ["v7"] }
 
 [dev-dependencies]
 futures-util = "0.3"

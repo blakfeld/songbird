@@ -1,3 +1,5 @@
+mod common;
+
 use std::sync::Arc;
 
 use api::config::{Config, AI_PROVIDER};
@@ -16,13 +18,16 @@ const ALLOWED_ORIGIN: &str = "http://localhost:3000";
 const EXPORT_URI: &str = "/api/v1/songs/export/midi";
 const ONE_MIB: usize = 1024 * 1024;
 
-fn app() -> axum::Router {
+async fn app() -> axum::Router {
+    let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
-    api::app(AppState {
+    let router = api::app(AppState {
         providers: Providers::mock(),
         instruments: InstrumentRegistry::builtin(),
         config: Arc::new(config),
-    })
+        db: db.clone(),
+    });
+    db.keep_alive_with(router)
 }
 
 fn track(id: &str, name: &str, instrument: &str, loops: Value, clips: Value) -> Value {
@@ -113,7 +118,7 @@ async fn post_export(
 }
 
 async fn export(song: &Value) -> (StatusCode, HeaderMap, Vec<u8>) {
-    post_export(app(), song.to_string(), false).await
+    post_export(app().await, song.to_string(), false).await
 }
 
 fn error_of(bytes: &[u8]) -> Value {
@@ -200,7 +205,7 @@ async fn densest_sixteen_track_song_fits_the_song_body_limit() {
     println!("dense 16x128 song: {} bytes", body.len());
     assert!(body.len() > ONE_MIB, "{} bytes", body.len());
     assert!(body.len() < SONG_MAX_BODY_BYTES, "{} bytes", body.len());
-    let (status, _, bytes) = post_export(app(), body, false).await;
+    let (status, _, bytes) = post_export(app().await, body, false).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(Smf::parse(&bytes).unwrap().tracks.len(), 17);
 }
@@ -220,14 +225,14 @@ async fn six_hundred_kib_song_is_accepted() {
     }
     let body = body.to_string();
     assert!(body.len() > 400 * 1024, "{} bytes", body.len());
-    let (status, _, _) = post_export(app(), body, false).await;
+    let (status, _, _) = post_export(app().await, body, false).await;
     assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]
 async fn three_mebibyte_song_is_rejected_with_cors_headers() {
     let body = format!(r#"{{"pad":"{}"}}"#, "a".repeat(3 * ONE_MIB));
-    let (status, headers, bytes) = post_export(app(), body, true).await;
+    let (status, headers, bytes) = post_export(app().await, body, true).await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(error_of(&bytes)["code"], "payload_too_large");
     assert_eq!(
@@ -244,7 +249,7 @@ async fn one_mebibyte_to_a_pattern_route_is_still_rejected() {
         .header(header::CONTENT_LENGTH, body.len())
         .body(Body::from(body))
         .unwrap();
-    let res = app().oneshot(req).await.unwrap();
+    let res = app().await.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 

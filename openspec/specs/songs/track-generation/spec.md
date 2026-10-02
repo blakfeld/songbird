@@ -189,6 +189,29 @@ The whole write SHALL be recorded as one undo step. On failure, the error messag
 - **WHEN** looping is on and the loop region covers every measure of a 16-measure song
 - **THEN** the "Loop range" option is not offered
 
+### Requirement: Keyboard submission of the generate form
+In the Studio's generate form, pressing Enter in the prompt field SHALL submit the form, exactly as activating the Generate button does. Enter SHALL do nothing when the Generate button is disabled, for example when the prompt is empty or over the token limit, the generation limits haven't loaded, or the custom range is invalid. Pressing Shift+Enter SHALL insert a line break. Enter that confirms an input-method composition SHALL NOT submit. Pressing Enter in the measure fields SHALL also submit the form. The prompt field SHALL show a hint that Enter generates and Shift+Enter adds a new line, and the hint SHALL be associated with the field for assistive technology.
+
+#### Scenario: Enter generates
+- **WHEN** the user opens Generate on the Bass track, types "walking bass", and presses Enter
+- **THEN** the dialog closes and generation starts for the Bass track with the prompt "walking bass"
+
+#### Scenario: Shift+Enter adds a line
+- **WHEN** the user types "walking bass", presses Shift+Enter, and types "with fills"
+- **THEN** the prompt contains both lines and nothing has been generated
+
+#### Scenario: Enter on an empty prompt
+- **WHEN** the prompt is empty and the user presses Enter
+- **THEN** the dialog stays open and nothing is generated
+
+#### Scenario: Enter with an invalid range
+- **WHEN** a custom range from measure 5 to measure 2 is entered and the user presses Enter in the prompt
+- **THEN** the dialog stays open, the range error is shown, and nothing is generated
+
+#### Scenario: IME composition
+- **WHEN** the user presses Enter to confirm a Japanese input composition in the prompt
+- **THEN** the composed text is inserted and the form is not submitted
+
 ### Requirement: Global song chat builds the arrangement
 The Studio's assistant column (laid out by #4 `add-multitrack-song`) SHALL provide one chat for the whole song, not tied to a selected track. The user SHALL be able to describe a part in plain language, such as "give me a piano that plays slow jazzy chords". The system SHALL then add a new track, pick an instrument from `GET /api/v1/instruments` that suits the request, and fill the track with generated notes over the chat range. The new track SHALL hold one loop named after the track and as long as the chat range, placed as one clip covering that range.
 

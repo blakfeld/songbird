@@ -41,6 +41,17 @@ export function newTrack(instrument: string, name: string): Track {
   };
 }
 
+const UNTITLED = "Untitled song";
+
+// Creating without a dialog means the name can't be left to the user, so it must avoid colliding with existing songs.
+export function uniqueUntitledName(existingNames: string[]): string {
+  const taken = new Set(existingNames.map((n) => n.trim().toLowerCase()));
+  if (!taken.has(UNTITLED.toLowerCase())) return UNTITLED;
+  let n = 2;
+  while (taken.has(`${UNTITLED} ${n}`.toLowerCase())) n++;
+  return `${UNTITLED} ${n}`;
+}
+
 export function newSong(
   timeSignature: TimeSignature = "4/4",
   tempoBpm = 120,

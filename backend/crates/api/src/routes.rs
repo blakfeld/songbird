@@ -1,4 +1,6 @@
-use axum::extract::DefaultBodyLimit;
+use std::time::Duration;
+
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{header, HeaderValue, Method};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -9,6 +11,7 @@ use tracing::Level;
 
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::limit::GenerationLimiter;
 use crate::state::AppState;
 
 /// Generation bodies are a short description plus a few numbers, and export
@@ -26,13 +29,34 @@ async fn healthz() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
-pub fn routes() -> Router<AppState> {
+/// Short so an orchestrator's probe gets an answer before its own timeout fires.
+const READINESS_TIMEOUT: Duration = Duration::from_secs(2);
+
+async fn readyz(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let probe = sqlx::query("SELECT 1").execute(state.db.pool());
+    match tokio::time::timeout(READINESS_TIMEOUT, probe).await {
+        Ok(Ok(_)) => Ok(Json(json!({"status": "ready"}))),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "readiness probe failed");
+            Err(ApiError::NotReady)
+        }
+        Err(_) => {
+            tracing::warn!("readiness probe timed out");
+            Err(ApiError::NotReady)
+        }
+    }
+}
+
+pub fn routes(config: &Config) -> Router<AppState> {
+    // One limiter for both routers: the budget protects the provider, not a route.
+    let limiter = GenerationLimiter::new(config.max_concurrent_generations);
     Router::new()
         .route("/healthz", get(healthz))
-        .merge(crate::patterns::router())
+        .route("/readyz", get(readyz))
+        .merge(crate::patterns::router(limiter.clone()))
         // Applied to the sub-router so it runs inside the global limit and
         // overrides it for these routes only.
-        .merge(crate::songs::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
+        .merge(crate::songs::router(limiter).layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
 }
 
 /// Split from `routes` so tests can exercise the same layers, in the same
@@ -69,5 +93,5 @@ pub fn middleware(router: Router, config: &Config) -> Router {
 
 pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
-    middleware(routes().with_state(state), &config)
+    middleware(routes(&config).with_state(state), &config)
 }
