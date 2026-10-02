@@ -8,6 +8,7 @@ import type { Song } from "@/generated/Song";
 import type { SongLimits } from "@/generated/SongLimits";
 import type { TrackGenerateBody } from "@/generated/TrackGenerateBody";
 import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
+import { signOutLocally } from "./auth/signOut";
 import { midiFilename, songMidiFilename } from "./midiFilename";
 
 export class ApiError extends Error {
@@ -15,6 +16,8 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly status: number,
+    // Set from `Retry-After` so a throttled caller can wait exactly as long as the server asked.
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -32,6 +35,14 @@ const USER_MESSAGES: Record<string, string> = {
   generation_timeout: "Generation took too long. Please try again.",
   invalid_range: "That measure range can't be generated. Choose a range of up to 32 measures inside the song.",
   invalid_track: "That track is no longer in the song.",
+  unauthenticated: "Your session has ended. Please sign in again.",
+  invalid_credentials: "Email or password is incorrect.",
+  forbidden: "You don't have permission to do that.",
+  revision_conflict: "This song was changed somewhere else. Reload it or save your version as a copy.",
+  project_limit: "You've reached your limit for stored songs. Delete a song and try again.",
+  id_mismatch: "This song doesn't match the one being saved. Reload it and try again.",
+  too_many_requests: "Too many attempts. Please try again later.",
+  server_busy: "The service is busy. Please try again later.",
 };
 
 const NETWORK_MESSAGE = "Could not reach the Songbird service. Check your connection and try again.";
@@ -58,21 +69,33 @@ async function toApiError(res: Response): Promise<ApiError> {
   } catch {
     // Proxies and gateways return non-JSON error pages; the status alone must suffice.
   }
-  return new ApiError(code, messageFor(code, res.status, serverMessage), res.status);
+  const seconds = Number(res.headers.get("Retry-After"));
+  const retryAfterMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+  return new ApiError(code, messageFor(code, res.status, serverMessage), res.status, retryAfterMs);
 }
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
+export interface RequestOptions {
+  // The login page checks for a session on purpose while signed out, so its 401 must not trigger a sign-out.
+  signOutOnUnauthenticated?: boolean;
+}
+
+export async function request(path: string, init?: RequestInit, options: RequestOptions = {}): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(path, init);
   } catch {
     throw new ApiError("network_error", NETWORK_MESSAGE, 0);
   }
-  if (!res.ok) throw await toApiError(res);
+  if (!res.ok) {
+    const error = await toApiError(res);
+    // Keyed on the code, not the status: a wrong password at login is also a 401 and must not sign out.
+    if (error.code === "unauthenticated" && options.signOutOnUnauthenticated !== false) await signOutLocally();
+    throw error;
+  }
   return res;
 }
 
-function postJson(path: string, body: unknown): Promise<Response> {
+export function postJson(path: string, body: unknown): Promise<Response> {
   return request(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

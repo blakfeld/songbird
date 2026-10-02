@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Midi } from "@tonejs/midi";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { addTrack, newSong } from "./studioHelpers";
 
 test("build a song across tracks, mix it, reload and find it unchanged", async ({ page }) => {

@@ -13,12 +13,16 @@ use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
+/// Kept apart from `ai_router` so the metering layer can wrap exactly the routes that cost money.
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/patterns/generate", post(generate))
         .route("/api/v1/patterns/limits", get(limits))
         .route("/api/v1/patterns/export/midi", post(export_midi))
         .route("/api/v1/instruments", get(instruments))
+}
+
+pub fn ai_router() -> Router<AppState> {
+    Router::new().route("/api/v1/patterns/generate", post(generate))
 }
 
 async fn generate(

@@ -21,12 +21,13 @@ const ONE_MIB: usize = 1024 * 1024;
 async fn app() -> axum::Router {
     let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
-    let router = api::app(AppState {
-        providers: Providers::mock(),
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
-        db: db.clone(),
-    });
+    let router = api::app(AppState::new(
+        Providers::mock(),
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
+        db.clone(),
+    ));
+    let router = common::session::signed_in(&db, router).await;
     db.keep_alive_with(router)
 }
 

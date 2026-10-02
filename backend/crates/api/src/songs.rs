@@ -22,8 +22,13 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/songs/export/midi", post(export_midi))
-        .route("/api/v1/songs/tracks/generate", post(generate_track_part))
         .route("/api/v1/songs/limits", get(limits))
+}
+
+/// Every route that calls a provider belongs here so the metering layer covers it.
+pub fn ai_router() -> Router<AppState> {
+    Router::new()
+        .route("/api/v1/songs/tracks/generate", post(generate_track_part))
         .route("/api/v1/songs/chat", post(chat))
 }
 

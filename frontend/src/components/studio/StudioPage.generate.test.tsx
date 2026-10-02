@@ -1,13 +1,12 @@
-import "fake-indexeddb/auto";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
 import * as api from "@/lib/api";
-import { createSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createServerSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { StudioPage } from "./StudioPage";
@@ -66,6 +65,7 @@ const piano: InstrumentInfo = {
 const SLOW = 30_000;
 
 let library: SongLibrary;
+let fake: ReturnType<typeof createFakeProjectsApi>;
 
 function songOf(measures: number, loopRegion?: Song["loop_region"]): Song {
   const song = newSongWithTracks();
@@ -97,8 +97,8 @@ const response = (range = { start_measure: 1, end_measure: 4 }): TrackGenerateRe
 
 beforeEach(async () => {
   localStorage.clear();
-  await clear();
-  library = createSongLibrary();
+  fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
   vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
   vi.mocked(api.getSongLimits).mockResolvedValue({
     max_input_tokens: 256,

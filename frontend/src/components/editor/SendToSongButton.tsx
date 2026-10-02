@@ -8,7 +8,7 @@ import { ModalDialog } from "@/components/ui/ModalDialog";
 import { Spinner } from "@/components/ui/Spinner";
 import { focusRing, hintClass } from "@/components/ui/classes";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
-import { getSongLibrary, type SongIndexEntry, type SongLibrary } from "@/lib/song/songLibrary";
+import { getSongLibrary, SaveRefusedError, type SongIndexEntry, type SongLibrary } from "@/lib/song/songLibrary";
 import { addTrackFromPattern } from "@/lib/song/songOps";
 import { MAX_TRACKS, newSong, SONG_NAME_MAX, type Song } from "@/lib/song/types";
 import { ErrorAlert } from "./ErrorAlert";
@@ -43,7 +43,7 @@ function SendForm({
   const [selected, setSelected] = useState<Song | null>(null);
   const [phase, setPhase] = useState<"choose" | "sending" | "done">("choose");
   const [loadFailed, setLoadFailed] = useState(false);
-  const [sendFailed, setSendFailed] = useState(false);
+  const [sendFailed, setSendFailed] = useState<"conflict" | "other" | null>(null);
   const [result, setResult] = useState<{ song: Song; trackNumber: number } | null>(null);
   const confirmation = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
@@ -91,19 +91,17 @@ function SendForm({
 
   async function send() {
     setPhase("sending");
-    setSendFailed(false);
+    setSendFailed(null);
     try {
       const base = choice === NEW ? songFromPattern(pattern) : await library.peek(choice);
       if (!base) throw new Error("missing");
       const next = addTrackFromPattern(base, pattern);
       if (next === base) throw new Error("rejected");
-      await library.put(next);
-      // put() swallows storage errors into the status store, so success is confirmed from there.
-      if (!library.status.getState().ok) throw new Error("storage");
-      setResult({ song: next, trackNumber: next.tracks.length });
+      const saved = await library.put(next);
+      setResult({ song: saved, trackNumber: saved.tracks.length });
       setPhase("done");
-    } catch {
-      setSendFailed(true);
+    } catch (e) {
+      setSendFailed(e instanceof SaveRefusedError && e.conflict ? "conflict" : "other");
       setPhase("choose");
     }
   }
@@ -156,7 +154,11 @@ function SendForm({
       )}
       {sendFailed && (
         <ErrorAlert
-          message="Couldn't send the pattern. Your songs weren't changed."
+          message={
+            sendFailed === "conflict"
+              ? "That song was changed elsewhere. Retry to add the pattern to its latest version."
+              : "Couldn't send the pattern. Your songs weren't changed."
+          }
           onRetry={() => void send()}
         />
       )}

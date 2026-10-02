@@ -14,6 +14,9 @@ one backend and fail on the other.
 | Booleans | `INTEGER` 0/1 | `BOOLEAN` | `bool` |
 | JSON | `TEXT` | `TEXT` | the serialised value. It is never queried inside SQL, so no `jsonb` operators |
 
+Reading a boolean needs care: `Any` will not decode a SQLite `INTEGER` as
+`bool`, so try `bool` and fall back to `i64` (see `users::decode_bool`).
+
 ## Case-insensitive values
 
 Normalise (for example, lowercase) in Rust before insert and before lookup,

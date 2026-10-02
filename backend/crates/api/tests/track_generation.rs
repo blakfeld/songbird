@@ -75,12 +75,13 @@ async fn app_with(
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    let router = api::app(AppState {
-        providers: Providers::with_patterns(provider),
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
-        db: db.clone(),
-    });
+    let router = api::app(AppState::new(
+        Providers::with_patterns(provider),
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
+        db.clone(),
+    ));
+    let router = common::session::signed_in(&db, router).await;
     db.keep_alive_with(router)
 }
 
@@ -290,9 +291,8 @@ async fn prompt_and_song_rules_apply_before_the_provider() {
 #[tokio::test]
 async fn a_hanging_provider_is_504() {
     let app = app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]).await;
-    // Paused only after setup: the pool's connect timeout would otherwise fire
-    // instantly against real file I/O.
-    tokio::time::pause();
+    // Real time: every request now touches the database for its session, and
+    // paused time would fire the pool's acquire timeout while that I/O is pending.
     let (status, response) = generate(app, body(drums_and_empty_bass(8), None)).await;
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
     assert_eq!(response["error"]["code"], "generation_timeout");

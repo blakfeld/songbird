@@ -27,9 +27,14 @@ pub const CODEX_BIN: &str = "SONGBIRD_CODEX_BIN";
 pub const CODEX_MODEL: &str = "SONGBIRD_CODEX_MODEL";
 pub const DATABASE_URL: &str = "SONGBIRD_DATABASE_URL";
 pub const DATABASE_MAX_CONNECTIONS: &str = "SONGBIRD_DATABASE_MAX_CONNECTIONS";
+pub const COOKIE_SECURE: &str = "SONGBIRD_COOKIE_SECURE";
+pub const SESSION_IDLE_HOURS: &str = "SONGBIRD_SESSION_IDLE_HOURS";
+pub const TRUST_PROXY: &str = "SONGBIRD_TRUST_PROXY";
+pub const AI_REQUESTS_PER_MINUTE: &str = "SONGBIRD_AI_REQUESTS_PER_MINUTE";
+pub const AI_REQUESTS_PER_DAY: &str = "SONGBIRD_AI_REQUESTS_PER_DAY";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 14] = [
+pub const ALL_VARIABLES: [&str; 19] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -44,6 +49,11 @@ pub const ALL_VARIABLES: [&str; 14] = [
     CODEX_MODEL,
     DATABASE_URL,
     DATABASE_MAX_CONNECTIONS,
+    COOKIE_SECURE,
+    SESSION_IDLE_HOURS,
+    TRUST_PROXY,
+    AI_REQUESTS_PER_MINUTE,
+    AI_REQUESTS_PER_DAY,
 ];
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
@@ -55,6 +65,12 @@ const DEFAULT_OLLAMA_MODEL: &str = "qwen2.5:7b-instruct";
 const DEFAULT_CODEX_BIN: &str = "codex";
 const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 10;
 const MAX_DATABASE_MAX_CONNECTIONS: u32 = 100;
+const DEFAULT_SESSION_IDLE_HOURS: u32 = 168;
+const MAX_SESSION_IDLE_HOURS: u32 = 720;
+const DEFAULT_AI_REQUESTS_PER_MINUTE: u32 = 10;
+const MAX_AI_REQUESTS_PER_MINUTE: u32 = 600;
+const DEFAULT_AI_REQUESTS_PER_DAY: u32 = 200;
+const MAX_AI_REQUESTS_PER_DAY: u32 = 100_000;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
@@ -118,6 +134,47 @@ pub struct Config {
     pub codex_bin: String,
     pub codex_model: Option<String>,
     pub database: DatabaseConfig,
+    pub cookie_secure: bool,
+    pub session_idle: Duration,
+    pub trust_proxy: bool,
+    pub ai_requests_per_minute: u32,
+    pub ai_requests_per_day: u32,
+}
+
+fn has_https_origin(origins: &[String]) -> bool {
+    origins.iter().any(|o| o.starts_with("https://"))
+}
+
+fn parse_bool(
+    var: &'static str,
+    value: Option<String>,
+    default: bool,
+) -> Result<bool, ConfigError> {
+    match value.as_deref().map(str::to_ascii_lowercase).as_deref() {
+        None => Ok(default),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(other) => Err(ConfigError::Invalid {
+            var,
+            problem: format!("\"{other}\" is not true or false"),
+        }),
+    }
+}
+
+fn parse_ranged(
+    var: &'static str,
+    value: Option<String>,
+    default: u32,
+    max: u32,
+) -> Result<u32, ConfigError> {
+    let Some(v) = value else { return Ok(default) };
+    v.parse::<u32>()
+        .ok()
+        .filter(|n| (1..=max).contains(n))
+        .ok_or_else(|| ConfigError::Invalid {
+            var,
+            problem: format!("\"{v}\" is not an integer between 1 and {max}"),
+        })
 }
 
 impl Config {
@@ -210,21 +267,36 @@ impl Config {
                 })?,
         };
 
-        let database_max_connections = match get(DATABASE_MAX_CONNECTIONS) {
-            None => DEFAULT_DATABASE_MAX_CONNECTIONS,
-            Some(v) => v
-                .parse::<u32>()
-                .ok()
-                .filter(|n| (1..=MAX_DATABASE_MAX_CONNECTIONS).contains(n))
-                .ok_or_else(|| {
-                    invalid(
-                        DATABASE_MAX_CONNECTIONS,
-                        format!(
-                            "\"{v}\" is not an integer between 1 and {MAX_DATABASE_MAX_CONNECTIONS}"
-                        ),
-                    )
-                })?,
-        };
+        let database = database_from_get(&get)?;
+
+        let cookie_secure = parse_bool(COOKIE_SECURE, get(COOKIE_SECURE), true)?;
+        // A non-Secure session cookie on a real https deployment would travel over any
+        // accidental http request, so refuse rather than run exposed.
+        if !cookie_secure && has_https_origin(&cors_origins) {
+            return Err(invalid(
+                COOKIE_SECURE,
+                format!("false is not allowed while {CORS_ORIGINS} contains an https:// origin"),
+            ));
+        }
+        let session_idle_hours = parse_ranged(
+            SESSION_IDLE_HOURS,
+            get(SESSION_IDLE_HOURS),
+            DEFAULT_SESSION_IDLE_HOURS,
+            MAX_SESSION_IDLE_HOURS,
+        )?;
+        let trust_proxy = parse_bool(TRUST_PROXY, get(TRUST_PROXY), false)?;
+        let ai_requests_per_minute = parse_ranged(
+            AI_REQUESTS_PER_MINUTE,
+            get(AI_REQUESTS_PER_MINUTE),
+            DEFAULT_AI_REQUESTS_PER_MINUTE,
+            MAX_AI_REQUESTS_PER_MINUTE,
+        )?;
+        let ai_requests_per_day = parse_ranged(
+            AI_REQUESTS_PER_DAY,
+            get(AI_REQUESTS_PER_DAY),
+            DEFAULT_AI_REQUESTS_PER_DAY,
+            MAX_AI_REQUESTS_PER_DAY,
+        )?;
 
         Ok(Self {
             bind_addr,
@@ -242,12 +314,58 @@ impl Config {
             ollama_model: get(OLLAMA_MODEL).unwrap_or_else(|| DEFAULT_OLLAMA_MODEL.into()),
             codex_bin: get(CODEX_BIN).unwrap_or_else(|| DEFAULT_CODEX_BIN.into()),
             codex_model: get(CODEX_MODEL),
-            database: DatabaseConfig {
-                url: get(DATABASE_URL).map(SecretString::from),
-                max_connections: database_max_connections,
-            },
+            database,
+            cookie_secure,
+            session_idle: Duration::from_secs(u64::from(session_idle_hours) * 3600),
+            trust_proxy,
+            ai_requests_per_minute,
+            ai_requests_per_day,
         })
     }
+
+    /// Settings that are legal but probably wrong; returned rather than logged so a
+    /// test can assert them without capturing a subscriber.
+    pub fn startup_warnings(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        if !self.trust_proxy && has_https_origin(&self.cors_origins) {
+            warnings.push(format!(
+                "{TRUST_PROXY} is false while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
+            ));
+        }
+        warnings
+    }
+}
+
+/// The operator CLI needs only the database, and must not fail on unrelated
+/// provider settings such as a missing API key.
+pub fn database_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<DatabaseConfig, ConfigError> {
+    database_from_get(&|var: &str| {
+        lookup(var)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    })
+}
+
+fn database_from_get(get: &impl Fn(&str) -> Option<String>) -> Result<DatabaseConfig, ConfigError> {
+    let max_connections = match get(DATABASE_MAX_CONNECTIONS) {
+        None => DEFAULT_DATABASE_MAX_CONNECTIONS,
+        Some(v) => v
+            .parse::<u32>()
+            .ok()
+            .filter(|n| (1..=MAX_DATABASE_MAX_CONNECTIONS).contains(n))
+            .ok_or_else(|| ConfigError::Invalid {
+                var: DATABASE_MAX_CONNECTIONS,
+                problem: format!(
+                    "\"{v}\" is not an integer between 1 and {MAX_DATABASE_MAX_CONNECTIONS}"
+                ),
+            })?,
+    };
+    Ok(DatabaseConfig {
+        url: get(DATABASE_URL).map(SecretString::from),
+        max_connections,
+    })
 }
 
 #[cfg(test)]
@@ -435,6 +553,11 @@ mod tests {
             (CODEX_MODEL, "cm"),
             (DATABASE_URL, "postgres://u:p@h/d"),
             (DATABASE_MAX_CONNECTIONS, "25"),
+            (COOKIE_SECURE, "false"),
+            (SESSION_IDLE_HOURS, "24"),
+            (TRUST_PROXY, "true"),
+            (AI_REQUESTS_PER_MINUTE, "7"),
+            (AI_REQUESTS_PER_DAY, "70"),
         ];
         assert_eq!(all.len(), ALL_VARIABLES.len());
         let c = Config::from_lookup(lookup(&all)).unwrap();
@@ -454,6 +577,11 @@ mod tests {
             "postgres://u:p@h/d"
         );
         assert_eq!(c.database.max_connections, 25);
+        assert!(!c.cookie_secure);
+        assert_eq!(c.session_idle, Duration::from_secs(24 * 3600));
+        assert!(c.trust_proxy);
+        assert_eq!(c.ai_requests_per_minute, 7);
+        assert_eq!(c.ai_requests_per_day, 70);
     }
 
     #[test]
@@ -493,5 +621,82 @@ mod tests {
         assert!(!format!("{c:?}").contains("s3cret"));
         assert!(!format!("{c:#?}").contains("s3cret"));
         assert!(!format!("{c:?}").contains("songbird:"));
+    }
+
+    #[test]
+    fn account_settings_default_safely() {
+        let c = mock(&[]).unwrap();
+        assert!(c.cookie_secure);
+        assert_eq!(c.session_idle, Duration::from_secs(168 * 3600));
+        assert!(!c.trust_proxy);
+        assert_eq!(c.ai_requests_per_minute, 10);
+        assert_eq!(c.ai_requests_per_day, 200);
+    }
+
+    #[test]
+    fn session_idle_hours_and_ai_limits_are_range_checked() {
+        for (var, bad) in [
+            (SESSION_IDLE_HOURS, "0"),
+            (SESSION_IDLE_HOURS, "721"),
+            (SESSION_IDLE_HOURS, "soon"),
+            (AI_REQUESTS_PER_MINUTE, "0"),
+            (AI_REQUESTS_PER_MINUTE, "601"),
+            (AI_REQUESTS_PER_DAY, "0"),
+            (AI_REQUESTS_PER_DAY, "100001"),
+            (AI_REQUESTS_PER_DAY, "-1"),
+            (COOKIE_SECURE, "maybe"),
+            (TRUST_PROXY, "1"),
+        ] {
+            let err = mock(&[(var, bad)]).unwrap_err();
+            assert!(err.to_string().contains(var), "{var}={bad}: {err}");
+        }
+        assert_eq!(
+            mock(&[(SESSION_IDLE_HOURS, "720")]).unwrap().session_idle,
+            Duration::from_secs(720 * 3600)
+        );
+        assert_eq!(
+            mock(&[(AI_REQUESTS_PER_DAY, "100000")])
+                .unwrap()
+                .ai_requests_per_day,
+            100_000
+        );
+    }
+
+    #[test]
+    fn insecure_cookie_with_an_https_origin_is_refused_naming_both_variables() {
+        let err = mock(&[
+            (COOKIE_SECURE, "false"),
+            (
+                CORS_ORIGINS,
+                "http://localhost:3000,https://songbird.example",
+            ),
+        ])
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains(COOKIE_SECURE), "{message}");
+        assert!(message.contains(CORS_ORIGINS), "{message}");
+
+        assert!(mock(&[(COOKIE_SECURE, "false")]).is_ok());
+        assert!(mock(&[(CORS_ORIGINS, "https://songbird.example")]).is_ok());
+    }
+
+    #[test]
+    fn untrusted_proxy_with_an_https_origin_warns() {
+        let warnings = mock(&[(CORS_ORIGINS, "https://songbird.example")])
+            .unwrap()
+            .startup_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains(TRUST_PROXY));
+
+        for config in [
+            mock(&[
+                (CORS_ORIGINS, "https://songbird.example"),
+                (TRUST_PROXY, "true"),
+            ])
+            .unwrap(),
+            mock(&[]).unwrap(),
+        ] {
+            assert!(config.startup_warnings().is_empty());
+        }
     }
 }

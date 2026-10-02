@@ -118,12 +118,13 @@ async fn app_with(providers: Providers, extra: &[(&str, &str)]) -> axum::Router 
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    let router = api::app(AppState {
+    let router = api::app(AppState::new(
         providers,
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
-        db: db.clone(),
-    });
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
+        db.clone(),
+    ));
+    let router = common::session::signed_in(&db, router).await;
     db.keep_alive_with(router)
 }
 
@@ -418,9 +419,8 @@ async fn a_hanging_planner_is_504() {
         &[(GENERATION_TIMEOUT_SECS, "1")],
     )
     .await;
-    // Paused only after setup: the pool's connect timeout would otherwise fire
-    // instantly against real file I/O.
-    tokio::time::pause();
+    // Real time: every request now touches the database for its session, and
+    // paused time would fire the pool's acquire timeout while that I/O is pending.
     let (status, response) = chat(
         app,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass")]}),
@@ -437,7 +437,7 @@ async fn hanging_generation_is_504_after_a_successful_plan() {
         &[(GENERATION_TIMEOUT_SECS, "1")],
     )
     .await;
-    tokio::time::pause();
+    // Real time, for the reason given on the other timeout tests.
     let (status, response) = chat(
         app,
         json!({"song": song(4, vec![piano_track("t1")]), "messages": [user("a bass")]}),

@@ -4,11 +4,11 @@ import { useRef, useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { Button } from "@/components/ui/Button";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
-import { exportSongMidi } from "@/lib/api";
+import { ApiError, exportSongMidi } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
 import { projectFilename, readProjectFile, serializeProject } from "@/lib/song/projectFile";
 import type { SongLibrary } from "@/lib/song/songLibrary";
-import { newId, type Song } from "@/lib/song/types";
+import type { Song } from "@/lib/song/types";
 
 const OPEN_FAILURE = "Couldn't open that project. Your songs are unchanged.";
 const EXPORT_FAILURE = "Couldn't export MIDI. Try again.";
@@ -52,17 +52,6 @@ export function SongFileActions({
     onAnnounce(`Saved ${filename}.`);
   }
 
-  // Reads can fail quietly (they return empty results), and an id that can't be ruled out as taken
-  // must be regenerated, because saving under it would overwrite whatever is stored there.
-  async function idIsTaken(id: string): Promise<boolean> {
-    const { readStatus } = library;
-    const indexed = (await library.list()).some((e) => e.id === id);
-    if (indexed || readStatus.getState().failed) return true;
-    const stored = await library.peek(id);
-    const { failed, invalid } = readStatus.getState();
-    return stored !== null || failed || invalid;
-  }
-
   async function openProject(file: File) {
     setError(null);
     if (!instruments) return;
@@ -72,14 +61,14 @@ export function SongFileActions({
         setError(parsed.error);
         return;
       }
-      // Saves are debounced, so the index is only complete once pending writes land.
-      await library.flush();
-      const imported = (await idIsTaken(parsed.ok.id)) ? { ...parsed.ok, id: newId() } : parsed.ok;
-      await library.create(imported);
-      onAnnounce(`Opened "${imported.name}" as a new song.`);
-      onImported(imported);
-    } catch {
-      setError(OPEN_FAILURE);
+      // The server assigns the id, so an imported file can never replace a song that already has its id.
+      // A refused import is reported here with the server's reason, not as a failed autosave.
+      const created = await library.create(parsed.ok, { reportFailure: false });
+      onAnnounce(`Opened "${created.name}" as a new song.`);
+      onImported(created);
+    } catch (e) {
+      // Only validation refusals carry a reason the user can act on.
+      setError(e instanceof ApiError && e.status === 422 ? e.message : OPEN_FAILURE);
     }
   }
 

@@ -1,5 +1,6 @@
 import { networkInterfaces } from "node:os";
 import type { NextConfig } from "next";
+import { securityHeaders } from "./src/lib/securityHeaders";
 
 const apiUrl = process.env.SONGBIRD_API_URL ?? "http://localhost:8080";
 
@@ -32,6 +33,10 @@ const nextConfig: NextConfig = {
   // Rewrite destinations are baked in at build time, so SONGBIRD_API_URL must be
   // set when building the image, not only when running it.
   // Proxying keeps the browser same-origin so the backend needs no CORS setup in dev.
+  // Set here rather than at the proxy so the headers travel with the app into every deployment shape.
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders(process.env.NODE_ENV !== "production") }];
+  },
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },

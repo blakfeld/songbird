@@ -13,6 +13,7 @@ import { getInstruments, getLimits } from "@/lib/api";
 import type { MidiAccess } from "@/lib/midi/access";
 import { createPatternTake } from "@/lib/recording/patternTake";
 import { gridOf } from "@/lib/patternOps";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { useApiResource } from "@/lib/useApiResource";
 import { EditorToolbar } from "./EditorToolbar";
@@ -93,15 +94,18 @@ export function PatternEditorPage({
 
   return (
     <main className="mx-auto flex w-full max-w-screen-2xl min-w-0 flex-1 flex-col gap-6 bg-zinc-50 px-4 py-6 text-zinc-900 sm:px-6 sm:py-8 dark:bg-black dark:text-zinc-50">
-      <header>
-        <nav aria-label="Breadcrumb" className="text-sm text-zinc-600 dark:text-zinc-400">
-          <Link href="/" className="underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-black dark:focus-visible:outline-white">
-            Songbird
-          </Link>{" "}
-          <span aria-hidden="true">›</span>
-        </nav>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-zinc-600 dark:text-zinc-400">Describe a groove, then shape it on the grid.</p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <nav aria-label="Breadcrumb" className="text-sm text-zinc-600 dark:text-zinc-400">
+            <Link href="/" className="underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-black dark:focus-visible:outline-white">
+              Songbird
+            </Link>{" "}
+            <span aria-hidden="true">›</span>
+          </nav>
+          <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+          <p className="text-zinc-600 dark:text-zinc-400">Describe a groove, then shape it on the grid.</p>
+        </div>
+        <AccountMenu />
       </header>
 
       {hydrated ? (

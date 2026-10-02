@@ -1,19 +1,12 @@
-import "fake-indexeddb/auto";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import * as api from "@/lib/api";
 import { serializeProject } from "@/lib/song/projectFile";
-import {
-  createSongLibrary,
-  idbKeyValueStore,
-  INDEX_KEY,
-  songKey,
-  type SongLibrary,
-} from "@/lib/song/songLibrary";
+import { createServerSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { type Song } from "@/lib/song/types";
 import { drums } from "@/test/fixtures";
 import { SongFileActions } from "./SongFileActions";
@@ -35,6 +28,7 @@ const piano: InstrumentInfo = {
 };
 
 let library: SongLibrary;
+let fake: ReturnType<typeof createFakeProjectsApi>;
 let downloads: string[];
 const onImported = vi.fn();
 const onAnnounce = vi.fn();
@@ -55,9 +49,9 @@ const projectFile = (song: Song, name = "song.songbird.json") =>
   new File([serializeProject(song)], name, { type: "application/json" });
 
 beforeEach(async () => {
-  await clear();
   localStorage.clear();
-  library = createSongLibrary();
+  fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
   downloads = [];
   URL.createObjectURL = vi.fn(() => "blob:test");
   URL.revokeObjectURL = vi.fn();
@@ -123,17 +117,6 @@ describe("Open project", () => {
     expect((await library.list()).map((e) => e.name)).toEqual(["Imported"]);
   });
 
-  it("keeps both songs when the id is already in the library", async () => {
-    const existing = { ...newSongWithTracks(), name: "Existing" };
-    await library.create(existing);
-    renderActions(existing);
-    await choose(projectFile({ ...existing, name: "Imported" }));
-    await waitFor(() => expect(onImported).toHaveBeenCalled());
-    const imported = onImported.mock.calls[0][0] as Song;
-    expect(imported.id).not.toBe(existing.id);
-    expect((await library.list()).map((e) => e.name).sort()).toEqual(["Existing", "Imported"]);
-  });
-
   it("shows the reason and leaves the library unchanged for a bad file", async () => {
     renderActions(newSongWithTracks());
     await choose(new File(["{nope"], "bad.songbird.json"));
@@ -150,20 +133,43 @@ describe("Open project", () => {
     expect(onImported).not.toHaveBeenCalled();
     expect(await library.list()).toEqual([]);
   });
+});
 
-  it("does not overwrite a stored song whose index entry can't be read", async () => {
-    const existing = { ...newSongWithTracks(), name: "Existing" };
-    await createSongLibrary().create(existing);
-    const kv = idbKeyValueStore();
-    const blindIndex = {
-      ...kv,
-      get: (key: string) => (key === INDEX_KEY ? Promise.reject(new Error("index")) : kv.get(key)),
-    };
-    library = createSongLibrary(blindIndex);
+// The default fake keeps client ids for seeding; these use the real server's rule that it picks the id.
+describe("Open project against a server that assigns ids", () => {
+  const choose = (file: File) => userEvent.upload(screen.getByLabelText("Project file"), file);
+
+  beforeEach(() => {
+    fake = createFakeProjectsApi({ assignIds: true });
+    library = createServerSongLibrary(fake.api);
+  });
+
+  it("keeps both songs when the file's id is already in the library", async () => {
+    const existing = await library.create({ ...newSongWithTracks(), name: "Existing" });
     renderActions(existing);
     await choose(projectFile({ ...existing, name: "Imported" }));
     await waitFor(() => expect(onImported).toHaveBeenCalled());
-    expect((onImported.mock.calls[0][0] as Song).id).not.toBe(existing.id);
-    expect(((await kv.get(songKey(existing.id))) as Song).name).toBe("Existing");
+    const imported = onImported.mock.calls[0][0] as Song;
+    expect(imported.id).not.toBe(existing.id);
+    expect((await library.list()).map((e) => e.name).sort()).toEqual(["Existing", "Imported"]);
+    expect((fake.stored(existing.id)!.song as Song).name).toBe("Existing");
+  });
+
+  it("never reuses the id inside the file", async () => {
+    renderActions(newSongWithTracks());
+    const incoming = { ...newSongWithTracks(), name: "Imported" };
+    await choose(projectFile(incoming));
+    await waitFor(() => expect(onImported).toHaveBeenCalled());
+    expect((onImported.mock.calls[0][0] as Song).id).not.toBe(incoming.id);
+  });
+
+  it("shows the server's reason and leaves the library unchanged when the server refuses the song", async () => {
+    renderActions(newSongWithTracks());
+    fake.control.refuseCreate = "track 2 overlaps itself";
+    await choose(projectFile({ ...newSongWithTracks(), name: "Imported" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("track 2 overlaps itself");
+    expect(onImported).not.toHaveBeenCalled();
+    expect(await library.list()).toEqual([]);
+    expect(library.status.getState().ok).toBe(true);
   });
 });

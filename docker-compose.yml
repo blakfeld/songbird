@@ -8,6 +8,8 @@ services:
     environment:
       SONGBIRD_AI_PROVIDER: ${SONGBIRD_AI_PROVIDER:-mock}
       SONGBIRD_CORS_ORIGINS: http://localhost:3000
+      # Compose serves plain http, where browsers reject the Secure session cookie.
+      SONGBIRD_COOKIE_SECURE: "false"
       SONGBIRD_OLLAMA_URL: http://ollama:11434
       SONGBIRD_OLLAMA_MODEL: ${SONGBIRD_OLLAMA_MODEL:-qwen2.5:7b-instruct}
       SONGBIRD_GENERATION_TIMEOUT_SECS: ${SONGBIRD_GENERATION_TIMEOUT_SECS:-60}

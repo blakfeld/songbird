@@ -16,6 +16,7 @@ import { SONG_NAME_MAX, TONICS, type KeyMode, type Song, type Tonic } from "@/li
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { InlineNameInput } from "./InlineNameInput";
 import { SongFileActions } from "./SongFileActions";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { SongLibraryMenu } from "./SongLibraryMenu";
 import type { TimeSignature } from "@/generated/TimeSignature";
 
@@ -157,6 +158,9 @@ export function SongHeader({
       >
         Assistant
       </Button>
+      <div className="ml-auto">
+        <AccountMenu library={library} />
+      </div>
     </header>
   );
 }
