@@ -14,31 +14,46 @@ use tokio::time::Instant;
 use crate::auth::http::CurrentUser;
 use crate::clock::now_ms;
 use crate::db::Db;
-use crate::error::ApiError;
+use crate::error::{ApiError, NeverReachedProvider};
 use crate::state::AppState;
 
 const MINUTE: Duration = Duration::from_secs(60);
 const DAY_MS: i64 = 86_400_000;
 
-#[derive(Default)]
 pub struct AiLimiter {
     windows: Mutex<HashMap<String, VecDeque<Instant>>>,
+    window: Duration,
+}
+
+impl Default for AiLimiter {
+    fn default() -> Self {
+        Self::with_window(MINUTE)
+    }
 }
 
 impl AiLimiter {
+    /// Also bounds other per-user abuse windows, such as saving provider keys, so they share
+    /// one tested implementation.
+    pub fn with_window(window: Duration) -> Self {
+        Self {
+            windows: Mutex::default(),
+            window,
+        }
+    }
+
     pub fn try_record(&self, user_id: &str, limit: u32) -> Result<(), u64> {
         let now = Instant::now();
         let mut windows = self.windows.lock().expect("ai limiter lock");
         let window = windows.entry(user_id.to_string()).or_default();
         while window
             .front()
-            .is_some_and(|at| now.duration_since(*at) >= MINUTE)
+            .is_some_and(|at| now.duration_since(*at) >= self.window)
         {
             window.pop_front();
         }
         if window.len() >= limit as usize {
             let oldest = *window.front().expect("a full window is not empty");
-            let wait = (oldest + MINUTE).saturating_duration_since(now);
+            let wait = (oldest + self.window).saturating_duration_since(now);
             return Err(wait.as_secs() + 1);
         }
         window.push_back(now);
@@ -58,6 +73,19 @@ async fn count_today(db: &Db, user_id: &str, day: i32) -> Result<i64, sqlx::Erro
     .fetch_one(db.pool())
     .await?;
     sqlx::Row::try_get(&row, 0)
+}
+
+/// A request that ends because the user has no usable stored key never reached a provider, so
+/// it must not eat the daily budget the user will need once they add one.
+async fn refund_today(db: &Db, user_id: &str, day: i32) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE ai_usage SET count = count - 1 WHERE user_id = $1 AND day = $2 AND count > 0",
+    )
+    .bind(user_id)
+    .bind(day)
+    .execute(db.pool())
+    .await?;
+    Ok(())
 }
 
 pub async fn meter(
@@ -90,7 +118,17 @@ pub async fn meter(
             retry_after: u64::try_from(until_midnight_ms / 1000).unwrap_or(0) + 1,
         });
     }
-    Ok(next.run(request).await)
+    let response = next.run(request).await;
+    if response
+        .extensions()
+        .get::<NeverReachedProvider>()
+        .is_some()
+    {
+        if let Err(error) = refund_today(&state.db, &user.id, day).await {
+            tracing::error!(%error, "could not refund AI usage");
+        }
+    }
+    Ok(response)
 }
 
 #[cfg(test)]

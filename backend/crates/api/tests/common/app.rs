@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use api::auth::password::PasswordService;
-use api::config::{Config, AI_PROVIDER};
+use api::config::{Config, AI_PROVIDER, ENV};
 use api::provider::Providers;
 use api::state::AppState;
 use argon2::Params;
@@ -77,6 +77,9 @@ pub fn fast_passwords(permits: usize) -> PasswordService {
 
 fn config(extra: &[(&str, &str)]) -> Config {
     Config::from_lookup(|k| {
+        if k == ENV {
+            return Some("development".into());
+        }
         if k == AI_PROVIDER {
             return Some("mock".into());
         }

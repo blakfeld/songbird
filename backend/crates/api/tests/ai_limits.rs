@@ -162,7 +162,8 @@ async fn without_a_session_a_full_house_answers_401_not_503() {
     let held = started.clone();
     let app = Arc::new(
         TestApp::with_state(&[(MAX_CONCURRENT_GENERATIONS, "1")], |state| {
-            state.providers = Providers::with_patterns(BlockingPatterns(held));
+            state.ai =
+                api::ai_access::AiAccess::Shared(Providers::with_patterns(BlockingPatterns(held)));
         })
         .await,
     );

@@ -18,6 +18,8 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'kill 0' EXIT INT TERM
+    # Production is the backend's default, so the dev recipe has to opt in to run without user keys.
+    export SONGBIRD_ENV="${SONGBIRD_ENV:-development}"
     (cd {{backend}} && cargo run -p api) &
     (cd {{frontend}} && pnpm dev) &
     wait
@@ -54,13 +56,17 @@ test-live:
 test-live-ollama:
     cd {{backend}} && cargo test --workspace -- --ignored live_ollama
 
+# Live test against the OpenAI API (needs OPENAI_API_KEY)
+test-live-openai:
+    cd {{backend}} && cargo test --workspace -- --ignored live_openai
+
 # Live test against a signed-in Codex CLI
 test-live-codex:
     cd {{backend}} && cargo test --workspace -- --ignored live_codex
 
 # Regenerate frontend/src/generated TypeScript types from the Rust types
 gen-types:
-    cd {{backend}} && UPDATE_TS_BINDINGS=1 cargo test -p music --test ts_bindings
+    cd {{backend}} && UPDATE_TS_BINDINGS=1 cargo test -p api --test ts_bindings
 
 # Formatting check, clippy, ESLint, TypeScript type check, and production build
 lint:

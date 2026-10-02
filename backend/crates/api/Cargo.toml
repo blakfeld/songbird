@@ -9,6 +9,7 @@ argon2 = "0.5"
 async-trait.workspace = true
 axum = "0.8.9"
 base64 = "0.22"
+chacha20poly1305 = "0.10"
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15.7"
 music = { path = "../music" }
@@ -24,8 +25,10 @@ tokio = { workspace = true, features = ["full"] }
 tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+ts-rs = "12.0.1"
 url = "2.5.8"
 uuid = { version = "1.26.1", features = ["v7"] }
+zeroize = "1"
 
 [dev-dependencies]
 futures-util = "0.3"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useAiKeyGate } from "@/components/ai/AiKeyGate";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -49,7 +50,8 @@ export function AssistantPanel({
     // Text typed while waiting is newer than the failed message, so it is never overwritten.
     if (outcome === "failed") setDraft((current) => (current === "" ? text : current));
   };
-  const blocked = !song || chat.sending;
+  const { blocked: noKey, noticeId, notice } = useAiKeyGate();
+  const blocked = !song || chat.sending || noKey;
   const showLog = messages.length > 0 || chat.pending !== null;
 
   return (
@@ -109,9 +111,10 @@ export function AssistantPanel({
           </p>
         )}
       </div>
+      {notice && <div className="px-3 pb-2">{notice}</div>}
       {chat.error && (
         <div className="px-3 pb-2">
-          <ErrorAlert message={chat.error} onDismiss={chat.dismissError} />
+          <ErrorAlert message={chat.error} action={chat.errorAction} onDismiss={chat.dismissError} />
         </div>
       )}
       <form
@@ -135,7 +138,7 @@ export function AssistantPanel({
             }
           }}
           aria-label="Message the assistant"
-          aria-describedby={!showLog ? noteId : undefined}
+          aria-describedby={[!showLog ? noteId : undefined, noticeId].filter(Boolean).join(" ") || undefined}
           placeholder="Describe a part to add"
           className={`${inputClass} h-auto flex-1 resize-none py-2`}
         />
@@ -144,6 +147,7 @@ export function AssistantPanel({
           variant="primary"
           disabled={blocked || draft.trim() === ""}
           aria-label="Send message"
+          aria-describedby={noticeId}
           // Matches the textarea's height and corners so the pair reads as one
           // control; `!` is needed because Button's pill padding and radius
           // share these properties and would otherwise win by CSS order.

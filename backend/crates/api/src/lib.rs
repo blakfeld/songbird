@@ -1,3 +1,5 @@
+pub mod ai_access;
+pub mod ai_keys;
 pub mod ai_limits;
 pub mod auth;
 pub mod cli;
@@ -5,6 +7,7 @@ pub mod clock;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod keys;
 pub mod limit;
 pub mod patterns;
 pub mod project_store;

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use api::config::{
-    Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS, MAX_CONTEXT_TOKENS, MAX_INPUT_TOKENS,
+    Config, AI_PROVIDER, ENV, GENERATION_TIMEOUT_SECS, MAX_CONTEXT_TOKENS, MAX_INPUT_TOKENS,
 };
 use api::provider::Providers;
 use api::state::AppState;
@@ -66,6 +66,9 @@ async fn app_with(
 ) -> axum::Router {
     let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| {
+        if k == ENV {
+            return Some("development".into());
+        }
         if k == AI_PROVIDER {
             return Some("mock".into());
         }

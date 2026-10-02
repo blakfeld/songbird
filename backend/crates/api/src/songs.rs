@@ -16,6 +16,7 @@ use music::{
     TrackGenerateResponse, ValidTrackRequest,
 };
 
+use crate::ai_access::RequestProviders;
 use crate::error::{ApiError, ApiJson};
 use crate::patterns::{slugify, with_timeout};
 use crate::state::AppState;
@@ -37,6 +38,7 @@ pub fn ai_router() -> Router<AppState> {
 /// independently and a slow planner should not eat the generation's time.
 async fn chat(
     State(state): State<AppState>,
+    ai: RequestProviders,
     ApiJson(body): ApiJson<ChatBody>,
 ) -> Result<Json<ChatResponse>, ApiError> {
     let chat = body.validate(&state.instruments, state.config.max_input_tokens)?;
@@ -49,7 +51,8 @@ async fn chat(
     };
     let plan = with_timeout(
         timeout,
-        plan_chat(state.providers.plans.as_ref(), &plan_request),
+        ai.provider_name,
+        plan_chat(ai.providers.plans.as_ref(), &plan_request),
     )
     .await?;
     let (reply, instrument, track_name, prompt, measures) = match plan {
@@ -85,8 +88,9 @@ async fn chat(
     };
     let generated = with_timeout(
         timeout,
+        ai.provider_name,
         generate_track(
-            state.providers.patterns.as_ref(),
+            ai.providers.patterns.as_ref(),
             &request,
             state.config.max_context_tokens,
         ),
@@ -111,14 +115,16 @@ fn cap_prompt(prompt: &str, max_input_tokens: u32) -> String {
 
 async fn generate_track_part(
     State(state): State<AppState>,
+    ai: RequestProviders,
     ApiJson(body): ApiJson<TrackGenerateBody>,
 ) -> Result<Json<TrackGenerateResponse>, ApiError> {
     // Validation precedes the provider so rejected requests never cost tokens.
     let request = body.validate(&state.instruments, state.config.max_input_tokens)?;
     let response = with_timeout(
         state.config.generation_timeout,
+        ai.provider_name,
         generate_track(
-            state.providers.patterns.as_ref(),
+            ai.providers.patterns.as_ref(),
             &request,
             state.config.max_context_tokens,
         ),

@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
-use api::config::{Config, AI_PROVIDER, BIND_ADDR, CODEX_BIN};
+use api::config::{Config, AI_PROVIDER, BIND_ADDR, CODEX_BIN, ENV};
 use api::provider::build_providers;
 
 #[derive(Clone, Default)]
@@ -37,6 +37,7 @@ async fn codex_on_loopback_starts_and_warns() {
     let bin = dir.path().join("codex");
 
     let config = Config::from_lookup(|k| match k {
+        ENV => Some("development".into()),
         AI_PROVIDER => Some("codex".into()),
         CODEX_BIN => Some(bin.display().to_string()),
         BIND_ADDR => Some("127.0.0.1:8080".into()),

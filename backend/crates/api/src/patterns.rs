@@ -11,6 +11,7 @@ use music::generate::{generate_pattern, GenerationError};
 use music::midi::{pattern_to_midi, MidiError};
 use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
 
+use crate::ai_access::{api_error_for, RequestProviders};
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
@@ -28,13 +29,15 @@ pub fn ai_router() -> Router<AppState> {
 
 async fn generate(
     State(state): State<AppState>,
+    ai: RequestProviders,
     ApiJson(body): ApiJson<GenerateRequestBody>,
 ) -> Result<Json<Pattern>, ApiError> {
     // Validation precedes the provider so rejected requests never cost tokens.
     let request = body.validate(&state.instruments, state.config.max_input_tokens)?;
     let pattern = with_timeout(
         state.config.generation_timeout,
-        generate_pattern(state.providers.patterns.as_ref(), &request),
+        ai.provider_name,
+        generate_pattern(ai.providers.patterns.as_ref(), &request),
     )
     .await?;
     Ok(Json(pattern))
@@ -44,6 +47,7 @@ async fn generate(
 /// to clients wherever generation happens.
 pub(crate) async fn with_timeout<T>(
     timeout: Duration,
+    provider: &'static str,
     generation: impl Future<Output = Result<T, GenerationError>>,
 ) -> Result<T, ApiError> {
     match tokio::time::timeout(timeout, generation).await {
@@ -53,7 +57,7 @@ pub(crate) async fn with_timeout<T>(
         }
         Ok(Err(error)) => {
             tracing::warn!(%error, "generation failed");
-            Err(ApiError::GenerationFailed)
+            Err(api_error_for(&error, provider))
         }
         Ok(Ok(value)) => Ok(value),
     }
