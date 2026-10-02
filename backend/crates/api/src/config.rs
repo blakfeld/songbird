@@ -11,6 +11,8 @@ use music::tokens::{
 };
 use secrecy::SecretString;
 
+use crate::db::DatabaseConfig;
+
 pub const BIND_ADDR: &str = "SONGBIRD_BIND_ADDR";
 pub const AI_PROVIDER: &str = "SONGBIRD_AI_PROVIDER";
 pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
@@ -23,9 +25,11 @@ pub const OLLAMA_URL: &str = "SONGBIRD_OLLAMA_URL";
 pub const OLLAMA_MODEL: &str = "SONGBIRD_OLLAMA_MODEL";
 pub const CODEX_BIN: &str = "SONGBIRD_CODEX_BIN";
 pub const CODEX_MODEL: &str = "SONGBIRD_CODEX_MODEL";
+pub const DATABASE_URL: &str = "SONGBIRD_DATABASE_URL";
+pub const DATABASE_MAX_CONNECTIONS: &str = "SONGBIRD_DATABASE_MAX_CONNECTIONS";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 12] = [
+pub const ALL_VARIABLES: [&str; 14] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -38,6 +42,8 @@ pub const ALL_VARIABLES: [&str; 12] = [
     OLLAMA_MODEL,
     CODEX_BIN,
     CODEX_MODEL,
+    DATABASE_URL,
+    DATABASE_MAX_CONNECTIONS,
 ];
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
@@ -47,6 +53,8 @@ const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 const DEFAULT_OLLAMA_MODEL: &str = "qwen2.5:7b-instruct";
 const DEFAULT_CODEX_BIN: &str = "codex";
+const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 10;
+const MAX_DATABASE_MAX_CONNECTIONS: u32 = 100;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
@@ -94,7 +102,7 @@ impl FromStr for ProviderKind {
     }
 }
 
-/// `Debug` is safe to log: the API key is a `SecretString`, which redacts itself.
+/// `Debug` is safe to log: the API key and database URL are `SecretString`s, which redact themselves.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub bind_addr: SocketAddr,
@@ -109,6 +117,7 @@ pub struct Config {
     pub ollama_model: String,
     pub codex_bin: String,
     pub codex_model: Option<String>,
+    pub database: DatabaseConfig,
 }
 
 impl Config {
@@ -201,6 +210,22 @@ impl Config {
                 })?,
         };
 
+        let database_max_connections = match get(DATABASE_MAX_CONNECTIONS) {
+            None => DEFAULT_DATABASE_MAX_CONNECTIONS,
+            Some(v) => v
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=MAX_DATABASE_MAX_CONNECTIONS).contains(n))
+                .ok_or_else(|| {
+                    invalid(
+                        DATABASE_MAX_CONNECTIONS,
+                        format!(
+                            "\"{v}\" is not an integer between 1 and {MAX_DATABASE_MAX_CONNECTIONS}"
+                        ),
+                    )
+                })?,
+        };
+
         Ok(Self {
             bind_addr,
             ai_provider,
@@ -217,6 +242,10 @@ impl Config {
             ollama_model: get(OLLAMA_MODEL).unwrap_or_else(|| DEFAULT_OLLAMA_MODEL.into()),
             codex_bin: get(CODEX_BIN).unwrap_or_else(|| DEFAULT_CODEX_BIN.into()),
             codex_model: get(CODEX_MODEL),
+            database: DatabaseConfig {
+                url: get(DATABASE_URL).map(SecretString::from),
+                max_connections: database_max_connections,
+            },
         })
     }
 }
@@ -404,6 +433,8 @@ mod tests {
             (OLLAMA_MODEL, "om"),
             (CODEX_BIN, "cb"),
             (CODEX_MODEL, "cm"),
+            (DATABASE_URL, "postgres://u:p@h/d"),
+            (DATABASE_MAX_CONNECTIONS, "25"),
         ];
         assert_eq!(all.len(), ALL_VARIABLES.len());
         let c = Config::from_lookup(lookup(&all)).unwrap();
@@ -418,5 +449,49 @@ mod tests {
         assert_eq!(c.codex_bin, "cb");
         assert_eq!(c.codex_model.as_deref(), Some("cm"));
         assert!(c.anthropic_api_key.is_some());
+        assert_eq!(
+            c.database.url.as_ref().unwrap().expose_secret(),
+            "postgres://u:p@h/d"
+        );
+        assert_eq!(c.database.max_connections, 25);
+    }
+
+    #[test]
+    fn blank_database_url_means_the_sqlite_default() {
+        assert!(mock(&[]).unwrap().database.url.is_none());
+        assert!(mock(&[(DATABASE_URL, "   ")])
+            .unwrap()
+            .database
+            .url
+            .is_none());
+        assert_eq!(mock(&[]).unwrap().database.max_connections, 10);
+    }
+
+    #[test]
+    fn database_pool_size_is_range_checked() {
+        for bad in ["0", "101", "-1", "many", "1.5"] {
+            let err = mock(&[(DATABASE_MAX_CONNECTIONS, bad)]).unwrap_err();
+            assert!(
+                err.to_string().contains(DATABASE_MAX_CONNECTIONS),
+                "{bad}: {err}"
+            );
+        }
+        for (ok, expected) in [("1", 1), ("100", 100)] {
+            assert_eq!(
+                mock(&[(DATABASE_MAX_CONNECTIONS, ok)])
+                    .unwrap()
+                    .database
+                    .max_connections,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn debug_output_never_contains_the_database_url() {
+        let c = mock(&[(DATABASE_URL, "postgres://songbird:s3cret@db/songbird")]).unwrap();
+        assert!(!format!("{c:?}").contains("s3cret"));
+        assert!(!format!("{c:#?}").contains("s3cret"));
+        assert!(!format!("{c:?}").contains("songbird:"));
     }
 }

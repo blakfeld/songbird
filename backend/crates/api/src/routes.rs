@@ -1,4 +1,6 @@
-use axum::extract::DefaultBodyLimit;
+use std::time::Duration;
+
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{header, HeaderValue, Method};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -26,9 +28,28 @@ async fn healthz() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
+/// Short so an orchestrator's probe gets an answer before its own timeout fires.
+const READINESS_TIMEOUT: Duration = Duration::from_secs(2);
+
+async fn readyz(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let probe = sqlx::query("SELECT 1").execute(state.db.pool());
+    match tokio::time::timeout(READINESS_TIMEOUT, probe).await {
+        Ok(Ok(_)) => Ok(Json(json!({"status": "ready"}))),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "readiness probe failed");
+            Err(ApiError::NotReady)
+        }
+        Err(_) => {
+            tracing::warn!("readiness probe timed out");
+            Err(ApiError::NotReady)
+        }
+    }
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
         .merge(crate::patterns::router())
         // Applied to the sub-router so it runs inside the global limit and
         // overrides it for these routes only.

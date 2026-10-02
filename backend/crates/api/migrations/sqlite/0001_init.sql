@@ -1,0 +1,1 @@
+-- Intentionally empty: ships the migration mechanism before any feature needs a table.
