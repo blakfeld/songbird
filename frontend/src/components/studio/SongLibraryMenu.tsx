@@ -80,10 +80,11 @@ export function SongLibraryMenu({
                   // Saves are debounced and the shown list may be stale, so names come from a fresh flushed read.
                   await library.flush();
                   const names = (await library.list()).map((e) => e.name);
-                  const song = { ...newSong(), name: uniqueUntitledName(names) };
-                  await library.create(song);
+                  const song = await library.create({ ...newSong(), name: uniqueUntitledName(names) });
                   setOpen(false);
                   onCreated(song);
+                } catch {
+                  // The library has already raised its save-failure banner.
                 } finally {
                   creatingRef.current = false;
                   setBusy(false);

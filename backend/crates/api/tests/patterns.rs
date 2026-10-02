@@ -106,12 +106,13 @@ async fn app_with(
             .map(|(_, v)| v.to_string())
     })
     .unwrap();
-    let router = api::app(AppState {
-        providers: Providers::with_patterns(provider),
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
-        db: db.clone(),
-    });
+    let router = api::app(AppState::new(
+        Providers::with_patterns(provider),
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
+        db.clone(),
+    ));
+    let router = common::session::signed_in(&db, router).await;
     db.keep_alive_with(router)
 }
 
@@ -321,9 +322,8 @@ async fn unusable_drafts_twice_are_502_after_exactly_one_retry() {
 #[tokio::test]
 async fn slow_provider_times_out_with_504() {
     let app = app_with(Slow, &[(GENERATION_TIMEOUT_SECS, "1")]).await;
-    // Paused only after setup: the pool's connect timeout would otherwise fire
-    // instantly against real file I/O.
-    tokio::time::pause();
+    // Real time: every request now touches the database for its session, and
+    // paused time would fire the pool's acquire timeout while that I/O is pending.
     let (status, body) = generate(
         app,
         json!({"instrument": "drums", "prompt": "x", "measures": 4}),

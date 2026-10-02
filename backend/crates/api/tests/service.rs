@@ -20,12 +20,12 @@ const ALLOWED_ORIGIN: &str = "http://localhost:3000";
 async fn state() -> (AppState, common::db::TestDb) {
     let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
-    let state = AppState {
-        providers: Providers::mock(),
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
-        db: db.clone(),
-    };
+    let state = AppState::new(
+        Providers::mock(),
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
+        db.clone(),
+    );
     (state, db)
 }
 
@@ -38,9 +38,7 @@ async fn echo(ApiJson(value): ApiJson<Value>) -> axum::Json<Value> {
 async fn app_with_echo() -> Router {
     let (state, db) = state().await;
     let config = state.config.clone();
-    let router = api::routes(&config)
-        .with_state(state)
-        .route("/api/v1/echo", post(echo));
+    let router = api::routes(state).route("/api/v1/echo", post(echo));
     db.keep_alive_with(api::middleware(router, &config))
 }
 

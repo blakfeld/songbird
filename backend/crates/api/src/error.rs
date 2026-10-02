@@ -1,6 +1,6 @@
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Request};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use music::{ChatRequestError, SongError, TrackRequestError, ValidationError};
@@ -58,6 +58,28 @@ pub enum ApiError {
     NotReady,
     #[error("Generation took too long and was cancelled. Please try again.")]
     GenerationTimeout,
+    #[error("Sign in to continue.")]
+    Unauthenticated,
+    /// One message for an unknown email, a wrong password and a disabled
+    /// account, so the response cannot reveal which accounts exist.
+    #[error("Email or password is incorrect.")]
+    InvalidCredentials,
+    #[error("This request came from an origin that is not allowed.")]
+    Forbidden,
+    /// Used for a missing project and for someone else's alike, so the two
+    /// cannot be told apart.
+    #[error("No such project.")]
+    ProjectNotFound,
+    #[error("The project was changed elsewhere. Reload it before saving.")]
+    RevisionConflict,
+    #[error("You have reached the limit on projects or stored song data.")]
+    ProjectLimit,
+    #[error("The song's id does not match the project being saved.")]
+    IdMismatch,
+    #[error("Too many requests. Please try again shortly.")]
+    TooManyRequests { retry_after: u64 },
+    #[error("The server is busy. Please try again shortly.")]
+    ServerBusy { retry_after: u64 },
     #[error("Too many generations are already running. Please try again shortly.")]
     GenerationBusy,
 }
@@ -83,6 +105,13 @@ impl ApiError {
             Self::GenerationTimeout => StatusCode::GATEWAY_TIMEOUT,
             Self::GenerationBusy => StatusCode::SERVICE_UNAVAILABLE,
             Self::NotReady => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Unauthenticated | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::ProjectNotFound => StatusCode::NOT_FOUND,
+            Self::RevisionConflict | Self::ProjectLimit => StatusCode::CONFLICT,
+            Self::IdMismatch => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::TooManyRequests { .. } => StatusCode::TOO_MANY_REQUESTS,
+            Self::ServerBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -106,6 +135,24 @@ impl ApiError {
             Self::GenerationTimeout => "generation_timeout",
             Self::GenerationBusy => "generation_busy",
             Self::NotReady => "not_ready",
+            Self::Unauthenticated => "unauthenticated",
+            Self::InvalidCredentials => "invalid_credentials",
+            Self::Forbidden => "forbidden",
+            Self::ProjectNotFound => "not_found",
+            Self::RevisionConflict => "revision_conflict",
+            Self::ProjectLimit => "project_limit",
+            Self::IdMismatch => "id_mismatch",
+            Self::TooManyRequests { .. } => "too_many_requests",
+            Self::ServerBusy { .. } => "server_busy",
+        }
+    }
+
+    fn retry_after(&self) -> Option<u64> {
+        match self {
+            Self::TooManyRequests { retry_after } | Self::ServerBusy { retry_after } => {
+                Some(*retry_after)
+            }
+            _ => None,
         }
     }
 }
@@ -145,7 +192,13 @@ impl From<ChatRequestError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = json!({"error": {"code": self.code(), "message": self.to_string()}});
-        (self.status(), Json(body)).into_response()
+        let mut response = (self.status(), Json(body)).into_response();
+        if let Some(seconds) = self.retry_after() {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+        }
+        response
     }
 }
 
@@ -177,5 +230,52 @@ where
             .await
             .map(|Json(value)| Self(value))
             .map_err(ApiError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_variants_have_the_documented_status_and_code() {
+        for (error, status, code) in [
+            (ApiError::Unauthenticated, 401, "unauthenticated"),
+            (ApiError::InvalidCredentials, 401, "invalid_credentials"),
+            (ApiError::Forbidden, 403, "forbidden"),
+            (ApiError::ProjectNotFound, 404, "not_found"),
+            (ApiError::RevisionConflict, 409, "revision_conflict"),
+            (ApiError::ProjectLimit, 409, "project_limit"),
+            (ApiError::IdMismatch, 422, "id_mismatch"),
+            (
+                ApiError::TooManyRequests { retry_after: 3 },
+                429,
+                "too_many_requests",
+            ),
+            (ApiError::ServerBusy { retry_after: 1 }, 503, "server_busy"),
+        ] {
+            assert_eq!(error.status().as_u16(), status, "{code}");
+            assert_eq!(error.code(), code);
+        }
+    }
+
+    #[test]
+    fn retry_after_is_sent_in_seconds_on_429_and_503_only() {
+        let limited = ApiError::TooManyRequests { retry_after: 42 }.into_response();
+        assert_eq!(limited.headers()[header::RETRY_AFTER], "42");
+        let busy = ApiError::ServerBusy { retry_after: 1 }.into_response();
+        assert_eq!(busy.headers()[header::RETRY_AFTER], "1");
+        let other = ApiError::Unauthenticated.into_response();
+        assert!(other.headers().get(header::RETRY_AFTER).is_none());
+    }
+
+    #[tokio::test]
+    async fn error_body_keeps_the_standard_shape() {
+        use http_body_util::BodyExt;
+        let response = ApiError::Forbidden.into_response();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"]["code"], "forbidden");
+        assert!(body["error"]["message"].is_string());
     }
 }

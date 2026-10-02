@@ -172,8 +172,8 @@ describe("project bundles", () => {
     vi.restoreAllMocks();
     await clear();
     for (const [db, name] of [
-      ["songbird-samples", "samples"],
-      ["songbird-sample-library", "library"],
+      ["songbird-samples.test-user", "samples"],
+      ["songbird-sample-library.test-user", "library"],
     ]) {
       await clear(createStore(db, name));
     }
@@ -193,7 +193,7 @@ describe("project bundles", () => {
     const { id } = await putSample(pcm(seed));
     const song = withAudio(id, name);
     const bytes = new Uint8Array(await (await createProjectBundle(song)).arrayBuffer());
-    await clear(createStore("songbird-samples", "samples"));
+    await clear(createStore("songbird-samples.test-user", "samples"));
     return { song, id, bytes, file: new File([bytes], "x.songbird.zip") };
   }
 
@@ -447,7 +447,7 @@ describe("project bundles", () => {
     const song = withAudio(id);
     song.samples!.push({ id: "z".repeat(32), name: "Unused, audio lost", sample_rate: 48000, channels: 2, length_samples: 10, origin: "import" });
     const bytes = new Uint8Array(await (await createProjectBundle(song)).arrayBuffer());
-    await clear(createStore("songbird-samples", "samples"));
+    await clear(createStore("songbird-samples.test-user", "samples"));
     const result = await readProjectBundle(new File([bytes], "x.songbird.zip"), instruments);
     if (!("ok" in result)) throw new Error(result.error);
     expect(result.ok.samples?.map((s) => s.id)).toEqual([id]);

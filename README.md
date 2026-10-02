@@ -82,13 +82,62 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 The frontend image bakes in the backend address at build time
 (`SONGBIRD_API_URL`, set by `docker-compose.yml`).
 
+## User accounts
+
+There is no sign-up: an operator creates accounts with commands built into the
+backend binary. They run against the configured database
+(`SONGBIRD_DATABASE_URL`, SQLite at `backend/data/songbird.db` by default), so
+run them from the same place and with the same environment as the server.
+Passwords are never arguments. On a terminal you are prompted (twice, hidden).
+When stdin is not a terminal the command reads one line from it, which is how
+scripts supply a password. A password must be 12 to 256 characters.
+
+Locally, from `backend/`:
+
+```sh
+cargo run -p api -- user create ana@example.com                 # prompts for the password
+printf '%s\n' "$PASSWORD" | cargo run -p api -- user create ana@example.com
+cargo run -p api -- user set-password ana@example.com           # also ends all of Ana's sessions
+cargo run -p api -- user disable ana@example.com                # also ends all of Ana's sessions
+cargo run -p api -- user enable ana@example.com
+cargo run -p api -- user list                                   # email, active/disabled, created
+cargo run -p api -- user delete ana@example.com                 # asks you to retype the email
+cargo run -p api -- user delete ana@example.com --yes           # required when not on a terminal
+```
+
+With Docker Compose, run the same commands in the running backend container
+(the binary there is `songbird-api`):
+
+```sh
+docker compose exec backend songbird-api user create ana@example.com
+printf '%s\n' "$PASSWORD" | docker compose exec -T backend songbird-api user create ana@example.com
+docker compose exec backend songbird-api user list
+```
+
+Emails are trimmed and compared without regard to letter case.
+`user delete` removes the account together with all of its projects, sessions,
+and usage records. Database backups made by your provider keep that data until
+they age out of the provider's retention window, so deleting an account does
+not erase it from backups.
+
+Login attempts are throttled per client address. Set `SONGBIRD_TRUST_PROXY=true`
+only when the outermost proxy in front of the backend **replaces** any incoming
+`X-Forwarded-For` header with the real peer address (Caddy does this by
+default). Behind a proxy that appends to the header instead, every client could
+choose its own address and sidestep the throttle. Left at `false`, the backend
+uses the socket address, which behind a proxy is the proxy itself. Everything
+runs as a single backend instance: the login throttle and the per-minute AI
+limit are in memory and start fresh on restart.
+
 ## Environment variables
 
 All backend settings are documented in [`backend/.env.example`](backend/.env.example):
 `SONGBIRD_BIND_ADDR`, `SONGBIRD_AI_PROVIDER`, `ANTHROPIC_API_KEY`,
 `SONGBIRD_AI_MODEL`, `SONGBIRD_CORS_ORIGINS`, `SONGBIRD_GENERATION_TIMEOUT_SECS`,
 `SONGBIRD_MAX_INPUT_TOKENS`, `SONGBIRD_OLLAMA_URL`, `SONGBIRD_OLLAMA_MODEL`,
-`SONGBIRD_CODEX_BIN`, and `SONGBIRD_CODEX_MODEL`. The frontend reads
+`SONGBIRD_CODEX_BIN`, `SONGBIRD_CODEX_MODEL`, `SONGBIRD_COOKIE_SECURE`,
+`SONGBIRD_SESSION_IDLE_HOURS`, `SONGBIRD_TRUST_PROXY`,
+`SONGBIRD_AI_REQUESTS_PER_MINUTE`, and `SONGBIRD_AI_REQUESTS_PER_DAY`. The frontend reads
 `SONGBIRD_API_URL` (default `http://localhost:8080`) to know where to proxy
 `/api/*`. The dev server accepts `localhost` and this machine's own network
 addresses, so you can open it from another device on your LAN. To reach it by

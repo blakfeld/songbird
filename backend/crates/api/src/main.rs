@@ -1,7 +1,11 @@
 use std::process::ExitCode;
 
-use api::config::Config;
+use api::auth::password::PasswordService;
+use api::cli::{self, Cli, Command};
+use api::config::{database_from_lookup, Config};
+use api::db::Db;
 use api::startup::build_state;
+use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -9,12 +13,31 @@ async fn main() -> ExitCode {
     // A missing .env is normal: production sets the environment directly.
     let _ = dotenvy::dotenv();
 
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    let cli = Cli::parse();
 
-    match run().await {
+    // Operator commands print their result on stdout, so logs go to stderr and stay quiet.
+    let result = match cli.command {
+        Some(Command::User(command)) => {
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_env_filter(
+                    EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+                )
+                .init();
+            run_user_command(command).await
+        }
+        None => {
+            tracing_subscriber::fmt()
+                .json()
+                .with_env_filter(
+                    EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+                )
+                .init();
+            serve().await
+        }
+    };
+
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("error: {message}");
@@ -23,7 +46,19 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run() -> Result<(), String> {
+async fn run_user_command(command: cli::UserCommand) -> Result<(), String> {
+    let database =
+        database_from_lookup(|var| std::env::var(var).ok()).map_err(|e| e.to_string())?;
+    let inputs = cli::read_inputs(&command).map_err(|e| e.to_string())?;
+    let db = Db::connect(&database).await.map_err(|e| e.to_string())?;
+    let output = cli::run_user_command(&db, &PasswordService::new(), command, inputs)
+        .await
+        .map_err(|e| e.to_string())?;
+    println!("{output}");
+    Ok(())
+}
+
+async fn serve() -> Result<(), String> {
     let config = Config::from_env().map_err(|e| e.to_string())?;
     let bind_addr = config.bind_addr;
     let provider = config.ai_provider.as_str();
@@ -43,18 +78,24 @@ async fn run() -> Result<(), String> {
         "songbird api listening"
     );
 
+    api::auth::session::spawn_sweeper(state.db.clone());
+
     if !bind_addr.ip().is_loopback() {
         // Containers must bind 0.0.0.0 inside, so this fires under compose even when the
         // published port is loopback-only; what matters is how the port is exposed.
         tracing::warn!(
             addr = %bind_addr,
-            "listening on a non-loopback address; the API has no authentication, so \
-             anyone who can reach this port can spend provider quota. Publish the port \
-             on loopback or put an authenticating proxy in front of it"
+            "listening on a non-loopback address; anyone who can reach this port can \
+             attempt to sign in and, with an account, spend provider quota. Publish the \
+             port on loopback or put a TLS-terminating proxy in front of it"
         );
     }
 
-    axum::serve(listener, api::app(state))
-        .await
-        .map_err(|e| e.to_string())
+    // The peer address is what login throttling keys on when no proxy is trusted.
+    axum::serve(
+        listener,
+        api::app(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }

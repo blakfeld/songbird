@@ -6,14 +6,15 @@ import type { MeasureCount } from "@/generated/MeasureCount";
 import type { Note } from "@/generated/Note";
 import type { Pattern } from "@/generated/Pattern";
 import type { TimeSignature } from "@/generated/TimeSignature";
+import { requireCurrentUserId } from "./auth/currentUser";
 import { clampLoop, defaultLoop, parseLoop, type LoopSetting } from "./loopRegion";
 import * as ops from "./patternOps";
 
 // Bounded so a long editing session cannot grow memory without limit.
 const HISTORY_LIMIT = 100;
 
-export const storageKey = (instrument: string) =>
-  `songbird.patterns.${instrument}.v1`;
+export const storageKey = (instrument: string, userId: string) =>
+  `songbird.patterns.${userId}.${instrument}.v1`;
 
 export interface PatternState {
   pattern: Pattern | null;
@@ -62,7 +63,10 @@ export type PatternStore = StoreApi<PatternState>;
 const loopFor = (s: Pick<PatternState, "loop">, next: Pattern): LoopSetting =>
   clampLoop(s.loop, next.measures);
 
-export function createPatternStore(instrument: string): PatternStore {
+export function createPatternStore(
+  instrument: string,
+  userId: string = requireCurrentUserId(),
+): PatternStore {
   return createStore<PatternState>()(
     persist(
       (set, get) => {
@@ -206,7 +210,7 @@ export function createPatternStore(instrument: string): PatternStore {
         };
       },
       {
-        name: storageKey(instrument),
+        name: storageKey(instrument, userId),
         storage: createJSONStorage(() => localStorage),
         // History is dropped so a reload never restores stale undo steps.
         partialize: (s) => ({
@@ -229,12 +233,15 @@ export function createPatternStore(instrument: string): PatternStore {
 
 const stores = new Map<string, PatternStore>();
 
-// One store per instrument keeps each instrument's work and storage key independent.
+// One store per user and instrument keeps each one's work and storage key independent, and a
+// different user never reuses a store that already holds the previous user's pattern in memory.
 export function getPatternStore(instrument: string): PatternStore {
-  let store = stores.get(instrument);
+  const userId = requireCurrentUserId();
+  const cacheKey = `${userId}/${instrument}`;
+  let store = stores.get(cacheKey);
   if (!store) {
-    store = createPatternStore(instrument);
-    stores.set(instrument, store);
+    store = createPatternStore(instrument, userId);
+    stores.set(cacheKey, store);
   }
   return store;
 }

@@ -1,4 +1,5 @@
 import { createStore, del, get, keys, set } from "idb-keyval";
+import { requireCurrentUserId } from "@/lib/auth/currentUser";
 import { analyzeInWorker } from "./sampleAnalysisClient";
 import type { PcmSample } from "./sampleAnalysis";
 
@@ -12,8 +13,18 @@ export interface StoredSample {
   overview: Float32Array;
 }
 
-let store: ReturnType<typeof createStore> | undefined;
-const samples = () => (store ??= createStore("songbird-samples", "samples"));
+// One database per user: the audio is not on the server, so it must survive sign-out, and the id in
+// the name keeps the next user on this browser from reading it.
+const stores = new Map<string, ReturnType<typeof createStore>>();
+const samples = () => {
+  const userId = requireCurrentUserId();
+  let store = stores.get(userId);
+  if (!store) {
+    store = createStore(`songbird-samples.${userId}`, "samples");
+    stores.set(userId, store);
+  }
+  return store;
+};
 
 // Store writes and garbage collection share one queue so a collection can never see a sample that is
 // stored but not yet in the library, and delete it.

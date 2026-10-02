@@ -141,9 +141,9 @@ When an audio track has no selected clip, the dock SHALL say how to add audio to
 - **THEN** the clip plays 6 dB quieter, its waveform shrinks, and one undo step was added
 
 ### Requirement: Sample audio storage
-The audio of each sample SHALL be stored in the browser as lossless PCM, separately from song documents, and SHALL survive reloads. One stored copy SHALL serve every song and library entry that refers to the same sample id. A sample's audio SHALL be kept while any of these refers to it:
+The audio of each sample SHALL be stored in the browser as lossless PCM, separately from song documents, in a store kept per signed-in user (see `platform/accounts`), and SHALL survive reloads and signing out. One stored copy SHALL serve every song and library entry that refers to the same sample id. A sample's audio SHALL be kept while any of these refers to it:
 - the sample library;
-- any saved song;
+- any of the user's saved songs, including those stored on the server;
 - the open song's undo or redo history.
 
 Once none of them does, it SHALL be deleted. That check SHALL run when a song is opened or deleted, and when a sample is removed from the library. The Studio SHALL ask the browser to keep its storage persistent the first time audio is stored. It SHALL warn before storing new audio when less than 200 MB of browser storage remains.

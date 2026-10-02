@@ -1,16 +1,15 @@
-import "fake-indexeddb/auto";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import * as api from "@/lib/api";
 import { createMidiAccess } from "@/lib/midi/access";
 import { cellLabel } from "@/lib/pianoRoll";
 import { createFakeMidi } from "@/test/fakeMidi";
-import { createSongLibrary, idbKeyValueStore, songKey, type SongLibrary } from "@/lib/song/songLibrary";
+import { createServerSongLibrary, lastSongStorageKey, type SongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { normalizeSong } from "@/lib/song/songOps";
 import { newTrack, type Clip, type Loop, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
@@ -91,6 +90,7 @@ const piano: InstrumentInfo = {
 };
 
 let library: SongLibrary;
+let fake: ReturnType<typeof createFakeProjectsApi>;
 
 // The dock edits a clip's loop, so the default song needs one on each track to have anything to click.
 function songWithDrumLoop(): Song {
@@ -114,8 +114,8 @@ beforeEach(async () => {
   onPlaybackTeardown = null;
   localStorage.clear();
   clearStoredValueCache();
-  await clear();
-  library = createSongLibrary();
+  fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
   audition.mockClear();
   toggle.mockClear();
   loops.length = 0;
@@ -144,6 +144,21 @@ describe("loading", () => {
     expect(await screen.findByRole("region", { name: "Arrangement" })).toBeInTheDocument();
     expect(screen.queryByText("Loading song…")).not.toBeInTheDocument();
     expect(screen.queryAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(0);
+  });
+});
+
+describe("signing in again", () => {
+  it("opens the most recent song instead of creating one when the last-opened pointer is gone", async () => {
+    await library.create({ ...newSongWithTracks(), name: "Older" });
+    await new Promise((r) => setTimeout(r, 5));
+    await library.create({ ...newSongWithTracks(), name: "Newest" });
+    // What signing out leaves behind.
+    localStorage.clear();
+    const create = vi.spyOn(library, "create");
+    render(<StudioPage library={library} />);
+    expect(await screen.findByRole("button", { name: "Rename song Newest" })).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+    expect((await library.list()).map((e) => e.name).sort()).toEqual(["Newest", "Older"]);
   });
 });
 
@@ -769,7 +784,7 @@ describe("songs that cannot be opened", () => {
 
   it("says a requested song could not be opened, not that it was missing", async () => {
     const bad = broken();
-    await idbKeyValueStore().set(songKey(bad.id), bad);
+    fake.seedRaw(bad.id, bad);
     await library.create({ ...newSongWithTracks(), name: "Fine" });
     window.history.pushState(null, "", `/studio?song=${bad.id}`);
     render(<StudioPage library={library} />);
@@ -779,8 +794,8 @@ describe("songs that cannot be opened", () => {
 
   it("says the last-opened song could not be opened before creating a new one", async () => {
     const bad = broken();
-    await idbKeyValueStore().set(songKey(bad.id), bad);
-    localStorage.setItem("songbird.studio.lastSong", bad.id);
+    fake.seedRaw(bad.id, bad);
+    localStorage.setItem(lastSongStorageKey("test-user"), bad.id);
     render(<StudioPage library={library} />);
     await screen.findByRole("region", { name: "Arrangement" });
     expect(screen.getByText("Your last song couldn't be opened, so a new song was created.")).toBeInTheDocument();
@@ -791,12 +806,12 @@ describe("read failures", () => {
   it("shows a message and creates nothing when the saved songs cannot be read", async () => {
     const existing = { ...newSongWithTracks(), name: "Precious" };
     await library.create(existing);
-    const kv = idbKeyValueStore();
-    const broken = createSongLibrary({ ...kv, get: () => Promise.reject(new Error("blocked")) });
-    render(<StudioPage library={broken} />);
+    fake.control.failReads = true;
+    render(<StudioPage library={library} />);
     expect(await screen.findByText(/Couldn't read your saved songs/)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Arrangement" })).not.toBeInTheDocument();
-    expect(broken.getLastSongId()).toBe(existing.id);
+    expect(library.getLastSongId()).toBe(existing.id);
+    fake.control.failReads = false;
     expect((await library.list()).map((e) => e.id)).toEqual([existing.id]);
   });
 });
@@ -1220,8 +1235,8 @@ describe("the dock edits the selected clip's loop", () => {
     expect(marks[0].style.left).toBe("calc(var(--cell-w) * 128)");
     expect(screen.getByText(/Song length: 8 measures\./)).toBeInTheDocument();
     cleanup();
-    await clear();
-    library = createSongLibrary();
+    fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
     await renderStudio(clipSong([L("a", "Groove A", 2)], [C("c1", "a", 1, 128)]));
     expect(screen.queryByTestId("past-end")).not.toBeInTheDocument();
   });
@@ -1346,7 +1361,7 @@ describe("loop region", () => {
     await waitFor(async () => {
       const saved = (await library.open(song.id))!;
       expect(saved.loop_region).toEqual({ region: { start_measure: 2, end_measure: 3 }, enabled: true });
-    });
+    }, { timeout: 4000 });
   });
 
   it("shows the song's region only on the arrangement ruler, not in the dock", async () => {
@@ -1794,5 +1809,73 @@ describe("closing the dock", () => {
     await userEvent.keyboard("{Meta>}z{/Meta}");
     expect(screen.getAllByRole("group", { name: /^Track \d+:/ })).toHaveLength(2);
     expect(screen.queryByRole("region", { name: /^Editor/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("account song library", () => {
+  const editKick = () => userEvent.click(screen.getByRole("button", { name: cellLabel("Kick", 0, 16) }));
+
+  // Copies need ids of their own, as on the real server; the default fake would overwrite the original.
+  beforeEach(() => {
+    fake = createFakeProjectsApi({ assignIds: true });
+    library = createServerSongLibrary(fake.api);
+  });
+
+  async function conflictedStudio() {
+    const song = await library.create(songWithDrumLoop());
+    render(<StudioPage library={library} />);
+    await screen.findByRole("region", { name: "Arrangement" });
+    // Another tab saved a newer revision.
+    fake.stored(song.id)!.revision = 9;
+    await editKick();
+    await screen.findByText(/changed somewhere else/);
+    return song;
+  }
+
+  it("offers Reload and Save as copy when the song was changed elsewhere, and stops autosaving it", async () => {
+    const song = await conflictedStudio();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as copy" })).toBeInTheDocument();
+    await editKick();
+    await act(async () => void (await new Promise((r) => setTimeout(r, 400))));
+    expect(fake.stored(song.id)!.revision).toBe(9);
+    expect(screen.queryByText(/not being saved/)).not.toBeInTheDocument();
+  });
+
+  it("Reload discards this tab's changes and resumes saving", async () => {
+    const song = await conflictedStudio();
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.queryByText(/changed somewhere else/)).not.toBeInTheDocument());
+    expect(screen.queryAllByTestId("note")).toHaveLength(0);
+    await editKick();
+    await waitFor(() => expect(fake.stored(song.id)!.revision).toBe(10));
+  });
+
+  it("Save as copy keeps this tab's version as a new song and leaves the other version alone", async () => {
+    const song = await conflictedStudio();
+    await userEvent.click(screen.getByRole("button", { name: "Save as copy" }));
+    expect(await screen.findByRole("button", { name: /Rename song .* \(copy\)/ })).toBeInTheDocument();
+    expect(screen.queryByText(/changed somewhere else/)).not.toBeInTheDocument();
+    expect(fake.stored(song.id)!.revision).toBe(9);
+    const names = (await library.list()).map((e) => e.name);
+    expect(names).toHaveLength(2);
+    expect(names.some((n) => n.endsWith("(copy)"))).toBe(true);
+  });
+
+  describe("leaving the page", () => {
+    const leave = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    it("warns while a change has not been saved and stops once it has", async () => {
+      await renderStudio();
+      expect(leave()).toBe(false);
+      await editKick();
+      expect(leave()).toBe(true);
+      await act(async () => void (await library.flush()));
+      expect(leave()).toBe(false);
+    });
   });
 });

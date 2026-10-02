@@ -1,21 +1,21 @@
-import "fake-indexeddb/auto";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clear, get, set } from "idb-keyval";
 import { beforeEach, describe, expect, it } from "vitest";
 import { emptyPattern } from "@/lib/patternOps";
-import { createSongLibrary, INDEX_KEY, type SongIndexEntry, type SongLibrary } from "@/lib/song/songLibrary";
+import { createServerSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { newSong, newTrack } from "@/lib/song/types";
 import { drums, note, patternWith, trackWithNotes } from "@/test/fixtures";
 import { SendToSongButton } from "./SendToSongButton";
 
 let library: SongLibrary;
+let fake: ReturnType<typeof createFakeProjectsApi>;
 
 beforeEach(async () => {
   localStorage.clear();
-  await clear();
-  library = createSongLibrary();
+  fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
 });
 
 async function openDialog(pattern = patternWith([note("kick", 0), note("snare", 4)], { name: "Boom Bap", tempo_bpm: 90, swing: 0.2 })) {
@@ -44,6 +44,35 @@ describe("send to song", () => {
     expect(song.tracks[0].clips).toMatchObject([{ start_measure: 1, measures: 4 }]);
   });
 
+  it("links to the song under the id the server gave it", async () => {
+    const fake = createFakeProjectsApi({ assignIds: true });
+    library = createServerSongLibrary(fake.api);
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    const link = await within(dialog).findByRole("link", { name: "Open in Studio" });
+    const [entry] = await library.list();
+    expect(entry.id).toMatch(/^server-/);
+    expect(link).toHaveAttribute("href", `/studio?song=${entry.id}`);
+  });
+
+  it("does not report success when the song was changed elsewhere, and a retry sends again", async () => {
+    const fake = createFakeProjectsApi({ assignIds: true });
+    library = createServerSongLibrary(fake.api);
+    const existing = await library.create({ ...newSongWithTracks(), name: "Demo" });
+    const dialog = await openDialog();
+    await userEvent.click(await within(dialog).findByRole("radio", { name: /Demo/ }));
+
+    fake.control.conflictOnSave = true;
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    expect(await within(dialog).findByRole("alert", undefined, { timeout: 4000 })).toHaveTextContent(/changed elsewhere/);
+    expect(within(dialog).queryByRole("link", { name: "Open in Studio" })).not.toBeInTheDocument();
+    expect(((await library.peek(existing.id))!).tracks).toHaveLength(2);
+
+    fake.control.conflictOnSave = false;
+    await userEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    expect(await within(dialog).findByText(/as track 3\./, undefined, { timeout: 4000 })).toBeInTheDocument();
+  });
+
   it("does not offer songs with a different time signature", async () => {
     await library.create({ ...newSong("4/4"), name: "Four" });
     await library.create({ ...newSong("3/4"), name: "Three" });
@@ -64,7 +93,7 @@ describe("send to song", () => {
     await userEvent.click(await within(dialog).findByRole("radio", { name: /Demo/ }));
     expect(await within(dialog).findByText('"Demo" will be lengthened from 8 to 16 bars.')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
-    await within(dialog).findByText(/as track 3\./);
+    await within(dialog).findByText(/as track 3\./, undefined, { timeout: 4000 });
 
     const saved = (await library.peek(existing.id))!;
     expect(saved.measures).toBe(16);
@@ -75,17 +104,11 @@ describe("send to song", () => {
     expect(pattern).toEqual(before);
   });
 
-  it("greys out a song with 16 tracks, also when the index has no track count", async () => {
+  it("greys out a song with 16 tracks", async () => {
     const full = { ...newSong(), name: "Full" };
     full.tracks = Array.from({ length: 16 }, (_, i) => newTrack("piano", `P${i}`));
     await library.create(full);
     await library.create({ ...newSong(), name: "Roomy" });
-    const index = (await get(INDEX_KEY)) as SongIndexEntry[];
-    await set(INDEX_KEY, index.map((e) => {
-      const legacy: Partial<SongIndexEntry> = { ...e };
-      delete legacy.track_count;
-      return legacy;
-    }));
 
     const dialog = await openDialog();
     await waitFor(() => expect(within(dialog).getByRole("radio", { name: /Full/ })).toBeDisabled());

@@ -1,4 +1,5 @@
 import { createStore, del, entries, get, set } from "idb-keyval";
+import { requireCurrentUserId } from "@/lib/auth/currentUser";
 import { cutUtf16 } from "@/lib/song/audioTiming";
 import { runExclusive } from "./sampleStore";
 import { scheduleGarbageCollection } from "./sampleGc";
@@ -14,8 +15,17 @@ export interface SampleLibraryEntry {
   importedAt: number;
 }
 
-let store: ReturnType<typeof createStore> | undefined;
-const index = () => (store ??= createStore("songbird-sample-library", "library"));
+// Per user for the same reason as the sample store: kept across sign-out, invisible to other users.
+const stores = new Map<string, ReturnType<typeof createStore>>();
+const index = () => {
+  const userId = requireCurrentUserId();
+  let store = stores.get(userId);
+  if (!store) {
+    store = createStore(`songbird-sample-library.${userId}`, "library");
+    stores.set(userId, store);
+  }
+  return store;
+};
 
 // Both validators count UTF-16 units, so a cut by code points would let an emoji name overrun the limit.
 export const clipSampleName = (name: string) => cutUtf16(name.trim(), SAMPLE_NAME_MAX);
