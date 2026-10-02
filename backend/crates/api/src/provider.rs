@@ -7,6 +7,7 @@ use music::ai::{
     StructuredProvider,
 };
 
+use crate::ai_access::{AiAccess, MockUserProviders, RealUserProviders};
 use crate::config::{Config, ProviderKind, ANTHROPIC_API_KEY, BIND_ADDR};
 
 /// One transport serves both provider kinds, so a model is configured and
@@ -39,20 +40,28 @@ impl Providers {
     }
 }
 
+impl Providers {
+    /// The single place a new provider kind is added, so every access mode, including the
+    /// per-user one, picks it up. It does not check the transport: per-user keys arrive
+    /// with a request and are validated when saved.
+    pub fn over(transport: Arc<dyn StructuredProvider>) -> Self {
+        Self::new(
+            SchemaProvider::new(transport.clone()),
+            SchemaPlanProvider::new(transport),
+        )
+    }
+}
+
 async fn over_transport<T: StructuredProvider + 'static>(
     transport: T,
 ) -> Result<Providers, ProviderError> {
     transport.check().await?;
-    let transport = Arc::new(transport);
-    Ok(Providers::new(
-        SchemaProvider::new(transport.clone()),
-        SchemaPlanProvider::new(transport),
-    ))
+    Ok(Providers::over(Arc::new(transport)))
 }
 
 /// The handler's own timeout must fire first so clients see 504 generation_timeout;
 /// the client timeout is only a backstop that frees the socket if that ever fails.
-fn client_timeout(config: &Config) -> Duration {
+pub(crate) fn client_timeout(config: &Config) -> Duration {
     config.generation_timeout + Duration::from_secs(5)
 }
 
@@ -91,6 +100,19 @@ pub async fn build_providers(config: &Config) -> Result<Providers, ProviderError
             .await
         }
         ProviderKind::Mock => Ok(Providers::mock()),
+        ProviderKind::User | ProviderKind::UserMock => Err(ProviderError::Unavailable(format!(
+            "SONGBIRD_AI_PROVIDER={} has no shared provider; use build_ai_access",
+            config.ai_provider.as_str()
+        ))),
+    }
+}
+
+/// Per-user modes contact no provider at startup because keys arrive with requests.
+pub async fn build_ai_access(config: &Config) -> Result<AiAccess, ProviderError> {
+    match config.ai_provider {
+        ProviderKind::User => Ok(AiAccess::PerUser(Arc::new(RealUserProviders::new(config)))),
+        ProviderKind::UserMock => Ok(AiAccess::PerUser(Arc::new(MockUserProviders))),
+        _ => build_providers(config).await.map(AiAccess::Shared),
     }
 }
 
@@ -110,13 +132,16 @@ fn require_loopback_for_codex(config: &Config) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AI_PROVIDER, BIND_ADDR, CODEX_BIN, OLLAMA_MODEL, OLLAMA_URL};
+    use crate::config::{AI_PROVIDER, BIND_ADDR, CODEX_BIN, ENV, OLLAMA_MODEL, OLLAMA_URL};
     use music::ai::StructuredRequest;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn config(pairs: &[(&str, &str)]) -> Config {
         Config::from_lookup(|k| {
+            if k == ENV {
+                return Some("development".into());
+            }
             pairs
                 .iter()
                 .find(|(name, _)| *name == k)

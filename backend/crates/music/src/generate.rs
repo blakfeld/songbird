@@ -182,6 +182,19 @@ mod tests {
         assert_eq!(provider.0.lock().unwrap().len(), 1);
     }
 
+    #[tokio::test]
+    async fn key_errors_are_not_retried() {
+        for error in [
+            ProviderError::Unauthorized,
+            ProviderError::QuotaExhausted,
+            ProviderError::RateLimited { retry_after: None },
+        ] {
+            let provider = Scripted(Mutex::new(vec![Err(error.clone()), Ok(good())]));
+            assert!(generate_pattern(&provider, &request()).await.is_err());
+            assert_eq!(provider.0.lock().unwrap().len(), 1);
+        }
+    }
+
     use crate::song::tests::{song, track};
     use crate::track_generation::TrackGenerateBody;
 

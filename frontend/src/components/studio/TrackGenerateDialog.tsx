@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useAiKeyGate } from "@/components/ai/AiKeyGate";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import { TokenCounter } from "@/components/editor/TokenCounter";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +9,7 @@ import { Field } from "@/components/ui/Field";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { Spinner } from "@/components/ui/Spinner";
 import { focusRing, inputClass } from "@/components/ui/classes";
+import type { DescribedError } from "@/lib/aiKeys/keyError";
 import { getSongLimits } from "@/lib/api";
 import { estimateTokens } from "@/lib/estimateTokens";
 import { isSubmitEnter } from "@/lib/isSubmitEnter";
@@ -39,7 +41,7 @@ function GenerateForm({
   song: Song;
   track: Track;
   initialPrompt: string;
-  initialError: string | null;
+  initialError: DescribedError | null;
   onSubmit: (request: GenerateRequest) => void;
   onClose: () => void;
 }) {
@@ -73,8 +75,9 @@ function GenerateForm({
             ? `Generate at most ${MAX_GENERATE_MEASURES} measures at a time.`
             : null;
 
+  const { blocked, noticeId, notice } = useAiKeyGate();
   const canSubmit =
-    prompt.trim() !== "" && !overLimit && limits.status === "ready" && customError === null;
+    prompt.trim() !== "" && !overLimit && limits.status === "ready" && customError === null && !blocked;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +112,7 @@ function GenerateForm({
       <h2 id={`${id}-title`} className="text-lg font-semibold">
         Generate {track.name}
       </h2>
-      {initialError && <ErrorAlert message={initialError} />}
+      {initialError && <ErrorAlert message={initialError.message} action={initialError.action} />}
       {limits.status === "error" && (
         <ErrorAlert message="Couldn't load generation limits." onRetry={limits.retry} />
       )}
@@ -128,7 +131,7 @@ function GenerateForm({
               e.currentTarget.form?.requestSubmit();
             }
           }}
-          aria-describedby={`${id}-prompt-hint ${id}-token-count`}
+          aria-describedby={[`${id}-prompt-hint`, `${id}-token-count`, noticeId].filter(Boolean).join(" ")}
           aria-invalid={overLimit}
           className={`${inputClass} h-auto w-full resize-y py-2`}
         />
@@ -188,9 +191,10 @@ function GenerateForm({
       <p className="text-xs text-zinc-600 dark:text-zinc-400">
         Replaces what {track.name} plays in that range. A range past the end of the song makes it longer. Undo restores it.
       </p>
+      {notice}
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={!canSubmit}>
+        <Button type="submit" variant="primary" disabled={!canSubmit} aria-describedby={noticeId}>
           {limits.status === "loading" && <Spinner />}
           Generate
         </Button>
@@ -212,7 +216,7 @@ export function TrackGenerateDialog({
   song: Song;
   track: Track;
   initialPrompt?: string;
-  initialError?: string | null;
+  initialError?: DescribedError | null;
   onSubmit: (request: GenerateRequest) => void;
   onClose: () => void;
 }) {

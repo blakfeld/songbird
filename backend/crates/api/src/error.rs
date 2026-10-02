@@ -82,6 +82,30 @@ pub enum ApiError {
     ServerBusy { retry_after: u64 },
     #[error("Too many generations are already running. Please try again shortly.")]
     GenerationBusy,
+    #[error("Add an Anthropic or OpenAI API key in Settings \u{2192} AI keys to use AI features.")]
+    ApiKeyRequired,
+    /// The provider name is a fixed string chosen by the server, never provider output.
+    #[error("Your {provider} key was rejected. Replace it in Settings \u{2192} AI keys.")]
+    ApiKeyInvalid { provider: &'static str },
+    /// Same response as `ApiKeyInvalid`, but raised before any provider was contacted, which
+    /// is what makes it safe to refund from the daily quota.
+    #[error("Your {provider} key was rejected. Replace it in Settings \u{2192} AI keys.")]
+    StoredKeyUnusable { provider: &'static str },
+    #[error("Your {provider} account has no credit or quota left. Check billing with {provider}.")]
+    ApiKeyQuotaExhausted { provider: &'static str },
+    #[error("Your {provider} key is being rate limited. Try again shortly.")]
+    ApiKeyRateLimited {
+        provider: &'static str,
+        retry_after: Option<u64>,
+    },
+    #[error("That does not look like a valid API key for this provider.")]
+    InvalidApiKeyFormat,
+    #[error("{provider} rejected that key. Check that it is correct and has not been revoked.")]
+    ApiKeyRejected { provider: &'static str },
+    #[error("Could not reach {provider} to check the key. Please try again shortly.")]
+    ProviderUnreachable { provider: &'static str },
+    #[error("Saving AI keys is not available on this server.")]
+    ApiKeysUnavailable,
 }
 
 impl ApiError {
@@ -108,7 +132,18 @@ impl ApiError {
             Self::Unauthenticated | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::ProjectNotFound => StatusCode::NOT_FOUND,
-            Self::RevisionConflict | Self::ProjectLimit => StatusCode::CONFLICT,
+            Self::RevisionConflict
+            | Self::ProjectLimit
+            | Self::ApiKeyRequired
+            | Self::ApiKeyInvalid { .. }
+            | Self::StoredKeyUnusable { .. }
+            | Self::ApiKeyQuotaExhausted { .. } => StatusCode::CONFLICT,
+            Self::ApiKeyRateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+            Self::InvalidApiKeyFormat | Self::ApiKeyRejected { .. } => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            Self::ProviderUnreachable { .. } => StatusCode::BAD_GATEWAY,
+            Self::ApiKeysUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::IdMismatch => StatusCode::UNPROCESSABLE_ENTITY,
             Self::TooManyRequests { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::ServerBusy { .. } => StatusCode::SERVICE_UNAVAILABLE,
@@ -144,6 +179,14 @@ impl ApiError {
             Self::IdMismatch => "id_mismatch",
             Self::TooManyRequests { .. } => "too_many_requests",
             Self::ServerBusy { .. } => "server_busy",
+            Self::ApiKeyRequired => "api_key_required",
+            Self::ApiKeyInvalid { .. } | Self::StoredKeyUnusable { .. } => "api_key_invalid",
+            Self::ApiKeyQuotaExhausted { .. } => "api_key_quota_exhausted",
+            Self::ApiKeyRateLimited { .. } => "api_key_rate_limited",
+            Self::InvalidApiKeyFormat => "invalid_api_key_format",
+            Self::ApiKeyRejected { .. } => "api_key_rejected",
+            Self::ProviderUnreachable { .. } => "provider_unreachable",
+            Self::ApiKeysUnavailable => "api_keys_unavailable",
         }
     }
 
@@ -152,6 +195,7 @@ impl ApiError {
             Self::TooManyRequests { retry_after } | Self::ServerBusy { retry_after } => {
                 Some(*retry_after)
             }
+            Self::ApiKeyRateLimited { retry_after, .. } => *retry_after,
             _ => None,
         }
     }
@@ -189,10 +233,20 @@ impl From<ChatRequestError> for ApiError {
     }
 }
 
+/// Set on responses for failures that happened before any provider was contacted, so the
+/// metering layer can give the request back without parsing the body. A provider's own
+/// rejection is deliberately not marked: a revoked key must not get free attempts that each
+/// reach the provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NeverReachedProvider;
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = json!({"error": {"code": self.code(), "message": self.to_string()}});
         let mut response = (self.status(), Json(body)).into_response();
+        if matches!(self, Self::ApiKeyRequired | Self::StoredKeyUnusable { .. }) {
+            response.extensions_mut().insert(NeverReachedProvider);
+        }
         if let Some(seconds) = self.retry_after() {
             response
                 .headers_mut()
@@ -257,6 +311,100 @@ mod tests {
             assert_eq!(error.status().as_u16(), status, "{code}");
             assert_eq!(error.code(), code);
         }
+    }
+
+    #[test]
+    fn api_key_errors_have_the_documented_status_code_and_provider_named_message() {
+        let p = "Anthropic";
+        for (error, status, code) in [
+            (ApiError::ApiKeyRequired, 409, "api_key_required"),
+            (
+                ApiError::ApiKeyInvalid { provider: p },
+                409,
+                "api_key_invalid",
+            ),
+            (
+                ApiError::ApiKeyQuotaExhausted { provider: p },
+                409,
+                "api_key_quota_exhausted",
+            ),
+            (
+                ApiError::ApiKeyRateLimited {
+                    provider: p,
+                    retry_after: Some(20),
+                },
+                429,
+                "api_key_rate_limited",
+            ),
+            (ApiError::InvalidApiKeyFormat, 422, "invalid_api_key_format"),
+            (
+                ApiError::ApiKeyRejected { provider: p },
+                422,
+                "api_key_rejected",
+            ),
+            (
+                ApiError::ProviderUnreachable { provider: p },
+                502,
+                "provider_unreachable",
+            ),
+            (ApiError::ApiKeysUnavailable, 503, "api_keys_unavailable"),
+        ] {
+            assert_eq!(error.status().as_u16(), status, "{code}");
+            assert_eq!(error.code(), code);
+        }
+        for error in [
+            ApiError::ApiKeyInvalid { provider: p },
+            ApiError::ApiKeyQuotaExhausted { provider: p },
+            ApiError::ApiKeyRateLimited {
+                provider: p,
+                retry_after: None,
+            },
+        ] {
+            assert!(error.to_string().contains(p), "{error}");
+        }
+    }
+
+    #[test]
+    fn only_failures_before_any_provider_call_are_marked_refundable() {
+        let marked = |error: ApiError| {
+            error
+                .into_response()
+                .extensions()
+                .get::<NeverReachedProvider>()
+                .is_some()
+        };
+        assert!(marked(ApiError::ApiKeyRequired));
+        assert!(marked(ApiError::StoredKeyUnusable {
+            provider: "Anthropic"
+        }));
+        assert!(!marked(ApiError::ApiKeyInvalid {
+            provider: "Anthropic"
+        }));
+        assert!(!marked(ApiError::ApiKeyQuotaExhausted {
+            provider: "Anthropic"
+        }));
+        assert!(!marked(ApiError::GenerationFailed));
+        let unusable = ApiError::StoredKeyUnusable { provider: "OpenAI" };
+        let invalid = ApiError::ApiKeyInvalid { provider: "OpenAI" };
+        assert_eq!(unusable.code(), invalid.code());
+        assert_eq!(unusable.status(), invalid.status());
+        assert_eq!(unusable.to_string(), invalid.to_string());
+    }
+
+    #[test]
+    fn a_provider_retry_after_is_passed_through_when_present() {
+        let with = ApiError::ApiKeyRateLimited {
+            provider: "OpenAI",
+            retry_after: Some(20),
+        }
+        .into_response();
+        assert_eq!(with.headers()[header::RETRY_AFTER], "20");
+        let without = ApiError::ApiKeyRateLimited {
+            provider: "OpenAI",
+            retry_after: None,
+        }
+        .into_response();
+        assert!(without.headers().get(header::RETRY_AFTER).is_none());
     }
 
     #[test]

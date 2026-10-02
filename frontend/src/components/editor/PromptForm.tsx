@@ -4,12 +4,15 @@ import { useId, useState } from "react";
 import type { GenerationLimits } from "@/generated/GenerationLimits";
 import type { Pattern } from "@/generated/Pattern";
 import type { TimeSignature } from "@/generated/TimeSignature";
+import { useAiKeyGate } from "@/components/ai/AiKeyGate";
+import { useAiKeys } from "@/components/ai/AiKeysProvider";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { inputClass } from "@/components/ui/classes";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
-import { generatePattern } from "@/lib/api";
+import { describeError, isKeyErrorCode, type DescribedError } from "@/lib/aiKeys/keyError";
+import { ApiError, generatePattern } from "@/lib/api";
 import { estimateTokens } from "@/lib/estimateTokens";
 import { getPatternStore, usePatternStore } from "@/lib/patternStore";
 import { TEMPO_RANGE } from "@/lib/patternOps";
@@ -46,7 +49,9 @@ export function PromptForm({
   const prompt = usePatternStore(instrumentId, (s) => s.prompt);
   const [tempo, setTempo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedError | null>(null);
+  const { refresh } = useAiKeys();
+  const { blocked, noticeId, notice } = useAiKeyGate();
 
   const count = estimateTokens(prompt);
   const max = limits?.max_input_tokens ?? null;
@@ -61,7 +66,7 @@ export function PromptForm({
         tempoNumber < TEMPO_RANGE.min ||
         tempoNumber > TEMPO_RANGE.max));
   const canSubmit =
-    prompt.trim() !== "" && !overLimit && limits !== null && !tempoInvalid && !busy;
+    prompt.trim() !== "" && !overLimit && limits !== null && !tempoInvalid && !busy && !blocked;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,8 +86,10 @@ export function PromptForm({
       store.getState().setPattern(pattern);
       onGenerated(pattern, hadPrevious);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
-      setError(`${message} Your current pattern is unchanged.`);
+      // The gate must reflect a key that was removed or revoked elsewhere.
+      if (err instanceof ApiError && isKeyErrorCode(err.code)) void refresh();
+      const { message, action } = describeError(err);
+      setError({ message: `${message} Your current pattern is unchanged.`, action });
     } finally {
       setBusy(false);
     }
@@ -105,7 +112,7 @@ export function PromptForm({
           value={prompt}
           onChange={(e) => getPatternStore(instrumentId).getState().setPrompt(e.target.value)}
           placeholder="e.g. laid-back boom bap with ghost-note snares and an open hat on the 'and' of 4"
-          aria-describedby={`${id}-hint ${id}-token-count`}
+          aria-describedby={[`${id}-hint`, `${id}-token-count`, noticeId].filter(Boolean).join(" ")}
           aria-invalid={overLimit}
           className={`${inputClass} h-auto w-full resize-y py-2`}
         />
@@ -116,6 +123,7 @@ export function PromptForm({
         </p>
         <TokenCounter id={`${id}-token-count`} count={count} max={max} />
       </div>
+      {notice}
       <div className="grid grid-cols-3 items-end gap-3 sm:flex sm:flex-wrap sm:gap-4">
         <Field label="Measures" htmlFor={`${id}-measures`}>
           <Select
@@ -177,6 +185,7 @@ export function PromptForm({
           type="submit"
           variant="primary"
           disabled={!canSubmit}
+          aria-describedby={noticeId}
           className="col-span-3 w-full sm:ml-auto sm:w-auto"
         >
           {busy && <Spinner />}
@@ -186,7 +195,7 @@ export function PromptForm({
       {limitsState === "error" && (
         <ErrorAlert message="Couldn't load generation settings." onRetry={onRetryLimits} />
       )}
-      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      {error && <ErrorAlert message={error.message} action={error.action} onDismiss={() => setError(null)} />}
     </form>
   );
 }

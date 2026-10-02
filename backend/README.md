@@ -6,7 +6,7 @@ is the Axum server. Copy `.env.example` to `.env` to configure it.
 
 ```sh
 cd backend
-SONGBIRD_AI_PROVIDER=mock cargo run -p api      # listens on 127.0.0.1:8080
+SONGBIRD_ENV=development SONGBIRD_AI_PROVIDER=mock cargo run -p api      # listens on 127.0.0.1:8080
 ```
 
 ## API
@@ -277,7 +277,12 @@ refuses to start with a message saying how to fix it.
 | `mock` | Tests, CI, trying the API. Deterministic: picks a built-in groove by genre keyword, else by a stable hash of the request. | Nothing |
 | `ollama` | Everyday development, free and local. | A running Ollama with the model pulled |
 | `codex` | Judging quality with a stronger model, using your ChatGPT plan. Local only. | Codex CLI, signed in |
-| `claude` | Production. | `ANTHROPIC_API_KEY` |
+| `claude` | Development with the operator's Anthropic key. Production rejects it. | `ANTHROPIC_API_KEY`, `SONGBIRD_ENV=development` |
+| `user` | Production (the default there). Each user's own stored key pays. | `SONGBIRD_MASTER_KEYS` |
+| `user-mock` | Tests and e2e of the per-user flow with fake providers. | `SONGBIRD_MASTER_KEYS` |
+
+Master keys, rotation, and loss recovery are covered in the root README under
+"Per-user AI keys".
 
 ### Ollama
 
@@ -285,7 +290,7 @@ refuses to start with a message saying how to fix it.
 brew install ollama            # or see https://ollama.com/download
 ollama serve                   # leave running
 ollama pull qwen2.5:7b-instruct
-SONGBIRD_AI_PROVIDER=ollama cargo run -p api
+SONGBIRD_ENV=development SONGBIRD_AI_PROVIDER=ollama cargo run -p api
 ```
 
 Variables: `SONGBIRD_OLLAMA_URL` (default `http://localhost:11434`) and
@@ -305,7 +310,7 @@ with `ollama run qwen2.5:7b-instruct ""`.
 ```sh
 npm i -g @openai/codex         # or: brew install codex
 codex login                    # choose "Sign in with ChatGPT"
-SONGBIRD_AI_PROVIDER=codex cargo run -p api
+SONGBIRD_ENV=development SONGBIRD_AI_PROVIDER=codex cargo run -p api
 ```
 
 Variables: `SONGBIRD_CODEX_BIN` (default `codex`) and optional

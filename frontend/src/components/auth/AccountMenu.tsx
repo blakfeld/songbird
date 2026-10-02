@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { Spinner } from "@/components/ui/Spinner";
 import { focusRing, hintClass } from "@/components/ui/classes";
 import { Menu, menuItemClass } from "@/components/studio/Menu";
+import { AI_KEYS_PATH } from "@/lib/aiKeys/keyError";
 import { logout } from "@/lib/auth/client";
 import { signOutLocally } from "@/lib/auth/signOut";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
@@ -16,6 +18,8 @@ export function AccountMenu({ library }: { library?: SongLibrary }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
   const titleId = useId();
+  // Read from the location rather than the router hook so the menu works in trees without an app router.
+  const onKeysPage = typeof window !== "undefined" && window.location.pathname === AI_KEYS_PATH;
   // A second click while the first is still flushing must not start a second logout.
   const busy = useRef(false);
 
@@ -73,7 +77,7 @@ export function AccountMenu({ library }: { library?: SongLibrary }) {
           </>
         }
       >
-        {() => (
+        {(close) => (
           <>
             <div className="px-3 py-2">
               <p className={hintClass}>Signed in as</p>
@@ -81,6 +85,16 @@ export function AccountMenu({ library }: { library?: SongLibrary }) {
                 {user.email}
               </p>
             </div>
+            <div role="separator" className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+            <Link
+              href={AI_KEYS_PATH}
+              role="menuitem"
+              aria-current={onKeysPage ? "page" : undefined}
+              className={menuItemClass}
+              onClick={close}
+            >
+              AI keys
+            </Link>
             <div role="separator" className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
             <button
               type="button"

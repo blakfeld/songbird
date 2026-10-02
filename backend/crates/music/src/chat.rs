@@ -588,6 +588,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn key_errors_are_not_retried() {
+        for error in [
+            ProviderError::Unauthorized,
+            ProviderError::QuotaExhausted,
+            ProviderError::RateLimited { retry_after: None },
+        ] {
+            let provider = Scripted(Mutex::new(vec![Err(error), Ok(add("bass"))]));
+            assert!(plan_chat(&provider, &plan_request()).await.is_err());
+            assert_eq!(provider.0.lock().unwrap().len(), 1);
+        }
+    }
+
+    #[tokio::test]
     async fn the_mock_planner_plans_through_the_recheck() {
         let mut request = plan_request();
         request.latest_user_message = "give me the drums".into();

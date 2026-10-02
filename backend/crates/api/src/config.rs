@@ -1,15 +1,20 @@
 //! Read once at startup and validated eagerly so a bad setting stops the
 //! process with a message naming the variable instead of failing on a request.
 
+use std::fmt;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 
 use music::tokens::{
     DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_INPUT_TOKENS, MAX_MAX_CONTEXT_TOKENS,
     MAX_MAX_INPUT_TOKENS, MIN_MAX_INPUT_TOKENS,
 };
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 
 use crate::db::DatabaseConfig;
 
@@ -33,9 +38,12 @@ pub const SESSION_IDLE_HOURS: &str = "SONGBIRD_SESSION_IDLE_HOURS";
 pub const TRUST_PROXY: &str = "SONGBIRD_TRUST_PROXY";
 pub const AI_REQUESTS_PER_MINUTE: &str = "SONGBIRD_AI_REQUESTS_PER_MINUTE";
 pub const AI_REQUESTS_PER_DAY: &str = "SONGBIRD_AI_REQUESTS_PER_DAY";
+pub const ENV: &str = "SONGBIRD_ENV";
+pub const MASTER_KEYS: &str = "SONGBIRD_MASTER_KEYS";
+pub const OPENAI_MODEL: &str = "SONGBIRD_OPENAI_MODEL";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 20] = [
+pub const ALL_VARIABLES: [&str; 23] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -56,11 +64,16 @@ pub const ALL_VARIABLES: [&str; 20] = [
     TRUST_PROXY,
     AI_REQUESTS_PER_MINUTE,
     AI_REQUESTS_PER_DAY,
+    ENV,
+    MASTER_KEYS,
+    OPENAI_MODEL,
 ];
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_CORS_ORIGIN: &str = "http://localhost:3000";
 const DEFAULT_AI_MODEL: &str = "claude-sonnet-5-5";
+const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1-mini";
+const MASTER_KEY_BYTES: usize = 32;
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 /// A chat can make several provider calls, so a small number of concurrent
 /// generations already saturates a local model or a personal API budget.
@@ -95,6 +108,28 @@ pub enum ProviderKind {
     Ollama,
     Codex,
     Mock,
+    /// The only mode production accepts, so no operator credential can serve a user's request.
+    User,
+    /// Lets tests and e2e run the real per-user code path without a real provider key.
+    UserMock,
+}
+
+impl ProviderKind {
+    pub fn is_per_user(self) -> bool {
+        matches!(self, Self::User | Self::UserMock)
+    }
+
+    /// Error messages must tell the user whose account to check, and the user knows vendors by
+    /// brand spelling rather than by config value.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Claude => "Anthropic",
+            Self::Ollama => "Ollama",
+            Self::Codex => "Codex",
+            Self::Mock => "the mock provider",
+            Self::User | Self::UserMock => "your provider",
+        }
+    }
 }
 
 impl ProviderKind {
@@ -104,6 +139,8 @@ impl ProviderKind {
             Self::Ollama => "ollama",
             Self::Codex => "codex",
             Self::Mock => "mock",
+            Self::User => "user",
+            Self::UserMock => "user-mock",
         }
     }
 }
@@ -117,20 +154,114 @@ impl FromStr for ProviderKind {
             "ollama" => Ok(Self::Ollama),
             "codex" => Ok(Self::Codex),
             "mock" => Ok(Self::Mock),
+            "user" => Ok(Self::User),
+            "user-mock" => Ok(Self::UserMock),
             other => Err(format!(
-                "\"{other}\" is not a provider; use claude, ollama, codex, or mock"
+                "\"{other}\" is not a provider; use claude, ollama, codex, mock, user, or user-mock"
             )),
         }
     }
 }
 
-/// `Debug` is safe to log: the API key and database URL are `SecretString`s, which redact themselves.
+/// Production is the default so a deployment that forgets the setting fails closed
+/// instead of falling back to an operator-paid provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env {
+    Production,
+    Development,
+}
+
+impl FromStr for Env {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "production" => Ok(Self::Production),
+            "development" => Ok(Self::Development),
+            _ => Err("use production or development".into()),
+        }
+    }
+}
+
+/// Ordered newest first: the first entry encrypts, and a row's stored version picks
+/// the entry that decrypts it so old keys keep working during rotation.
+#[derive(Clone)]
+pub struct Keyring {
+    entries: Arc<[(String, SecretBox<[u8; MASTER_KEY_BYTES]>)]>,
+}
+
+impl Keyring {
+    /// Errors never include the offending text, because it may be a real key.
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let mut entries: Vec<(String, SecretBox<[u8; MASTER_KEY_BYTES]>)> = Vec::new();
+        for (index, entry) in raw.split(',').enumerate() {
+            let position = index + 1;
+            let (version, encoded) = entry
+                .trim()
+                .split_once(':')
+                .filter(|(v, k)| !v.is_empty() && !k.is_empty())
+                .ok_or_else(|| {
+                    format!("entry {position} is not <version>:<base64 key>, for example v1:<key>")
+                })?;
+            if !version
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(format!(
+                    "entry {position} has a version with characters other than letters, digits, - and _"
+                ));
+            }
+            if entries.iter().any(|(v, _)| v == version) {
+                return Err(format!("version \"{version}\" is listed more than once"));
+            }
+            let bytes = BASE64
+                .decode(encoded)
+                .map_err(|_| format!("entry {position} is not valid base64"))?;
+            let key: [u8; MASTER_KEY_BYTES] = bytes
+                .try_into()
+                .map_err(|_| format!("entry {position} is not a {MASTER_KEY_BYTES}-byte key"))?;
+            entries.push((version.to_string(), SecretBox::new(Box::new(key))));
+        }
+        Ok(Self {
+            entries: entries.into(),
+        })
+    }
+
+    pub fn current(&self) -> (&str, &[u8; MASTER_KEY_BYTES]) {
+        let (version, key) = &self.entries[0];
+        (version, key.expose_secret())
+    }
+
+    pub fn get(&self, version: &str) -> Option<&[u8; MASTER_KEY_BYTES]> {
+        self.entries
+            .iter()
+            .find(|(v, _)| v == version)
+            .map(|(_, key)| key.expose_secret())
+    }
+
+    pub fn versions(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|(v, _)| v.as_str())
+    }
+}
+
+impl fmt::Debug for Keyring {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Keyring")
+            .field("versions", &self.versions().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+/// `Debug` is safe to log: the API key, database URL and keyring redact themselves.
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub env: Env,
     pub bind_addr: SocketAddr,
     pub ai_provider: ProviderKind,
     pub anthropic_api_key: Option<SecretString>,
     pub ai_model: String,
+    pub openai_model: String,
+    pub master_keys: Option<Keyring>,
     pub cors_origins: Vec<String>,
     pub generation_timeout: Duration,
     pub max_concurrent_generations: usize,
@@ -200,21 +331,54 @@ impl Config {
         };
         let invalid = |var: &'static str, problem: String| ConfigError::Invalid { var, problem };
 
+        let env = match get(ENV) {
+            None => Env::Production,
+            Some(v) => v.parse().map_err(|p: String| invalid(ENV, p))?,
+        };
+
         let bind_addr = get(BIND_ADDR).unwrap_or_else(|| DEFAULT_BIND_ADDR.into());
         let bind_addr = bind_addr
             .parse::<SocketAddr>()
             .map_err(|e| invalid(BIND_ADDR, format!("\"{bind_addr}\" is not host:port ({e})")))?;
 
-        let ai_provider = match get(AI_PROVIDER) {
-            None => ProviderKind::Claude,
-            Some(v) => v.parse().map_err(|p| invalid(AI_PROVIDER, p))?,
+        let ai_provider = match (get(AI_PROVIDER), env) {
+            (None, Env::Production) => ProviderKind::User,
+            (None, Env::Development) => ProviderKind::Claude,
+            (Some(v), _) => v.parse().map_err(|p| invalid(AI_PROVIDER, p))?,
         };
+        if env == Env::Production && ai_provider != ProviderKind::User {
+            return Err(invalid(
+                AI_PROVIDER,
+                format!(
+                    "{} is not allowed while {ENV} is production; production requires per-user keys, so use user or set {ENV}=development",
+                    ai_provider.as_str()
+                ),
+            ));
+        }
 
         let anthropic_api_key = get(ANTHROPIC_API_KEY).map(SecretString::from);
+        if env == Env::Production && anthropic_api_key.is_some() {
+            return Err(invalid(
+                ANTHROPIC_API_KEY,
+                format!(
+                    "must not be set while {ENV} is production; production uses each user's own key, so remove it"
+                ),
+            ));
+        }
         if ai_provider == ProviderKind::Claude && anthropic_api_key.is_none() {
             return Err(ConfigError::Missing {
                 var: ANTHROPIC_API_KEY,
                 reason: "SONGBIRD_AI_PROVIDER=claude",
+            });
+        }
+
+        let master_keys = get(MASTER_KEYS)
+            .map(|raw| Keyring::parse(&raw).map_err(|p| invalid(MASTER_KEYS, p)))
+            .transpose()?;
+        if master_keys.is_none() && (env == Env::Production || ai_provider.is_per_user()) {
+            return Err(ConfigError::Missing {
+                var: MASTER_KEYS,
+                reason: "running in production or with SONGBIRD_AI_PROVIDER=user or user-mock",
             });
         }
 
@@ -322,10 +486,13 @@ impl Config {
         )?;
 
         Ok(Self {
+            env,
             bind_addr,
             ai_provider,
             anthropic_api_key,
             ai_model: get(AI_MODEL).unwrap_or_else(|| DEFAULT_AI_MODEL.into()),
+            openai_model: get(OPENAI_MODEL).unwrap_or_else(|| DEFAULT_OPENAI_MODEL.into()),
+            master_keys,
             cors_origins,
             generation_timeout: Duration::from_secs(timeout_secs),
             max_concurrent_generations,
@@ -351,6 +518,11 @@ impl Config {
     /// test can assert them without capturing a subscriber.
     pub fn startup_warnings(&self) -> Vec<String> {
         let mut warnings = Vec::new();
+        if self.env == Env::Development {
+            warnings.push(format!(
+                "running in development mode ({ENV}=development); operator-paid AI providers are allowed, which must never serve real users"
+            ));
+        }
         if !self.trust_proxy && has_https_origin(&self.cors_origins) {
             warnings.push(format!(
                 "{TRUST_PROXY} is false while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
@@ -358,6 +530,23 @@ impl Config {
         }
         warnings
     }
+}
+
+/// Key commands need the keyring and the database but not the provider settings, which may be
+/// invalid for a host that only runs maintenance.
+pub fn master_keys_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Option<Keyring>, ConfigError> {
+    lookup(MASTER_KEYS)
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .map(|raw| {
+            Keyring::parse(&raw).map_err(|problem| ConfigError::Invalid {
+                var: MASTER_KEYS,
+                problem,
+            })
+        })
+        .transpose()
 }
 
 /// The operator CLI needs only the database, and must not fail on unrelated
@@ -406,8 +595,13 @@ mod tests {
         move |k| map.get(k).cloned()
     }
 
+    const KEY_A: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    fn key_b() -> String {
+        BASE64.encode([1u8; 32])
+    }
+
     fn mock(extra: &[(&str, &str)]) -> Result<Config, ConfigError> {
-        let mut pairs = vec![(AI_PROVIDER, "mock")];
+        let mut pairs = vec![(ENV, "development"), (AI_PROVIDER, "mock")];
         pairs.extend_from_slice(extra);
         Config::from_lookup(lookup(&pairs))
     }
@@ -426,7 +620,7 @@ mod tests {
 
     #[test]
     fn provider_defaults_to_claude_and_needs_a_key() {
-        let err = Config::from_lookup(lookup(&[])).unwrap_err();
+        let err = Config::from_lookup(lookup(&[(ENV, "development")])).unwrap_err();
         assert_eq!(
             err,
             ConfigError::Missing {
@@ -440,6 +634,7 @@ mod tests {
     #[test]
     fn blank_key_counts_as_missing() {
         let err = Config::from_lookup(lookup(&[
+            (ENV, "development"),
             (AI_PROVIDER, "claude"),
             (ANTHROPIC_API_KEY, "  "),
         ]))
@@ -449,7 +644,8 @@ mod tests {
 
     #[test]
     fn unknown_provider_names_the_variable() {
-        let err = Config::from_lookup(lookup(&[(AI_PROVIDER, "gpt")])).unwrap_err();
+        let err =
+            Config::from_lookup(lookup(&[(ENV, "development"), (AI_PROVIDER, "gpt")])).unwrap_err();
         assert!(err.to_string().contains(AI_PROVIDER));
     }
 
@@ -519,6 +715,7 @@ mod tests {
     #[test]
     fn provider_specific_settings_are_parsed() {
         let c = Config::from_lookup(lookup(&[
+            (ENV, "development"),
             (AI_PROVIDER, "Ollama"),
             (OLLAMA_URL, "http://gpu-box:11434/"),
             (OLLAMA_MODEL, "llama3.1:8b"),
@@ -540,8 +737,12 @@ mod tests {
     #[test]
     fn debug_output_never_contains_the_api_key() {
         let key = "sk-ant-super-secret-value";
-        let c = Config::from_lookup(lookup(&[(AI_PROVIDER, "claude"), (ANTHROPIC_API_KEY, key)]))
-            .unwrap();
+        let c = Config::from_lookup(lookup(&[
+            (ENV, "development"),
+            (AI_PROVIDER, "claude"),
+            (ANTHROPIC_API_KEY, key),
+        ]))
+        .unwrap();
         assert_eq!(c.anthropic_api_key.as_ref().unwrap().expose_secret(), key);
         assert!(!format!("{c:?}").contains(key));
         assert!(!format!("{c:#?}").contains(key));
@@ -577,6 +778,9 @@ mod tests {
     #[test]
     fn every_read_variable_influences_config() {
         let all = [
+            (ENV, "development"),
+            (MASTER_KEYS, "v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+            (OPENAI_MODEL, "om2"),
             (BIND_ADDR, "127.0.0.1:9999"),
             (AI_PROVIDER, "mock"),
             (ANTHROPIC_API_KEY, "k"),
@@ -602,6 +806,16 @@ mod tests {
         let c = Config::from_lookup(lookup(&all)).unwrap();
         assert_eq!(c.bind_addr.port(), 9999);
         assert_eq!(c.ai_model, "m");
+        assert_eq!(c.env, Env::Development);
+        assert_eq!(c.openai_model, "om2");
+        assert_eq!(
+            c.master_keys
+                .as_ref()
+                .unwrap()
+                .versions()
+                .collect::<Vec<_>>(),
+            ["v2", "v1"]
+        );
         assert_eq!(c.cors_origins, ["http://x.example"]);
         assert_eq!(c.generation_timeout.as_secs(), 7);
         assert_eq!(c.max_concurrent_generations, 3);
@@ -722,11 +936,16 @@ mod tests {
 
     #[test]
     fn untrusted_proxy_with_an_https_origin_warns() {
-        let warnings = mock(&[(CORS_ORIGINS, "https://songbird.example")])
-            .unwrap()
-            .startup_warnings();
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains(TRUST_PROXY));
+        let proxy_warnings = |c: Config| {
+            c.startup_warnings()
+                .into_iter()
+                .filter(|w| w.contains(TRUST_PROXY))
+                .count()
+        };
+        assert_eq!(
+            proxy_warnings(mock(&[(CORS_ORIGINS, "https://songbird.example")]).unwrap()),
+            1
+        );
 
         for config in [
             mock(&[
@@ -736,7 +955,186 @@ mod tests {
             .unwrap(),
             mock(&[]).unwrap(),
         ] {
-            assert!(config.startup_warnings().is_empty());
+            assert_eq!(proxy_warnings(config), 0);
+        }
+    }
+
+    fn production(extra: &[(&str, &str)]) -> Result<Config, ConfigError> {
+        let mut pairs = vec![(MASTER_KEYS, KEY_A_ENTRY)];
+        pairs.extend_from_slice(extra);
+        Config::from_lookup(lookup(&pairs))
+    }
+
+    const KEY_A_ENTRY: &str = "v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    #[test]
+    fn unset_env_means_production_with_per_user_keys() {
+        let c = production(&[]).unwrap();
+        assert_eq!(c.env, Env::Production);
+        assert_eq!(c.ai_provider, ProviderKind::User);
+        assert!(c.startup_warnings().is_empty());
+    }
+
+    #[test]
+    fn unknown_env_names_the_variable_without_echoing_the_value() {
+        for bad in ["prod", "staging", "dev", "1"] {
+            let err = production(&[(ENV, bad)]).unwrap_err().to_string();
+            assert!(err.contains(ENV), "{err}");
+            assert!(!err.contains(&format!("\"{bad}\"")), "{err}");
+        }
+        assert_eq!(
+            production(&[(ENV, "Production")]).unwrap().env,
+            Env::Production
+        );
+    }
+
+    #[test]
+    fn production_rejects_every_provider_but_user() {
+        for provider in ["claude", "ollama", "codex", "mock", "user-mock"] {
+            let err = production(&[(AI_PROVIDER, provider)])
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(AI_PROVIDER), "{provider}: {err}");
+            assert!(err.contains(ENV), "{provider}: {err}");
+            assert!(err.contains("per-user keys"), "{provider}: {err}");
+        }
+        assert_eq!(
+            production(&[(AI_PROVIDER, "user")]).unwrap().ai_provider,
+            ProviderKind::User
+        );
+    }
+
+    #[test]
+    fn production_rejects_an_operator_key_without_echoing_it() {
+        let secret = "sk-ant-leftover-operator-key";
+        for provider in [None, Some("user")] {
+            let mut extra = vec![(ANTHROPIC_API_KEY, secret)];
+            if let Some(p) = provider {
+                extra.push((AI_PROVIDER, p));
+            }
+            let err = production(&extra).unwrap_err().to_string();
+            assert!(err.contains(ANTHROPIC_API_KEY), "{err}");
+            assert!(err.contains("each user's own key"), "{err}");
+            assert!(!err.contains(secret), "{err}");
+        }
+        assert!(production(&[(ANTHROPIC_API_KEY, "   ")]).is_ok());
+    }
+
+    #[test]
+    fn production_requires_a_keyring() {
+        for pairs in [vec![], vec![(MASTER_KEYS, "  ")], vec![(ENV, "production")]] {
+            let err = Config::from_lookup(lookup(&pairs)).unwrap_err();
+            assert!(err.to_string().contains(MASTER_KEYS), "{err}");
+        }
+    }
+
+    #[test]
+    fn per_user_providers_require_a_keyring_even_in_development() {
+        for provider in ["user", "user-mock"] {
+            let err = Config::from_lookup(lookup(&[(ENV, "development"), (AI_PROVIDER, provider)]))
+                .unwrap_err();
+            assert!(err.to_string().contains(MASTER_KEYS), "{provider}: {err}");
+
+            let c = Config::from_lookup(lookup(&[
+                (ENV, "development"),
+                (AI_PROVIDER, provider),
+                (MASTER_KEYS, KEY_A_ENTRY),
+            ]))
+            .unwrap();
+            assert!(c.ai_provider.is_per_user());
+        }
+    }
+
+    #[test]
+    fn development_allows_operator_providers_without_a_keyring() {
+        let c = mock(&[]).unwrap();
+        assert!(c.master_keys.is_none());
+        assert_eq!(c.openai_model, "gpt-4.1-mini");
+        let c = Config::from_lookup(lookup(&[(ENV, "development")]));
+        assert_eq!(
+            c.unwrap_err().to_string(),
+            "ANTHROPIC_API_KEY is required when SONGBIRD_AI_PROVIDER=claude"
+        );
+    }
+
+    #[test]
+    fn development_mode_warns_at_startup() {
+        let warnings = mock(&[]).unwrap().startup_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("development mode"));
+        assert!(warnings[0].contains(ENV));
+    }
+
+    #[test]
+    fn a_malformed_keyring_is_rejected_in_development_too() {
+        let err = mock(&[(MASTER_KEYS, "v1:short")]).unwrap_err().to_string();
+        assert!(err.contains(MASTER_KEYS), "{err}");
+        assert!(!err.contains("short"), "{err}");
+    }
+
+    #[test]
+    fn keyring_parses_in_order_and_looks_up_by_version() {
+        let ring = Keyring::parse(&format!("v2:{}, v1:{KEY_A}", key_b())).unwrap();
+        assert_eq!(ring.versions().collect::<Vec<_>>(), ["v2", "v1"]);
+        let (version, key) = ring.current();
+        assert_eq!(version, "v2");
+        assert_eq!(key, &[1u8; 32]);
+        assert_eq!(ring.get("v1"), Some(&[0u8; 32]));
+        assert_eq!(ring.get("v3"), None);
+    }
+
+    #[test]
+    fn keyring_rejects_bad_input_without_echoing_it() {
+        let short = BASE64.encode([1u8; 16]);
+        let long = BASE64.encode([1u8; 33]);
+        let dup = format!("v1:{KEY_A},v1:{}", key_b());
+        let cases = [
+            ("", "empty list"),
+            ("   ", "blank"),
+            ("v1", "no colon"),
+            (":AAAA", "no version"),
+            ("v1:", "no key"),
+            ("v1:not base64!!", "bad base64"),
+            ("v1:c2VjcmV0LXRoYXQtaXMtbm90LTMyLWJ5dGVz", "wrong length"),
+            (short.as_str(), "no version prefix"),
+            (dup.as_str(), "duplicate"),
+            (
+                "v 1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "bad version",
+            ),
+            (
+                "v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,",
+                "trailing comma",
+            ),
+        ];
+        for (raw, label) in cases {
+            let err = Keyring::parse(raw).unwrap_err();
+            assert!(
+                !err.contains(KEY_A) && !err.contains(&key_b()),
+                "{label}: {err}"
+            );
+        }
+        for raw in [format!("v1:{short}"), format!("v1:{long}")] {
+            let err = Keyring::parse(&raw).unwrap_err();
+            assert!(err.contains("32-byte"), "{err}");
+            assert!(!err.contains(raw.trim_start_matches("v1:")), "{err}");
+        }
+    }
+
+    #[test]
+    fn debug_output_never_contains_master_key_material() {
+        let raw_a = [0xA5u8; 32];
+        let raw_b = [0x3Cu8; 32];
+        let (enc_a, enc_b) = (BASE64.encode(raw_a), BASE64.encode(raw_b));
+        let c = mock(&[(MASTER_KEYS, &format!("v2:{enc_a},v1:{enc_b}"))]).unwrap();
+        for rendered in [format!("{c:?}"), format!("{c:#?}")] {
+            assert!(
+                rendered.contains("v2") && rendered.contains("v1"),
+                "{rendered}"
+            );
+            for needle in [&enc_a, &enc_b, &format!("{raw_a:?}"), &format!("{raw_b:?}")] {
+                assert!(!rendered.contains(needle.as_str()), "{rendered}");
+            }
         }
     }
 }

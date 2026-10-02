@@ -110,7 +110,7 @@ pub fn draft_schema(instrument: &Instrument) -> Value {
 }
 
 /// Strict structured-output modes (OpenAI/Codex) reject schemas where an
-/// object property is optional or a keyword is unknown to them, while our
+/// object property is optional, an object allows extra properties, or a keyword is unknown to them, while our
 /// deserialization stays lenient about missing fields. Nullable fields are
 /// spelled out so "use the request's value" is still expressible.
 pub(crate) fn strictify(schema: &mut Value) {
@@ -118,6 +118,9 @@ pub(crate) fn strictify(schema: &mut Value) {
         Value::Object(map) => {
             map.remove("default");
             map.remove("format");
+            if map.get("type") == Some(&json!("object")) || map.contains_key("properties") {
+                map.insert("additionalProperties".into(), json!(false));
+            }
             if let Some(Value::Object(properties)) = map.get_mut("properties") {
                 for (name, property) in properties.iter_mut() {
                     if name == "tempo_bpm" || name == "swing" {

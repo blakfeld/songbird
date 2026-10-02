@@ -73,6 +73,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(crate::songs::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
         .merge(crate::projects::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
         .merge(crate::auth::http::me_router())
+        .merge(crate::ai_keys::router())
         .merge(ai)
         .route_layer(from_fn_with_state(state.clone(), require_session))
         .route_layer(from_fn_with_state(state.clone(), check_origin));
@@ -140,6 +141,7 @@ pub fn middleware(router: Router, config: &Config) -> Router {
                         method = %request.method(),
                         path = %request.uri().path(),
                         user_id = tracing::field::Empty,
+                        ai_provider = tracing::field::Empty,
                     )
                 })
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),

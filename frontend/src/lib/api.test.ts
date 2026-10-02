@@ -6,10 +6,14 @@ import {
   exportMidi,
   generateTrack,
   generatePattern,
+  getAiKeys,
   getInstruments,
   getLimits,
   getSongLimits,
+  removeAiKey,
+  saveAiKey,
   sendChat,
+  setAiProvider,
 } from "./api";
 
 const json = (body: unknown, status = 200) =>
@@ -100,6 +104,62 @@ describe("api client", () => {
     expect(err.code).toBe(code);
     expect(err.status).toBe(status);
     expect(err.message).toContain(fragment);
+  });
+
+  it("getAiKeys fetches the summary", async () => {
+    const summary = { keys_required: true, active_provider: null, keys: [] };
+    const fn = mockFetch(json(summary));
+    expect(await getAiKeys()).toEqual(summary);
+    expect(fn.mock.calls[0][0]).toBe("/api/v1/account/ai-keys");
+  });
+
+  it("saveAiKey puts the key in the body, never the URL", async () => {
+    const fn = mockFetch(json({ keys_required: true, active_provider: "openai", keys: [] }));
+    await saveAiKey("openai", "sk-secret");
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/account/ai-keys/openai");
+    expect(init!.method).toBe("PUT");
+    expect(JSON.parse(init!.body as string)).toEqual({ key: "sk-secret" });
+  });
+
+  it("removeAiKey deletes the provider's key", async () => {
+    const fn = mockFetch(json({ keys_required: true, active_provider: null, keys: [] }));
+    await removeAiKey("anthropic");
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/account/ai-keys/anthropic");
+    expect(init!.method).toBe("DELETE");
+  });
+
+  it("setAiProvider puts the provider", async () => {
+    const fn = mockFetch(json({ keys_required: true, active_provider: "openai", keys: [] }));
+    await setAiProvider("openai");
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/account/ai-provider");
+    expect(init!.method).toBe("PUT");
+    expect(JSON.parse(init!.body as string)).toEqual({ provider: "openai" });
+  });
+
+  it.each([
+    ["api_key_required", 409, "Anthropic or OpenAI key"],
+    ["invalid_api_key_format", 422, "valid API key"],
+  ])("maps %s to its own message, ignoring the server text", async (code, status, fragment) => {
+    mockFetch(json(errorBody(code, "internal detail"), status));
+    const err = await saveAiKey("openai", "x").catch((e) => e);
+    expect(err.code).toBe(code);
+    expect(err.message).toContain(fragment);
+    expect(err.message).not.toContain("internal detail");
+  });
+
+  it.each([
+    ["api_key_invalid", 409],
+    ["api_key_quota_exhausted", 409],
+    ["api_key_rate_limited", 429],
+    ["api_key_rejected", 422],
+  ])("shows the provider-naming server message for %s", async (code, status) => {
+    mockFetch(json(errorBody(code, "Anthropic said no."), status));
+    const err = await saveAiKey("anthropic", "x").catch((e) => e);
+    expect(err.code).toBe(code);
+    expect(err.message).toBe("Anthropic said no.");
   });
 
   it("generateTrack surfaces the server's reason for other 422 codes", async () => {

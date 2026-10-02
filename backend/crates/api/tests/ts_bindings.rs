@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use api::keys::{AiKeyEntry, AiKeySummary, AiProvider};
 use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
 use music::instruments::{InstrumentKind, PitchRange};
 use music::song::{
@@ -64,6 +65,9 @@ fn export_into(dir: &Path) {
     ChorusEffect::export_all(&cfg).unwrap();
     DelayEffect::export_all(&cfg).unwrap();
     ReverbEffect::export_all(&cfg).unwrap();
+    AiProvider::export_all(&cfg).unwrap();
+    AiKeyEntry::export_all(&cfg).unwrap();
+    AiKeySummary::export_all(&cfg).unwrap();
 }
 
 fn read_ts_files(dir: &Path) -> BTreeMap<String, String> {

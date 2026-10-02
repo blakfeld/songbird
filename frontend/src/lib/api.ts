@@ -8,6 +8,7 @@ import type { Song } from "@/generated/Song";
 import type { SongLimits } from "@/generated/SongLimits";
 import type { TrackGenerateBody } from "@/generated/TrackGenerateBody";
 import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
+import type { AiKeySummary, AiProvider } from "./aiKeys/types";
 import { signOutLocally } from "./auth/signOut";
 import { midiFilename, songMidiFilename } from "./midiFilename";
 
@@ -44,13 +45,23 @@ const USER_MESSAGES: Record<string, string> = {
   id_mismatch: "This song doesn't match the one being saved. Reload it and try again.",
   too_many_requests: "Too many attempts. Please try again later.",
   server_busy: "The service is busy. Please try again later.",
+  api_key_required: "AI features need your own Anthropic or OpenAI key.",
+  invalid_api_key_format: "That doesn't look like a valid API key for this provider.",
 };
 
 const NETWORK_MESSAGE = "Could not reach the Songbird service. Check your connection and try again.";
 const FALLBACK_MESSAGE = "Something went wrong. Please try again.";
 
 // The chat route reports these at 400 where the track route uses 422; the reason is just as readable either way.
-const READABLE_VALIDATION_CODES = new Set(["invalid_song", "invalid_prompt"]);
+// The api_key_* messages are readable at 409 and 429 too, because the server names the provider in them.
+const READABLE_VALIDATION_CODES = new Set([
+  "invalid_song",
+  "invalid_prompt",
+  "api_key_invalid",
+  "api_key_quota_exhausted",
+  "api_key_rate_limited",
+  "api_key_rejected",
+]);
 
 function messageFor(code: string, status: number, serverMessage?: string): string {
   const mapped = USER_MESSAGES[code];
@@ -102,6 +113,26 @@ export function postJson(path: string, body: unknown): Promise<Response> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function putJson(path: string, body: unknown): Promise<Response> {
+  return request(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export async function getAiKeys(): Promise<AiKeySummary> {
+  return (await request("/api/v1/account/ai-keys")).json();
+}
+
+export async function saveAiKey(provider: AiProvider, key: string): Promise<AiKeySummary> {
+  return (await putJson(`/api/v1/account/ai-keys/${provider}`, { key })).json();
+}
+
+export async function removeAiKey(provider: AiProvider): Promise<AiKeySummary> {
+  return (await request(`/api/v1/account/ai-keys/${provider}`, { method: "DELETE" })).json();
+}
+
+export async function setAiProvider(provider: AiProvider): Promise<AiKeySummary> {
+  return (await putJson("/api/v1/account/ai-provider", { provider })).json();
 }
 
 export async function getInstruments(): Promise<InstrumentInfo[]> {

@@ -1,11 +1,12 @@
 //! Ignored by default: each needs a real provider. Run through the justfile
-//! recipes `test-live`, `test-live-ollama`, and `test-live-codex`.
+//! recipes `test-live`, `test-live-ollama`, `test-live-openai`, and `test-live-codex`.
 
 mod common;
 
 use common::request;
 use music::ai::{
-    ClaudeProvider, CodexCliProvider, OllamaProvider, PatternProvider, SchemaProvider,
+    ClaudeProvider, CodexCliProvider, OllamaProvider, OpenAiProvider, PatternProvider,
+    SchemaProvider,
 };
 use music::generate::generate_pattern;
 use secrecy::SecretString;
@@ -34,6 +35,18 @@ async fn live_claude_generates_a_valid_pattern() {
     let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
     let model = env_or("SONGBIRD_AI_MODEL", "claude-sonnet-5-5");
     assert_generates(&SchemaProvider::new(ClaudeProvider::new(
+        SecretString::from(key),
+        model,
+    )))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs OPENAI_API_KEY"]
+async fn live_openai_generates_a_valid_pattern() {
+    let key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
+    let model = env_or("SONGBIRD_OPENAI_MODEL", "gpt-4.1-mini");
+    assert_generates(&SchemaProvider::new(OpenAiProvider::new(
         SecretString::from(key),
         model,
     )))
