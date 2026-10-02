@@ -92,6 +92,11 @@ Passwords are never arguments. On a terminal you are prompted (twice, hidden).
 When stdin is not a terminal the command reads one line from it, which is how
 scripts supply a password. A password must be 12 to 256 characters.
 
+For local development, `just dev` runs `just seed` first, which creates
+`dev@example.com` with the password `songbird-dev-password`. It is safe to
+re-run, and it refuses any database URL
+that isn't SQLite or a Postgres on localhost, because the password is public.
+
 Locally, from `backend/`:
 
 ```sh
