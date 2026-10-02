@@ -16,6 +16,7 @@ const glyphs: Record<string, React.ReactNode> = {
   bass: <path d="M3 10c2-5 3-5 4 0s2 5 4 0 2-5 4 0" />,
   synth: <path d="M3 13l3-6 3 6 3-6 3 6M3 16h14" />,
   strings: <path d="M6 3v14M10 3v14M14 3v14M4 6c4 2 8 2 12 0" />,
+  audio: <path d="M3 10h1M6 7v6M9 4v12M12 6v8M15 8v4M17 10h0" />,
   note: (
     <>
       <circle cx="7" cy="14" r="2.5" />

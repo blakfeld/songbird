@@ -25,7 +25,7 @@ Step resolution and `steps_per_measure` SHALL follow the same sixteenth-note rul
 Each track SHALL have:
 - an `id`;
 - a `name` of 1–40 characters;
-- an `instrument`, which is an instrument id listed by `GET /api/v1/instruments`;
+- an `instrument`, which is an instrument id listed by `GET /api/v1/instruments`, or the reserved id `audio` for an audio track (see `songs/audio-tracks`);
 - `volume_db`, from −60.0 to +6.0;
 - `pan`, from −1.0 (full left) to +1.0 (full right);
 - `muted` and `soloed` flags;

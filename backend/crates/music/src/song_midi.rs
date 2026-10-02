@@ -1,9 +1,9 @@
 use midly::num::{u4, u7};
 use midly::{MetaMessage, MidiMessage, TrackEvent, TrackEventKind};
 
-use crate::instruments::InstrumentKind;
+use crate::instruments::{Instrument, InstrumentKind};
 use crate::midi::{conductor_track, meta, note_events, program_change, write_smf, MidiError};
-use crate::song::ValidSong;
+use crate::song::{ValidSong, ValidTrack};
 use crate::timing::step_to_ticks;
 
 const DRUM_CHANNEL: u8 = 9;
@@ -66,7 +66,14 @@ pub fn song_to_midi(valid: &ValidSong<'_>) -> Result<Vec<u8>, MidiError> {
     let total_steps = song.total_steps();
     let end_tick = step_to_ticks(total_steps, song.swing);
 
-    let kinds: Vec<InstrumentKind> = valid.tracks.iter().map(|t| t.instrument.kind).collect();
+    // Audio tracks are dropped before channel assignment so they never consume
+    // one of the 15 melodic channels.
+    let midi_tracks: Vec<(&ValidTrack<'_>, &Instrument)> = valid
+        .tracks
+        .iter()
+        .filter_map(|t| t.instrument.instrument().map(|i| (t, i)))
+        .collect();
+    let kinds: Vec<InstrumentKind> = midi_tracks.iter().map(|(_, i)| i.kind).collect();
     let channels = assign_channels(&kinds);
 
     let mut tracks = vec![conductor_track(
@@ -75,16 +82,16 @@ pub fn song_to_midi(valid: &ValidSong<'_>) -> Result<Vec<u8>, MidiError> {
         song.time_signature,
         end_tick,
     )];
-    for (valid_track, channel) in valid.tracks.iter().zip(channels) {
+    for ((valid_track, instrument), channel) in midi_tracks.into_iter().zip(channels) {
         let track = valid_track.track;
         let mut events = vec![meta(0, MetaMessage::TrackName(track.name.as_bytes()))];
-        if let Some(program) = valid_track.instrument.midi_program {
+        if let Some(program) = instrument.midi_program {
             events.push(program_change(channel, program));
         }
         events.push(controller(channel, CC_VOLUME, volume_cc(track.volume_db)));
         events.push(controller(channel, CC_PAN, pan_cc(track.pan)));
         events.extend(note_events(
-            &valid_track.instrument.row_list(),
+            &instrument.row_list(),
             &valid_track.notes,
             total_steps,
             song.swing,
@@ -423,5 +430,42 @@ mod tests {
         let bytes = export(&s);
         let smf = Smf::parse(&bytes).unwrap();
         assert_eq!(note_ons(&channel_events(&smf, 1)), vec![180]);
+    }
+
+    #[test]
+    fn audio_tracks_are_skipped_without_using_a_channel() {
+        use crate::song::{AudioClip, Sample, AUDIO_INSTRUMENT_ID};
+        let mut s = song(
+            1,
+            vec![
+                track("t1", "Keys", "piano"),
+                track("t2", "Loops", AUDIO_INSTRUMENT_ID),
+                track("t3", "Bass", "bass"),
+            ],
+        );
+        s.samples = vec![Sample {
+            id: "s1".into(),
+            name: "Break".into(),
+            sample_rate: 48_000,
+            channels: 2,
+            length_samples: 1000,
+            origin: "import".into(),
+        }];
+        s.tracks[1].audio_clips = vec![AudioClip {
+            id: "a1".into(),
+            sample_id: "s1".into(),
+            start_ticks: 0,
+            offset_samples: 0,
+            slice_samples: 1000,
+            length_samples: 1000,
+            looping: false,
+            gain_db: 0.0,
+            fade_in_samples: 0,
+            fade_out_samples: 0,
+        }];
+        let bytes = export(&s);
+        let smf = Smf::parse(&bytes).unwrap();
+        assert_eq!(smf.tracks.len(), 3);
+        assert_eq!(channel_events(&smf, 2)[0].1, 1);
     }
 }

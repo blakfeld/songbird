@@ -1,3 +1,4 @@
+import type { AudioClip } from "@/generated/AudioClip";
 import type { Note } from "@/generated/Note";
 import type { Row } from "@/generated/Row";
 import type { VoiceSound } from "./voiceSound";
@@ -68,12 +69,24 @@ export interface PlaybackTiming {
   measures: number;
 }
 
+// The sample's own rate travels with the clip because the clip's lengths are frames, which only the rate turns into seconds.
+export interface PlaybackClip {
+  clip: AudioClip;
+  sampleRate: number;
+}
+
+export type VoiceKind = "instrument" | "audio";
+
 export interface Voice {
   // Stable across edits so the engine keeps one source and channel per voice.
   key: string;
+  // Audio tracks have no instrument to look up, so they take a different path from the note scheduler.
+  kind: VoiceKind;
   instrument: string;
   rows: Row[];
   notes: Note[];
+  // Only audio voices have clips; absent on instrument voices so single-instrument models need not mention them.
+  clips?: PlaybackClip[];
   volumeDb: number;
   pan: number;
   // Resolved by the model because solo depends on every other track, which a single voice cannot see.

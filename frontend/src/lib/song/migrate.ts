@@ -1,6 +1,8 @@
+import type { AudioClip } from "@/generated/AudioClip";
 import type { Note } from "@/generated/Note";
 import { normalizeNotes } from "../patternOps";
 import { normalizeLoopRegion } from "./songLoop";
+import { audioProblem } from "./audioValidation";
 import { derivedMeasures } from "./songOps";
 import { soundProblem } from "./trackSound";
 import {
@@ -160,14 +162,25 @@ function finish(song: Song): Song {
   return normalizeLoopRegion(keyed);
 }
 
+// Absent loop, gain and fades read as off, and audioProblem has already vouched for every present value.
+function withAudioDefaults(clips: AudioClip[] | undefined): AudioClip[] | undefined {
+  if (!clips) return clips;
+  const complete = (c: AudioClip) =>
+    c.loop !== undefined && c.gain_db !== undefined && c.fade_in_samples !== undefined && c.fade_out_samples !== undefined;
+  if (clips.every(complete)) return clips;
+  const defaults: Partial<AudioClip> = { loop: false, gain_db: 0, fade_in_samples: 0, fade_out_samples: 0 };
+  return clips.map((c) => ({ ...defaults, ...c }));
+}
+
 function migrate(raw: unknown): Song | null {
   if (!isObject(raw)) return null;
   if (raw.version === 1) return fromV1(raw);
-  if (raw.version !== 2 || validateClips(raw) !== null) return null;
+  if (raw.version !== 2 || validateClips(raw) !== null || audioProblem(raw) !== null) return null;
   const song = raw as unknown as Song;
   const tracks = song.tracks.map((t) => {
     const clips = sortedByStart(t.clips);
-    return clips === t.clips ? t : { ...t, clips };
+    const audio = withAudioDefaults(t.audio_clips);
+    return clips === t.clips && audio === t.audio_clips ? t : { ...t, clips, ...(audio && { audio_clips: audio }) };
   });
   return finish(
     tracks.every((t, i) => t === song.tracks[i]) ? song : { ...song, tracks },

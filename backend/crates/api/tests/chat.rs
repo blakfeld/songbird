@@ -496,3 +496,56 @@ async fn without_a_named_length_a_song_with_clips_uses_its_own_length() {
         json!({"start_measure": 1, "end_measure": 4})
     );
 }
+
+fn audio_song_parts() -> (Value, Value) {
+    let sample = json!({
+        "id": "s1", "name": "Vocal take", "sample_rate": 48000, "channels": 1,
+        "length_samples": 96000, "origin": "import",
+    });
+    let mut vocals = track("t9", "Vocals", "audio", json!([]), json!([]));
+    vocals["audio_clips"] = json!([{
+        "id": "a1", "sample_id": "s1", "start_ticks": 0, "offset_samples": 0,
+        "slice_samples": 96000, "length_samples": 96000,
+    }]);
+    (sample, vocals)
+}
+
+#[tokio::test]
+async fn chat_ignores_audio_tracks() {
+    let (sample, vocals) = audio_song_parts();
+    let mut s = song(4, vec![piano_track("t1"), vocals]);
+    s["samples"] = json!([sample]);
+    let patterns = RecordingPatterns::default();
+    let generated = patterns.seen.clone();
+    let plans = RecordingPlans::default();
+    let planned = plans.seen.clone();
+    let (status, response) = chat(
+        app_with(Providers::new(patterns, plans), &[]),
+        json!({"song": s, "messages": [user("give me a bass part")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"]["instrument"], "bass");
+
+    let generated = generated.lock().unwrap();
+    let context = generated[0].context.as_deref().unwrap();
+    assert!(context.contains("Track \"Piano\" (piano):"), "{context}");
+    assert!(!context.contains("Vocals"), "{context}");
+    assert!(!planned.lock().unwrap()[0].user.contains("Vocals"));
+}
+
+#[tokio::test]
+async fn audio_tracks_count_toward_the_chat_track_limit() {
+    let (sample, vocals) = audio_song_parts();
+    let mut tracks: Vec<Value> = (0..15).map(|i| piano_track(&format!("t{i}"))).collect();
+    tracks.push(vocals);
+    let mut s = song(4, tracks);
+    s["samples"] = json!([sample]);
+    let (status, response) = chat(
+        app_with(Providers::mock(), &[]),
+        json!({"song": s, "messages": [user("give me a bass")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"], Value::Null);
+}

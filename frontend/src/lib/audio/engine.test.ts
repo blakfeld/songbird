@@ -4,7 +4,8 @@ import type { Pattern } from "@/generated/Pattern";
 import type { PlaybackModel, Voice } from "./types";
 import { createPatternStore } from "@/lib/patternStore";
 import { createSongStore } from "@/lib/song/songStore";
-import { newTrack } from "@/lib/song/types";
+import { newTrack, type Track } from "@/lib/song/types";
+import type { AudioClip } from "@/generated/AudioClip";
 import { drums } from "@/test/fixtures";
 import { stepToSeconds } from "@/lib/timing";
 import { createPlaybackEngine } from "./engine";
@@ -15,8 +16,21 @@ import { EFFECT_DEFAULTS, type ResolvedEffects, type VoiceSound } from "./voiceS
 
 type MockParam = {
   ramps: [number, number][];
+  // Scheduled automation in call order, so a test can read a clip's gain and fade shape back.
+  automation: { kind: "set" | "linear" | "cancel"; value: number; time: number }[];
   rampTo(v: number, t: number): void;
   exponentialRampTo(v: number, t: number): void;
+  setValueAtTime(v: number, t: number): void;
+  linearRampToValueAtTime(v: number, t: number): void;
+  cancelScheduledValues(t: number): void;
+};
+type MockPlayer = {
+  buffer: unknown;
+  loop: boolean;
+  loopStart: number;
+  loopEnd: number;
+  starts: { time: number; offset: number; duration: number; loop: boolean; loopStart: number; loopEnd: number }[];
+  stops: (number | undefined)[];
 };
 type MockNode = {
   type: string;
@@ -53,6 +67,7 @@ const h = vi.hoisted(() => {
     contextState: "suspended",
     // Every Tone node a chain or source builds, so tests can assert what was created, ramped, and wired.
     nodes: [] as MockNode[],
+    players: [] as MockPlayer[],
   };
   return { state };
 });
@@ -97,11 +112,21 @@ vi.mock("tone", () => {
   const param = (): MockParam => {
     const p: MockParam = {
       ramps: [],
+      automation: [],
       rampTo(v, t) {
         p.ramps.push([v, t]);
       },
       exponentialRampTo(v, t) {
         p.ramps.push([v, t]);
+      },
+      setValueAtTime(value, time) {
+        p.automation.push({ kind: "set", value, time });
+      },
+      linearRampToValueAtTime(value, time) {
+        p.automation.push({ kind: "linear", value, time });
+      },
+      cancelScheduledValues(time) {
+        p.automation.push({ kind: "cancel", value: 0, time });
       },
     };
     return p;
@@ -206,6 +231,31 @@ vi.mock("tone", () => {
       this.disposed = true;
     }
   }
+  class Player extends MockToneNode {
+    buffer: unknown = null;
+    loop = false;
+    loopStart = 0;
+    loopEnd = 0;
+    starts: MockPlayer["starts"] = [];
+    stops: MockPlayer["stops"] = [];
+    constructor() {
+      super();
+      state.players.push(this as unknown as MockPlayer);
+    }
+    start(time: number, offset: number, duration: number) {
+      this.starts.push({
+        time,
+        offset,
+        duration,
+        loop: this.loop,
+        loopStart: this.loopStart,
+        loopEnd: this.loopEnd,
+      });
+    }
+    stop(time?: number) {
+      this.stops.push(time);
+    }
+  }
   class ToneBufferSource {
     private gain: Gain | null = null;
     constructor(private opts: { url: { name: string } }) {}
@@ -259,6 +309,7 @@ vi.mock("tone", () => {
     Reverb,
     Filter,
     Channel,
+    Player,
     ToneBufferSource,
   };
 });
@@ -344,6 +395,7 @@ beforeEach(() => {
     clicks: [],
     contextState: "suspended",
     nodes: [],
+    players: [],
   });
 });
 
@@ -609,6 +661,7 @@ describe("multi-voice playback", () => {
 
   const voice = (key: string, over: Partial<Voice> = {}): Voice => ({
     key,
+    kind: "instrument",
     instrument: key,
     rows: ROWS,
     notes: [note(0)],
@@ -856,6 +909,265 @@ describe("clip playback", () => {
   });
 });
 
+describe("audio clip playback", () => {
+  const SAMPLE_RATE = 48000;
+  // A measure lasts 2 s at 120 BPM in 4/4, and 240 ticks make a sixteenth, so a measure is 3840 ticks.
+  const MEASURE_TICKS = 16 * 240;
+  const MEASURE_FRAMES = 2 * SAMPLE_RATE;
+  const noteTimes: number[] = [];
+  registerSoundSource("align-test", () => ({
+    load: async () => {},
+    trigger: (_row, time) => noteTimes.push(time - AUDIO_OFFSET),
+    noteOn: () => ({}),
+    noteOff: () => {},
+    stopAll: () => {},
+  }));
+
+  const fakeBuffers = (missing: string[] = []) => ({
+    load: async () => {},
+    get: (id: string) => (missing.includes(id) ? undefined : ({ id } as never)),
+    acquire: () => {},
+    release: () => {},
+  });
+
+  const clip = (over: Partial<AudioClip> = {}): AudioClip => ({
+    id: "c1",
+    sample_id: "s1",
+    start_ticks: 0,
+    offset_samples: 0,
+    slice_samples: 4 * MEASURE_FRAMES,
+    length_samples: 4 * MEASURE_FRAMES,
+    loop: false,
+    gain_db: 0,
+    fade_in_samples: 0,
+    fade_out_samples: 0,
+    ...over,
+  });
+
+  function setupAudio(tracks: { clips: AudioClip[]; over?: Partial<Track> }[], missing: string[] = []) {
+    const song = newSongWithTracks();
+    song.measures = 8;
+    song.samples = [
+      { id: "s1", name: "Loop", sample_rate: SAMPLE_RATE, channels: 1, length_samples: 4 * MEASURE_FRAMES, origin: "import" },
+    ];
+    song.tracks = tracks.map(({ clips, over }, i) => ({
+      ...newTrack("audio", `Audio ${i}`),
+      audio_clips: clips,
+      ...over,
+    }));
+    const store = createSongStore(song);
+    const engine = createPlaybackEngine(createSongPlaybackModel(store, [drums]), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      sampleBuffers: fakeBuffers(missing),
+    });
+    return { store, engine };
+  }
+
+  beforeEach(() => {
+    noteTimes.length = 0;
+  });
+
+  it("Start inside a clip: plays from the matching position", async () => {
+    // The clip covers measures 3-6 and playback starts at measure 5.
+    const { engine } = setupAudio([{ clips: [clip({ start_ticks: 2 * MEASURE_TICKS })] }]);
+    engine.setLooping(false);
+    engine.seek?.(5);
+    await start(engine);
+    advanceTo(0.1);
+    expect(h.state.players).toHaveLength(1);
+    const [started] = h.state.players[0].starts;
+    expect(started.time).toBeCloseTo(AUDIO_OFFSET, 9);
+    // Two measures (4 s) of the clip have already passed, leaving the other two.
+    expect(started.offset).toBeCloseTo(4, 9);
+    expect(started.duration).toBeCloseTo(4, 9);
+  });
+
+  it("starts a clip at the top when playback reaches it", async () => {
+    const { engine } = setupAudio([{ clips: [clip({ start_ticks: 2 * MEASURE_TICKS, offset_samples: 480 })] }]);
+    await start(engine);
+    advanceTo(4.1);
+    const [started] = h.state.players[0].starts;
+    expect(started.time).toBeCloseTo(AUDIO_OFFSET + 4, 9);
+    expect(started.offset).toBeCloseTo(0.01, 9);
+  });
+
+  it("Looping clip repeats seamlessly: one looping start rather than a restart per repeat", async () => {
+    const { engine } = setupAudio([
+      { clips: [clip({ loop: true, slice_samples: MEASURE_FRAMES, offset_samples: MEASURE_FRAMES, length_samples: 4 * MEASURE_FRAMES })] },
+    ]);
+    await start(engine);
+    advanceTo(7.9);
+    expect(h.state.players).toHaveLength(1);
+    expect(h.state.players[0].starts).toEqual([
+      { time: AUDIO_OFFSET, offset: 2, duration: 8, loop: true, loopStart: 2, loopEnd: 4 },
+    ]);
+  });
+
+  it("resumes a looping clip at the matching phase when starting inside it", async () => {
+    const { engine } = setupAudio([{ clips: [clip({ loop: true, slice_samples: MEASURE_FRAMES, length_samples: 4 * MEASURE_FRAMES })] }]);
+    engine.setLooping(false);
+    engine.seek?.(2);
+    await start(engine);
+    advanceTo(0.1);
+    // One measure into a one-measure slice is back at its start, with three measures to go.
+    const [started] = h.state.players[0].starts;
+    expect(started.offset).toBeCloseTo(0, 9);
+    expect(started.duration).toBeCloseTo(6, 9);
+  });
+
+  it("restarts clips at the matching position when the song loop wraps, cutting the old ones", async () => {
+    const { engine } = setupAudio([{ clips: [clip()] }]);
+    engine.setLoop({ start: 2, end: 3 });
+    await start(engine);
+    advanceTo(4.1);
+    const player = h.state.players[0];
+    // The run begins at measure 2 and wraps back to it after measures 2 and 3, at 4 s.
+    expect(player.starts[0].offset).toBeCloseTo(2, 9);
+    expect(player.stops.some((t) => t !== undefined && Math.abs(t - (AUDIO_OFFSET + 4)) < 1e-6)).toBe(true);
+    const wrapped = h.state.players.flatMap((p) => p.starts).filter((s) => Math.abs(s.time - (AUDIO_OFFSET + 4)) < 1e-6);
+    expect(wrapped).toHaveLength(1);
+    expect(wrapped[0].offset).toBeCloseTo(2, 9);
+  });
+
+  it("shapes each clip with its gain and fades", async () => {
+    const { engine } = setupAudio([
+      { clips: [clip({ gain_db: -6, fade_in_samples: SAMPLE_RATE, fade_out_samples: SAMPLE_RATE, length_samples: 4 * SAMPLE_RATE, slice_samples: 4 * SAMPLE_RATE })] },
+    ]);
+    await start(engine);
+    advanceTo(0.1);
+    const gain = 10 ** (-6 / 20);
+    const events = h.state.nodes
+      .filter((n) => n.type === "Gain")
+      .flatMap((n) => n.params.gain?.automation ?? [])
+      .filter((e) => e.kind !== "cancel");
+    expect(events).toEqual([
+      { kind: "set", value: 0, time: AUDIO_OFFSET },
+      { kind: "linear", value: expect.closeTo(gain, 9), time: AUDIO_OFFSET + 1 },
+      { kind: "linear", value: expect.closeTo(gain, 9), time: AUDIO_OFFSET + 3 },
+      { kind: "linear", value: 0, time: AUDIO_OFFSET + 4 },
+    ]);
+  });
+
+  it("routes the clip through the track's insert chain and channel", async () => {
+    const { engine } = setupAudio([{ clips: [clip()] }]);
+    await start(engine);
+    advanceTo(0.1);
+    const channel = h.state.channels[0];
+    expect(reaches(h.state.players[0], channel)).toBe(true);
+  });
+
+  it("Mute: the clip is scheduled but its channel is silent", async () => {
+    const { engine } = setupAudio([{ clips: [clip()], over: { muted: true } }]);
+    await start(engine);
+    advanceTo(0.1);
+    expect(h.state.channels[0].opts.volume).toBe(-100);
+    // Still scheduled, so an unmute part-way through is heard from the right place.
+    expect(h.state.players[0].starts).toHaveLength(1);
+  });
+
+  it("Solo: only the soloed audio track keeps an audible channel", async () => {
+    const { engine } = setupAudio([
+      { clips: [clip({ id: "a" })] },
+      { clips: [clip({ id: "b" })], over: { soloed: true } },
+    ]);
+    await start(engine);
+    advanceTo(0.1);
+    expect(h.state.channels.map((c) => c.opts.volume)).toEqual([-100, 0]);
+  });
+
+  it("Missing audio stays silent without stopping the rest of the song", async () => {
+    const { engine } = setupAudio([{ clips: [clip()] }], ["s1"]);
+    await start(engine);
+    advanceTo(1);
+    expect(h.state.players).toHaveLength(0);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("releases a sample's buffer once no clip in the song uses it", async () => {
+    const acquire = vi.fn();
+    const release = vi.fn();
+    const song = newSongWithTracks();
+    song.measures = 4;
+    song.samples = [{ id: "s1", name: "L", sample_rate: SAMPLE_RATE, channels: 1, length_samples: SAMPLE_RATE, origin: "import" }];
+    song.tracks = [{ ...newTrack("audio", "A"), audio_clips: [clip({ length_samples: SAMPLE_RATE, slice_samples: SAMPLE_RATE })] }];
+    const store = createSongStore(song);
+    const engine = createPlaybackEngine(createSongPlaybackModel(store, [drums]), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      sampleBuffers: { ...fakeBuffers(), acquire, release },
+    });
+    await start(engine);
+    expect(acquire).toHaveBeenLastCalledWith(["s1"]);
+    store.setState({ song: { ...song, tracks: [{ ...song.tracks[0], audio_clips: [] }] } });
+    advanceTo(0.2);
+    expect(release).toHaveBeenCalledWith(["s1"]);
+  });
+
+  it("does not play a clip whose sample is not in the song", async () => {
+    const { engine, store } = setupAudio([{ clips: [clip({ sample_id: "gone" })] }]);
+    await start(engine);
+    advanceTo(1);
+    expect(h.state.players).toHaveLength(0);
+    expect(store.getState().song?.tracks).toHaveLength(1);
+  });
+
+  it("Alignment: a clip lands within 1 ms of a note at the same song time", async () => {
+    const song = newSongWithTracks();
+    song.measures = 2;
+    song.swing = 0;
+    song.samples = [{ id: "s1", name: "L", sample_rate: SAMPLE_RATE, channels: 1, length_samples: SAMPLE_RATE, origin: "import" }];
+    const noteTrack = {
+      ...newTrack("align-test", "Notes"),
+      loops: [{ id: "l", name: "L", measures: 2, notes: [{ row_id: "kick", step: 9, length_steps: 1, velocity: 100 }] }],
+      clips: [{ id: "c", loop_id: "l", start_measure: 1, measures: 2 }],
+    };
+    // Step 9 is a sixteenth after step 8, which is 240 ticks.
+    const audioTrack = {
+      ...newTrack("audio", "A"),
+      audio_clips: [clip({ start_ticks: 9 * 240, length_samples: SAMPLE_RATE, slice_samples: SAMPLE_RATE })],
+    };
+    song.tracks = [noteTrack, audioTrack];
+    const engine = createPlaybackEngine(createSongPlaybackModel(createSongStore(song), [{ ...drums, id: "align-test" }]), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      sampleBuffers: fakeBuffers(),
+    });
+    await start(engine);
+    advanceTo(1.3);
+    expect(noteTimes).toHaveLength(1);
+    const clipTime = h.state.players[0].starts[0].time - AUDIO_OFFSET;
+    expect(Math.abs(clipTime - noteTimes[0])).toBeLessThan(0.001);
+  });
+
+  it("does not swing a clip: an odd-step clip starts on the straight grid while a note is delayed", async () => {
+    const song = newSongWithTracks();
+    song.measures = 2;
+    song.swing = 0.5;
+    song.samples = [{ id: "s1", name: "L", sample_rate: SAMPLE_RATE, channels: 1, length_samples: SAMPLE_RATE, origin: "import" }];
+    song.tracks = [
+      {
+        ...newTrack("audio", "A"),
+        audio_clips: [clip({ start_ticks: 9 * 240, length_samples: SAMPLE_RATE, slice_samples: SAMPLE_RATE })],
+      },
+    ];
+    const engine = createPlaybackEngine(createSongPlaybackModel(createSongStore(song), [drums]), {
+      requestFrame: () => 0,
+      cancelFrame: () => {},
+      sampleBuffers: fakeBuffers(),
+    });
+    await start(engine);
+    advanceTo(1.3);
+    expect(h.state.players[0].starts[0].time - AUDIO_OFFSET).toBeCloseTo(9 * 0.125, 9);
+  });
+
+  it("keeps a key press on an audio track silent", async () => {
+    const { engine, store } = setupAudio([{ clips: [] }]);
+    await engine.prepareLive(store.getState().song!.tracks[0].id);
+    expect(engine.liveNoteOn({ id: "kick", name: "Kick", midi_note: 36 }, { voiceKey: store.getState().song!.tracks[0].id })).toBeNull();
+  });
+});
+
 describe("play-once ending", () => {
   const perMeasure = (measures: number) =>
     Array.from({ length: measures }, (_, m) => ({
@@ -1067,6 +1379,7 @@ describe("live notes", () => {
 
   const voice = (over: Partial<Voice> = {}): Voice => ({
     key: "live-a",
+    kind: "instrument",
     instrument: "live-a",
     rows: ROWS,
     notes: [],
@@ -1460,6 +1773,7 @@ describe("track sound", () => {
 
   const baseVoice = (sound?: Voice["sound"]): Voice => ({
     key: "snd",
+    kind: "instrument",
     instrument: "snd",
     rows: ROWS,
     notes: [],

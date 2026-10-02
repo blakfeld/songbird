@@ -58,6 +58,8 @@ During song playback, each audio clip SHALL play from `offset_samples` of its sa
 - Song looping SHALL restart clips at the matching position when the loop wraps.
 - An audio clip SHALL start within 5 ms of where note playback places the same song time.
 - Changing the tempo SHALL move where clips start, but SHALL NOT change their speed or pitch.
+- When a tempo increase would make clips on a track overlap, each earlier clip SHALL be shortened to end where the next one starts, in the same undo step as the tempo change.
+- Changing the time signature SHALL keep each clip at the same measure and position within that measure.
 
 When a sample's audio is not available in this browser, its clips SHALL be silent and drawn as missing, and the rest of the song SHALL play normally.
 
@@ -73,8 +75,12 @@ When a sample's audio is not available in this browser, its clips SHALL be silen
 - **WHEN** a clip starts at measure 5 at 120 BPM and the user changes the tempo to 100 BPM
 - **THEN** the clip still starts at measure 5, and its audio plays at its original speed and pitch
 
+#### Scenario: Faster tempo trims touching clips
+- **WHEN** two audio clips sit back to back at 120 BPM and the user changes the tempo to 121 BPM
+- **THEN** the first clip is shortened to end where the second starts, and a single undo restores both the tempo and the clip's length
+
 ### Requirement: Song length with audio
-An audio clip SHALL end at the song time that its start plus `length_samples` reaches at the current tempo. For the song's `measures` (see `songs/multitrack`), an audio clip SHALL count up to the measure in which it ends. A change that would make the song longer than 128 measures, such as a placement, an extension, or a tempo change, SHALL be refused with a message naming the limit.
+An audio clip SHALL end at the song time that its start plus `length_samples` reaches at the current tempo. For the song's `measures` (see `songs/multitrack`), an audio clip SHALL count up to the measure in which it ends. A change that would make the song longer than 128 measures, such as a placement, an extension, a tempo change, or a time signature change, SHALL be refused with a message naming the limit.
 
 #### Scenario: Song grows with a sample
 - **WHEN** the song is 4 measures long and the user places a sample that ends partway through measure 7

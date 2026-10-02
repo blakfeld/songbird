@@ -238,6 +238,7 @@ pub fn song_with_planned_track(song: &Song, name: &str, instrument_id: &str) -> 
         soloed: false,
         loops: vec![],
         clips: vec![],
+        audio_clips: vec![],
         sound: None,
     });
     extended
@@ -285,7 +286,12 @@ fn render_song_summary(song: &ValidSong) -> String {
         s.measures,
         song.tracks.len(),
     );
+    // Audio tracks stay in the track count above but are not described: the
+    // planner cannot write them and they have no notes to summarise.
     for track in &song.tracks {
+        let Some(instrument) = track.instrument.instrument() else {
+            continue;
+        };
         let mut sounding = vec![false; s.measures as usize + 1];
         for note in &track.notes {
             let first = note.step / spm + 1;
@@ -294,14 +300,14 @@ fn render_song_summary(song: &ValidSong) -> String {
                 sounding[m as usize] = true;
             }
         }
-        let kind = match track.instrument.kind {
+        let kind = match instrument.kind {
             InstrumentKind::Drums => "drums",
             InstrumentKind::Melodic => "melodic",
         };
         out.push_str(&format!(
             "- \"{}\" ({}, {kind}{}): {}\n",
             escape_name(&track.track.name),
-            track.instrument.id,
+            instrument.id,
             if track.track.muted { ", muted" } else { "" },
             measure_runs(&sounding),
         ));

@@ -15,6 +15,7 @@ import { TrackSoundPanel } from "./TrackSoundPanel";
 import type { TrackActions } from "./trackActions";
 import type { GripHandlers } from "./useTrackDrag";
 import type { ClipActions } from "./useClipActions";
+import type { AudioActions } from "./useAudioActions";
 import { VolumeSlider } from "./VolumeSlider";
 
 const toggleBase = `size-7 shrink-0 rounded text-xs font-bold pointer-coarse:size-9 ${focusRing}`;
@@ -27,6 +28,8 @@ const dotClass =
 export type InstrumentLookup =
   | { state: "loading" }
   | { state: "ready"; info: InstrumentInfo }
+  // Audio tracks are not in the instrument list, so they are known by their reserved id instead of being reported missing.
+  | { state: "audio" }
   | { state: "missing" };
 
 export function TrackHeader({
@@ -44,6 +47,7 @@ export function TrackHeader({
   onSoundOpen,
   selectedClipId,
   clipActions,
+  audioActions,
   generating,
   generateBlocked,
 }: {
@@ -61,6 +65,7 @@ export function TrackHeader({
   onSoundOpen: (open: boolean) => void;
   selectedClipId: string | null;
   clipActions: ClipActions;
+  audioActions?: AudioActions;
   generating: boolean;
   // Only one generation runs per song, so the others wait for it.
   generateBlocked: boolean;
@@ -74,9 +79,13 @@ export function TrackHeader({
   const customized = isSoundCustomized(track);
   const customizedHintId = `${track.id}-sound-hint`;
   const info = instrument.state === "ready" ? instrument.info : null;
-  const instrumentName =
-    instrument.state === "missing" ? "Instrument unavailable" : (info?.name ?? track.instrument);
-  const showInstrument = instrument.state === "missing" || info?.name !== track.name;
+  const isAudio = instrument.state === "audio";
+  const instrumentName = isAudio
+    ? "Audio"
+    : instrument.state === "missing"
+      ? "Instrument unavailable"
+      : (info?.name ?? track.instrument);
+  const showInstrument = isAudio ? track.name !== "Audio" : instrument.state === "missing" || info?.name !== track.name;
 
   return (
     <div
@@ -186,12 +195,31 @@ export function TrackHeader({
                 Customized
               </p>
             )}
+            {isAudio && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClass}
+                  onClick={() => {
+                    close();
+                    audioActions?.importHere(track.id, null, { single: true });
+                  }}
+                >
+                  Import audio…
+                </button>
+                <div role="separator" className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+              </>
+            )}
             <LaneMenuItems
               track={track}
+              hideLaneItems={isAudio}
               measure={defaultLaneMeasure(song, track, selectedClipId)}
               actions={clipActions}
               close={close}
               extra={
+              <>
+              {!isAudio && (
               <>
               <button
                 type="button"
@@ -211,6 +239,8 @@ export function TrackHeader({
                 <p id={`${track.id}-generate-hint`} className="px-3 pb-2 text-xs text-zinc-600 dark:text-zinc-400">
                   {generating ? "Already generating this track" : "Another track is generating"}
                 </p>
+              )}
+              </>
               )}
               <button
                 type="button"
