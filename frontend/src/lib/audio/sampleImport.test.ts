@@ -12,8 +12,8 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-  await clear(createStore("songbird-samples", "samples"));
-  await clear(createStore("songbird-sample-library", "library"));
+  await clear(createStore("songbird-samples.test-user", "samples"));
+  await clear(createStore("songbird-sample-library.test-user", "library"));
 });
 
 const file = (name: string, bytes = 8) => new File([new Uint8Array(bytes)], name);

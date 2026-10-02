@@ -17,6 +17,7 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { SongFileActions } from "./SongFileActions";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { SongLibraryMenu } from "./SongLibraryMenu";
 import type { TimeSignature } from "@/generated/TimeSignature";
 
@@ -183,6 +184,9 @@ export function SongHeader({
       >
         Assistant
       </Button>
+      <div className="ml-auto">
+        <AccountMenu library={library} />
+      </div>
     </header>
   );
 }

@@ -3,7 +3,8 @@ import { clear, createStore } from "idb-keyval";
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { newSongWithTracks } from "@/lib/song/testFixtures";
-import { createSongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
+import { createServerSongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore } from "@/lib/song/songStore";
 import type { Song } from "@/lib/song/types";
 import { collectGarbage, setOpenSongSource, type GcSources } from "./sampleGc";
@@ -32,8 +33,8 @@ const entryFor = (id: string) => ({
 async function reset() {
   await clear();
   for (const [db, name] of [
-    ["songbird-samples", "samples"],
-    ["songbird-sample-library", "library"],
+    ["songbird-samples.test-user", "samples"],
+    ["songbird-sample-library.test-user", "library"],
   ]) {
     await clear(createStore(db, name));
   }
@@ -51,7 +52,7 @@ beforeEach(async () => {
 });
 afterEach(() => vi.useRealTimers());
 
-const sources = (lib: ReturnType<typeof createSongLibrary>): GcSources => ({
+const sources = (lib: ReturnType<typeof createServerSongLibrary>): GcSources => ({
   libraryIds: async () => (await listLibrary()).map((e) => e.id),
   savedSongSampleIds: () => lib.savedSampleIds(),
   openSongs: () => [],
@@ -61,7 +62,7 @@ describe("sampleStore", () => {
   it("survives reload with its audio and overview", async () => {
     const { id } = await putSample(pcm(0.8));
     await addToLibrary(entryFor(id));
-    await collectGarbage();
+    await collectGarbage(sources(createServerSongLibrary(createFakeProjectsApi().api)));
     const stored = await readSamplePcm(id);
     expect(Array.from(stored!.data)).toEqual(Array.from(pcm(0.8).data));
     expect(stored).toMatchObject({ sampleRate: 48000, channels: 1 });
@@ -81,6 +82,7 @@ describe("sampleStore", () => {
     // The request is remembered per module load, so a fresh copy is the first store of a session.
     vi.resetModules();
     const fresh = await import("./sampleStore");
+    (await import("@/lib/auth/currentUser")).setCurrentUserId("test-user");
     await fresh.putSample(pcm(0.31));
     await fresh.putSample(pcm(0.32));
     expect(persist).toHaveBeenCalledTimes(1);
@@ -89,7 +91,7 @@ describe("sampleStore", () => {
 
 describe("collectGarbage", () => {
   it("keeps audio an undo step can bring back", async () => {
-    const lib = createSongLibrary();
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
     const { id } = await putSample(pcm(0.7));
     const base = newSongWithTracks();
     const store = createSongStore(withSamples(base, [id]));
@@ -107,7 +109,7 @@ describe("collectGarbage", () => {
   });
 
   it("keeps audio shared by two songs until both let go", async () => {
-    const lib = createSongLibrary();
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
     const { id } = await putSample(pcm(0.6));
     const a = withSamples(newSongWithTracks(), [id]);
     const b = withSamples(newSongWithTracks(), [id]);
@@ -120,7 +122,7 @@ describe("collectGarbage", () => {
   });
 
   it("frees audio no song or library entry uses", async () => {
-    const lib = createSongLibrary();
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
     const { id } = await putSample(pcm(0.4));
     await addToLibrary(entryFor(id));
     expect(await collectGarbage(sources(lib))).toEqual([]);
@@ -130,7 +132,7 @@ describe("collectGarbage", () => {
   });
 
   it("aborts without deleting when a source cannot be read", async () => {
-    const lib = createSongLibrary();
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
     const { id } = await putSample(pcm(0.2));
     const broken = { ...sources(lib), savedSongSampleIds: () => Promise.reject(new Error("down")) };
     await expect(collectGarbage(broken)).rejects.toThrow();
@@ -139,7 +141,7 @@ describe("collectGarbage", () => {
 
   it("runs on song delete through the library hook", async () => {
     const hook = vi.fn();
-    const lib = createSongLibrary(undefined, { onSamplesMayBeFree: hook });
+    const lib = createServerSongLibrary(createFakeProjectsApi().api, { onSamplesMayBeFree: hook });
     const song = newSongWithTracks();
     await lib.create(song);
     await lib.open(song.id);

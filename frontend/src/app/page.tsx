@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { getInstruments } from "@/lib/api";
 import { useApiResource } from "@/lib/useApiResource";
 
@@ -25,7 +26,10 @@ export default function Home() {
       : [DRUM_MACHINE];
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-zinc-50 px-6 py-24 text-center dark:bg-black">
+    <main className="relative flex flex-1 flex-col items-center justify-center gap-6 bg-zinc-50 px-6 py-24 text-center dark:bg-black">
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+        <AccountMenu />
+      </div>
       <h1 className="text-4xl font-semibold tracking-tight text-black dark:text-zinc-50">
         Songbird
       </h1>

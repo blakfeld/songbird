@@ -161,11 +161,19 @@ The user SHALL be able to start from an empty pattern for the page's instrument 
 - **THEN** an empty 8-measure grid with the drums instrument's rows is shown and can be edited
 
 ### Requirement: Work survives page reload
-The current pattern and prompt SHALL be persisted in the browser, separately per instrument, so that reloading the page restores them. No data SHALL be sent to the server for storage.
+The current pattern and prompt SHALL be persisted in the browser, separately per signed-in user and per instrument, so that reloading the page restores them. No pattern data SHALL be sent to the server for storage. A user SHALL never see a pattern saved by another user in the same browser. Logging out, or being signed out after a `401`, SHALL delete every saved pattern and prompt from the browser, along with the rest of the user's browser storage (see `platform/accounts`, "Per-user browser storage").
 
 #### Scenario: Reload restores pattern
 - **WHEN** the user edits a pattern and reloads the page
 - **THEN** the same pattern, including edits, is displayed
+
+#### Scenario: Patterns are not shared between users
+- **WHEN** user A edits a piano pattern, logs out, and user B signs in on the same browser and opens the piano page
+- **THEN** user B sees an empty piano pattern, not user A's
+
+#### Scenario: Logout clears patterns
+- **WHEN** a user logs out
+- **THEN** no pattern or prompt saved by the editor pages remains in browser storage
 
 ### Requirement: Instrument pages
 The application SHALL provide an editor page at `/instruments/<id>` for every instrument listed by `GET /api/v1/instruments`. That page SHALL be the pattern editor with that instrument, titled with the instrument's name. The Drum Machine SHALL remain at `/drum-machine`, and `/instruments/drums` SHALL redirect to it. A page for an id the service does not list SHALL show a not-found message with a link back to the landing page. The landing page (`/`) SHALL link to the editor page of every listed instrument.

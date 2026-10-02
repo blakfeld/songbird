@@ -17,6 +17,8 @@ import { defaultLoop, type LoopSetting } from "@/lib/loopRegion";
 import { songLoop } from "@/lib/song/songLoop";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
 import { beatSteps } from "@/lib/pianoRoll";
+import { Button } from "@/components/ui/Button";
+import { isSigningOut } from "@/lib/auth/signOut";
 import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore, useSongStore } from "@/lib/song/songStore";
 import { timelineMeasures } from "@/lib/song/songOps";
@@ -46,7 +48,7 @@ import { formatPosition } from "@/lib/song/audioTime";
 import { TICKS_PER_SIXTEENTH } from "@/lib/song/audioTiming";
 
 const STORAGE_FAILURE =
-  "Changes aren't being saved. Browser storage is full or unavailable. You can keep editing, but closing this tab will lose your changes.";
+  "Changes aren't being saved. The server can't be reached or refused the save. You can keep editing and Songbird keeps retrying, but closing this tab may lose your changes.";
 
 const skipLink =
   "sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:text-zinc-900 focus:shadow dark:focus:bg-zinc-900 dark:focus:text-zinc-50";
@@ -91,6 +93,7 @@ export function StudioPage({
   const finalizer = useTakeFinalizer();
   const requestedSong = useRef<string | null | undefined>(undefined);
   const detachAutosave = useRef<(() => void) | null>(null);
+  const firstSong = useRef<Promise<Song> | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const storage = useStore(library.status);
   const [storedDock, setStoredDock] = useStoredHeight(DOCK_HEIGHT_KEY);
@@ -176,9 +179,30 @@ export function StudioPage({
         lastInvalid = !opened && Boolean(last) && unopenable();
       }
       if (!opened) {
+        // Sign-out clears the last-opened pointer, so a user with songs must not get a new empty one.
+        const [latest] = await library.list();
+        if (unreadable()) {
+          if (!cancelled) setLoadFailed(true);
+          return;
+        }
+        opened = latest ? await library.open(latest.id) : null;
+        if (unreadable()) {
+          if (!cancelled) setLoadFailed(true);
+          return;
+        }
+      }
+      if (!opened) {
         fallback = "new";
-        opened = newSong();
-        await library.create(opened);
+        try {
+          // Shared across the effect's re-runs (React Strict Mode runs it twice in development):
+          // the server assigns ids, so two creates would leave the user two empty songs.
+          firstSong.current ??= library.create(newSong());
+          opened = await firstSong.current;
+        } catch {
+          firstSong.current = null;
+          if (!cancelled) setLoadFailed(true);
+          return;
+        }
       }
       if (cancelled) return;
       show(opened);
@@ -207,6 +231,18 @@ export function StudioPage({
       detachAutosave.current = null;
       flush();
     };
+  }, [library]);
+
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      const { saving, ok, conflict } = library.status.getState();
+      if (isSigningOut() || !(saving || !ok || conflict)) return;
+      // Browsers show their own text; preventDefault is what triggers the prompt.
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, [library]);
 
   useEffect(() => {
@@ -449,6 +485,20 @@ export function StudioPage({
 
   const track = song?.tracks.find((t) => t.id === selectedTrackId) ?? song?.tracks[0] ?? null;
   const showBanner = !storage.ok && !bannerDismissed;
+  const inConflict = storage.conflict && song !== null && library.hasConflict(song.id);
+
+  async function saveAsCopy() {
+    const current = store.getState().song;
+    if (!current) return;
+    try {
+      const copy = await library.create({ ...current, name: `${current.name} (copy)` });
+      library.clearConflict(current.id);
+      show(copy);
+      setStatus(`Saved your version as "${copy.name}".`);
+    } catch {
+      setStatus("Couldn't save a copy. Try again.");
+    }
+  }
 
   return (
     <main
@@ -476,6 +526,21 @@ export function StudioPage({
               onRetry={() => song && library.save(song)}
               onDismiss={() => setBannerDismissed(true)}
             />
+          </div>
+        )}
+        {inConflict && song && (
+          <div className="p-3">
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+            >
+              <p className="min-w-0 flex-1">
+                This song was changed somewhere else, so it is no longer saving here. Reload the saved version
+                (this tab&apos;s unsaved changes are discarded) or save your version as a copy.
+              </p>
+              <Button onClick={() => void openById(song.id)}>Reload</Button>
+              <Button onClick={() => void saveAsCopy()}>Save as copy</Button>
+            </div>
           </div>
         )}
         {loadFailed && (
@@ -507,9 +572,7 @@ export function StudioPage({
                 void (async () => {
                   const [next] = await library.list();
                   if (next) return openById(next.id);
-                  const fresh = newSong();
-                  await library.create(fresh);
-                  show(fresh);
+                  show(await library.create(newSong()));
                 })();
               }}
               onAnnounce={setStatus}

@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Note } from "@/generated/Note";
-import { createPatternStore, storageKey } from "./patternStore";
+import { setCurrentUserId } from "./auth/currentUser";
+import { signOutLocally } from "./auth/signOut";
+import { createPatternStore, getPatternStore, storageKey } from "./patternStore";
 
 const drums: InstrumentInfo = {
   id: "drums",
@@ -261,12 +263,12 @@ describe("pattern store", () => {
   });
 
   describe("persistence", () => {
-    it("stores under songbird.patterns.<instrument>.v1 and restores on recreate", () => {
+    it("stores under songbird.patterns.<user>.<instrument>.v1 and restores on recreate", () => {
       const s = fresh();
       s.getState().toggleNote("snare", 4);
       s.getState().setPrompt("boom bap");
-      expect(localStorage.getItem(storageKey("drums"))).not.toBeNull();
-      expect(storageKey("drums")).toBe("songbird.patterns.drums.v1");
+      expect(localStorage.getItem(storageKey("drums", "test-user"))).not.toBeNull();
+      expect(storageKey("drums", "test-user")).toBe("songbird.patterns.test-user.drums.v1");
 
       const reloaded = createPatternStore("drums");
       expect(reloaded.getState().pattern).toEqual(s.getState().pattern);
@@ -294,9 +296,9 @@ describe("pattern store", () => {
 
     it("loads stored work without loop data as no region and looping off", () => {
       const s = fresh(8);
-      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums", "test-user"))!);
       delete raw.state.loop;
-      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      localStorage.setItem(storageKey("drums", "test-user"), JSON.stringify(raw));
       const reloaded = createPatternStore("drums");
       expect(reloaded.getState().loop).toEqual({ region: null, enabled: false });
       expect(s.getState().pattern).toEqual(reloaded.getState().pattern);
@@ -304,17 +306,17 @@ describe("pattern store", () => {
 
     it("treats the flat shape from earlier builds as the default", () => {
       fresh(8);
-      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums", "test-user"))!);
       raw.state.loop = { start: 3, end: 4, enabled: true };
-      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      localStorage.setItem(storageKey("drums", "test-user"), JSON.stringify(raw));
       expect(createPatternStore("drums").getState().loop).toEqual({ region: null, enabled: false });
     });
 
     it("clamps a stored region that no longer fits its pattern", () => {
       fresh(4);
-      const raw = JSON.parse(localStorage.getItem(storageKey("drums"))!);
+      const raw = JSON.parse(localStorage.getItem(storageKey("drums", "test-user"))!);
       raw.state.loop = { region: { start: 3, end: 40 }, enabled: true };
-      localStorage.setItem(storageKey("drums"), JSON.stringify(raw));
+      localStorage.setItem(storageKey("drums", "test-user"), JSON.stringify(raw));
       expect(createPatternStore("drums").getState().loop).toEqual({ region: { start: 3, end: 4 }, enabled: true });
     });
   });
@@ -457,5 +459,39 @@ describe("note gestures", () => {
     expect(s.getState().past).toHaveLength(1);
     s.getState().editNotes((g) => g.notes);
     expect(s.getState().past).toHaveLength(1);
+  });
+});
+
+describe("per-user pattern storage", () => {
+  afterEach(() => setCurrentUserId("test-user"));
+
+  it("does not show user A's pattern to user B on the same browser", () => {
+    setCurrentUserId("a");
+    getPatternStore("drums").getState().newEmptyPattern(drums, 4);
+    getPatternStore("drums").getState().toggleNote("snare", 4);
+    setCurrentUserId("b");
+    expect(getPatternStore("drums").getState().pattern).toBeNull();
+    setCurrentUserId("a");
+    expect(getPatternStore("drums").getState().pattern?.notes).toHaveLength(1);
+  });
+
+  it("writes under a key containing the user id", () => {
+    setCurrentUserId("a");
+    getPatternStore("drums").getState().setPrompt("boom bap");
+    expect(localStorage.getItem("songbird.patterns.a.drums.v1")).not.toBeNull();
+    expect(localStorage.getItem("songbird.patterns.b.drums.v1")).toBeNull();
+  });
+
+  it("refuses to build a store before the user is known", () => {
+    setCurrentUserId(null);
+    expect(() => getPatternStore("drums")).toThrow(/No signed-in user/);
+  });
+
+  it("is removed from the browser when signing out", async () => {
+    setCurrentUserId("a");
+    getPatternStore("drums").getState().setPrompt("boom bap");
+    window.history.replaceState(null, "", "/login");
+    await signOutLocally();
+    expect(localStorage.getItem("songbird.patterns.a.drums.v1")).toBeNull();
   });
 });

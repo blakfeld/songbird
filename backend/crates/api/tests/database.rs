@@ -35,12 +35,12 @@ async fn get(app: axum::Router, uri: &str) -> (StatusCode, Value) {
 
 async fn app_over(db: common::db::TestDb) -> axum::Router {
     let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
-    let state = api::state::AppState {
-        providers: api::provider::Providers::mock(),
-        instruments: music::InstrumentRegistry::builtin(),
-        config: std::sync::Arc::new(config),
-        db: (*db).clone(),
-    };
+    let state = api::state::AppState::new(
+        api::provider::Providers::mock(),
+        music::InstrumentRegistry::builtin(),
+        std::sync::Arc::new(config),
+        (*db).clone(),
+    );
     db.keep_alive_with(api::app(state))
 }
 
@@ -267,12 +267,12 @@ async fn readyz_is_503_within_the_timeout_when_the_database_never_answers() {
     let _held = db.pool().acquire().await.unwrap();
     let app_config =
         Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
-    let app = api::app(api::state::AppState {
-        providers: api::provider::Providers::mock(),
-        instruments: music::InstrumentRegistry::builtin(),
-        config: std::sync::Arc::new(app_config),
-        db: db.clone(),
-    });
+    let app = api::app(api::state::AppState::new(
+        api::provider::Providers::mock(),
+        music::InstrumentRegistry::builtin(),
+        std::sync::Arc::new(app_config),
+        db.clone(),
+    ));
 
     let started = std::time::Instant::now();
     let (status, body) = get(app, "/readyz").await;

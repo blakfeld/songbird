@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // A stereo sine with identical channels, written as 16-bit PCM so any browser can decode it.
 function wav({ seconds = 2, rate = 8000, amplitude = 0.5, channels = 2 } = {}): Buffer {

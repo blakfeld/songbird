@@ -1,11 +1,9 @@
 use axum::extract::State;
 use axum::http::{header, HeaderValue};
-use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use crate::limit::{shed_when_busy, GenerationLimiter};
 use music::ai::plan::{Plan, PlanRequest};
 use music::chat::{
     plan_chat, render_planner_prompt, song_with_planned_track, track_limit_reached, ChatRange,
@@ -22,15 +20,17 @@ use crate::error::{ApiError, ApiJson};
 use crate::patterns::{slugify, with_timeout};
 use crate::state::AppState;
 
-pub fn router(limiter: GenerationLimiter) -> Router<AppState> {
-    let generation = Router::new()
-        .route("/api/v1/songs/tracks/generate", post(generate_track_part))
-        .route("/api/v1/songs/chat", post(chat))
-        .route_layer(from_fn_with_state(limiter, shed_when_busy));
+pub fn router() -> Router<AppState> {
     Router::new()
-        .merge(generation)
         .route("/api/v1/songs/export/midi", post(export_midi))
         .route("/api/v1/songs/limits", get(limits))
+}
+
+/// Every route that calls a provider belongs here so the metering layer covers it.
+pub fn ai_router() -> Router<AppState> {
+    Router::new()
+        .route("/api/v1/songs/tracks/generate", post(generate_track_part))
+        .route("/api/v1/songs/chat", post(chat))
 }
 
 /// Two provider calls, each under its own timeout, because they fail

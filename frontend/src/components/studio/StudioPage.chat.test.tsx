@@ -1,12 +1,11 @@
-import "fake-indexeddb/auto";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clear } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { ChatResponse } from "@/generated/ChatResponse";
 import * as api from "@/lib/api";
-import { createSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createServerSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
+import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { newSong, newTrack, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { StudioPage } from "./StudioPage";
@@ -65,6 +64,7 @@ const piano: InstrumentInfo = {
 const SLOW = 30_000;
 
 let library: SongLibrary;
+let fake: ReturnType<typeof createFakeProjectsApi>;
 
 function songOf(measures: number, loopRegion?: Song["loop_region"]): Song {
   const song = newSong();
@@ -94,8 +94,8 @@ const part = (name: string, instrument: string, end = 4): ChatResponse => ({
 
 beforeEach(async () => {
   localStorage.clear();
-  await clear();
-  library = createSongLibrary();
+  fake = createFakeProjectsApi();
+  library = createServerSongLibrary(fake.api);
   vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
 });
 afterEach(() => {

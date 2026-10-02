@@ -13,14 +13,17 @@ use crate::state::AppState;
 /// Connects and migrates the database before anything listens, so a bad
 /// database stops startup rather than failing the first request.
 pub async fn build_state(config: Config) -> Result<AppState, String> {
+    for warning in config.startup_warnings() {
+        tracing::warn!("{warning}");
+    }
     let db = Db::connect(&config.database)
         .await
         .map_err(|e| e.to_string())?;
     let providers = build_providers(&config).await.map_err(|e| e.to_string())?;
-    Ok(AppState {
+    Ok(AppState::new(
         providers,
-        instruments: InstrumentRegistry::builtin(),
-        config: Arc::new(config),
+        InstrumentRegistry::builtin(),
+        Arc::new(config),
         db,
-    })
+    ))
 }

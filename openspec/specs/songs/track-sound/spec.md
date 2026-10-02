@@ -31,7 +31,7 @@ A track MAY have a `sound` object. A track without `sound`, and any setting left
 | `delay` | `time` (one of `"1/16"`, `"1/8"`, `"1/8d"`, `"1/4"`, `"1/2"`, default `"1/8d"`), `feedback` (0.0–0.9, 0.35), `mix` (0.0–1.0, 0.3) |
 | `reverb` | `decay_s` (0.5–10.0, 2.5), `mix` (0.0–1.0, 0.3) |
 
-Setting a melodic-only field on a drums track, or a drums-only field on a melodic track, SHALL be invalid. Every place that checks a song document, including the browser song library, project-file import, and server-side song validation, SHALL reject a value that is out of range or of the wrong kind with error code `invalid_song`, and the message SHALL name the track and the setting. Unknown fields inside `sound` SHALL be kept unchanged, following the song document's rule for unrecognised fields.
+Setting a melodic-only field on a drums track, or a drums-only field on a melodic track, SHALL be invalid. Every place that checks a song document, including the account song library, project-file import, and server-side song validation, SHALL reject a value that is out of range or of the wrong kind with error code `invalid_song`, and the message SHALL name the track and the setting. Unknown fields inside `sound` SHALL be kept unchanged, following the song document's rule for unrecognised fields.
 
 #### Scenario: Old song sounds the same
 - **WHEN** the user opens a song saved before track sound existed
