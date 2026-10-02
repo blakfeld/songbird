@@ -69,9 +69,15 @@ gen-types:
     cd {{backend}} && UPDATE_TS_BINDINGS=1 cargo test -p api --test ts_bindings
 
 # Formatting check, clippy, ESLint, TypeScript type check, and production build
-lint:
+lint: lint-backend lint-frontend
+
+# Rust formatting check and clippy
+lint-backend:
     cd {{backend}} && cargo fmt --all -- --check
     cd {{backend}} && cargo clippy --workspace --all-targets -- -D warnings
+
+# ESLint, TypeScript type check, and production build
+lint-frontend:
     cd {{frontend}} && pnpm lint
     cd {{frontend}} && pnpm typecheck
     cd {{frontend}} && pnpm build

@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  backend:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -38,6 +38,54 @@ jobs:
         with:
           workspaces: backend
 
+      - run: just lint-backend
+      - run: just test-backend
+      # The default pass above ran database-backed tests on SQLite; this one reruns them on Postgres.
+      - run: just test-backend-pg
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: extractions/setup-just@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - run: just lint-frontend
+      - run: just test-frontend
+
+  # Playwright boots the real backend with cargo, so this job needs both toolchains.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: extractions/setup-just@v2
+
+      # Reads backend/rust-toolchain.toml so CI uses the pinned version.
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+        working-directory: backend
+
+      # A separate key keeps this job's api-only build from overwriting the backend job's full workspace cache.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+          key: e2e
+
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
@@ -54,7 +102,4 @@ jobs:
           pnpm exec playwright install --with-deps chromium
         working-directory: frontend
 
-      - run: just lint
-      - run: just test
-      # The default pass above ran database-backed tests on SQLite; this one reruns them on Postgres.
-      - run: just test-backend-pg
+      - run: just test-e2e
