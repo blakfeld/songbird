@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use api::auth::password::PasswordService;
 use api::cli::{self, Cli, Command};
-use api::config::{database_from_lookup, Config};
+use api::config::{database_from_lookup, master_keys_from_lookup, Config};
 use api::db::Db;
 use api::startup::build_state;
 use clap::Parser;
@@ -25,6 +25,15 @@ async fn main() -> ExitCode {
                 )
                 .init();
             run_user_command(command).await
+        }
+        Some(Command::Keys(command)) => {
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_env_filter(
+                    EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+                )
+                .init();
+            run_keys_command(command).await
         }
         None => {
             tracing_subscriber::fmt()
@@ -54,6 +63,48 @@ async fn run_user_command(command: cli::UserCommand) -> Result<(), String> {
     let output = cli::run_user_command(&db, &PasswordService::new(), command, inputs)
         .await
         .map_err(|e| e.to_string())?;
+    println!("{output}");
+    Ok(())
+}
+
+async fn run_keys_command(command: cli::KeysCommand) -> Result<(), String> {
+    let keyring =
+        master_keys_from_lookup(|var| std::env::var(var).ok()).map_err(|e| e.to_string())?;
+    let output = if command.needs_database() {
+        let database =
+            database_from_lookup(|var| std::env::var(var).ok()).map_err(|e| e.to_string())?;
+        // Checked before connecting so a missing keyring does not create or migrate a database.
+        let required_keyring = match command {
+            cli::KeysCommand::Rotate | cli::KeysCommand::Purge { .. } => {
+                Some(cli::keyring_required(keyring).map_err(|e| e.to_string())?)
+            }
+            cli::KeysCommand::GenerateMasterKey => None,
+        };
+        let db = Db::connect(&database).await.map_err(|e| e.to_string())?;
+        match command {
+            cli::KeysCommand::Rotate => {
+                let keyring = required_keyring.expect("checked above");
+                cli::rotate_keys(&db, &keyring).await
+            }
+            cli::KeysCommand::Purge { version, yes } => {
+                let keyring = required_keyring.expect("checked above");
+                // Refusals and the empty case are decided before any prompt is shown.
+                let rows = cli::purge_preflight(&db, &keyring, &version)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let retyped = if rows > 0 && !yes {
+                    cli::read_retyped_version(&version, rows).map_err(|e| e.to_string())?
+                } else {
+                    None
+                };
+                cli::purge_keys(&db, &keyring, &version, yes, retyped.as_deref()).await
+            }
+            cli::KeysCommand::GenerateMasterKey => unreachable!("needs no database"),
+        }
+        .map_err(|e| e.to_string())?
+    } else {
+        cli::generate_master_key(keyring.as_ref())
+    };
     println!("{output}");
     Ok(())
 }

@@ -16,7 +16,7 @@ import * as audioOps from "./audioClipOps";
 import * as ops from "./songOps";
 import * as samplerOps from "./samplerOps";
 import type { SamplerKind } from "./sampler";
-import { songLoop, withLiveChat, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
+import { songLoop, withLiveFields, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
 import type { AudioFailure, AudioOpResult } from "./audioClipOps";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
 import { MAX_CLIPS, MAX_LOOPS, MAX_TRACKS, MEASURE_RANGE, type Song, type SongKey, type Track } from "./types";
@@ -134,6 +134,7 @@ export interface SongState {
   setTempo: (tempoBpm: number) => "tempo_limit" | null;
   setSwing: (swing: number) => void;
   renameSong: (name: string) => void;
+  setLyrics: (text: string) => void;
   // Both are one undo step each; the UI asks for confirmation first when a meter change would drop notes.
   setTimeSignature: (ts: TimeSignature) => "meter_limit" | null;
   setKey: (key: SongKey) => void;
@@ -223,7 +224,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
       const result = fn(song);
       if (result.song === null) return result.reason;
       const gestureLoop = base ? get().gestureLoop : null;
-      const next = base ? withLoopSetting(result.song, gestureLoop ?? songLoop(current)) : result.song;
+      const next = base ? withLiveFields(withLoopSetting(result.song, gestureLoop ?? songLoop(current)), current) : result.song;
       if (options.transient) {
         set((s) => {
           if (!s.song || next === s.song) return s;
@@ -325,7 +326,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (!s.song) return s;
           const base = s.gestureBase;
           const applied = apply(base ?? s.song);
-          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          const next = base ? withLiveFields(withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)), s.song) : applied;
           if (next === s.song) return s;
           return {
             song: next,
@@ -386,7 +387,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           // which is what keeps a no-op drag out of history.
           const base = s.gestureBase;
           const applied = apply(base ?? s.song);
-          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          const next = base ? withLiveFields(withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)), s.song) : applied;
           if (next === s.song) return s;
           return {
             song: next,
@@ -501,7 +502,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
           if (!s.song) return s;
           const base = s.gestureBase;
           const applied = apply(base ?? s.song);
-          const next = base ? withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)) : applied;
+          const next = base ? withLiveFields(withLoopSetting(applied, s.gestureLoop ?? songLoop(s.song)), s.song) : applied;
           if (next === s.song) return s;
           return {
             song: next,
@@ -530,7 +531,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) =>
           s.gestureBase
             ? {
-                song: withLiveChat(withLoopSetting(s.gestureBase, s.gestureLoop ?? songLoop(s.song!)), s.song!),
+                song: withLiveFields(withLoopSetting(s.gestureBase, s.gestureLoop ?? songLoop(s.song!)), s.song!),
                 ...validSelection(s.gestureBase, s.selectedTrackId, s.selectedClipId),
                 future: s.gestureFuture ?? s.future,
                 gestureBase: null,
@@ -558,6 +559,15 @@ export function createSongStore(initial: Song | null = null): SongStore {
       },
       setSwing: (w) => edit((s) => ops.setSwing(s, w)),
       renameSong: (name) => edit((s) => ops.renameSong(s, name)),
+      // Not an undo step, like chat: a second history stack would fight the notepad's own undo over Cmd/Ctrl+Z.
+      setLyrics: (text) =>
+        set((s) => {
+          if (!s.song || (s.song.lyrics ?? "") === text) return s;
+          // Empty lyrics are omitted so a song without them serializes as it did before the field existed.
+          const { lyrics: _old, ...rest } = s.song;
+          void _old;
+          return { song: text === "" ? rest : { ...rest, lyrics: text } };
+        }),
       setTimeSignature: (ts) => {
         const before = get().song;
         edit((s) => ops.setTimeSignature(s, ts));
@@ -570,7 +580,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const previous = s.past[s.past.length - 1];
           if (!previous || !s.song) return s;
-          const song = withLiveChat(withLiveLoop(previous, s.song), s.song);
+          const song = withLiveFields(withLiveLoop(previous, s.song), s.song);
           return {
             song,
             ...validSelection(song, s.selectedTrackId, s.selectedClipId),
@@ -584,7 +594,7 @@ export function createSongStore(initial: Song | null = null): SongStore {
         set((s) => {
           const [next, ...rest] = s.future;
           if (!next || !s.song) return s;
-          const song = withLiveChat(withLiveLoop(next, s.song), s.song);
+          const song = withLiveFields(withLiveLoop(next, s.song), s.song);
           return {
             song,
             ...validSelection(song, s.selectedTrackId, s.selectedClipId),

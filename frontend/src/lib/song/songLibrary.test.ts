@@ -257,6 +257,15 @@ describe("saving", () => {
     expect(saved.loop_region).toEqual({ region: { start_measure: 2, end_measure: 3 }, enabled: false });
   });
 
+  it("autosaves lyrics written with setLyrics", async () => {
+    const song = await lib.create(newSongWithTracks());
+    const store = createSongStore(song);
+    lib.autosave(store);
+    store.getState().setLyrics("[Chorus]\nla la");
+    await lib.flush();
+    expect((await lib.open(song.id))!.lyrics).toBe("[Chorus]\nla la");
+  });
+
   it("writes unrecognised fields back unchanged", async () => {
     const song = { ...newSongWithTracks(), sections: [{ name: "Verse" }] };
     (song.tracks[0] as unknown as Record<string, unknown>).future_flag = 7;

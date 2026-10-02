@@ -4,7 +4,9 @@
 mod common;
 
 use common::{request, request_for, FakeCodex, BAD_DRAFT, BAD_PIANO_DRAFT};
-use music::ai::{ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, SchemaProvider};
+use music::ai::{
+    ClaudeProvider, CodexCliProvider, MockProvider, OllamaProvider, OpenAiProvider, SchemaProvider,
+};
 use music::generate::generate_pattern;
 use music::GenerateRequest;
 use secrecy::SecretString;
@@ -27,6 +29,21 @@ async fn claude_pattern(draft: &str, request: &GenerateRequest) -> music::Patter
         .await;
     let provider = SchemaProvider::new(
         ClaudeProvider::new(SecretString::from("k"), "m").with_base_url(server.uri()),
+    );
+    generate_pattern(&provider, request).await.unwrap()
+}
+
+async fn openai_pattern(draft: &str, request: &GenerateRequest) -> music::Pattern {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{"message": {"role": "assistant", "content": draft}, "finish_reason": "stop"}]
+        })))
+        .mount(&server)
+        .await;
+    let provider = SchemaProvider::new(
+        OpenAiProvider::new(SecretString::from("k"), "m").with_base_url(server.uri()),
     );
     generate_pattern(&provider, request).await.unwrap()
 }
@@ -56,6 +73,7 @@ async fn every_provider_normalizes_the_same_bad_draft_identically() {
     let claude = claude_pattern(BAD_DRAFT, &req).await;
     assert_eq!(claude, ollama_pattern(BAD_DRAFT, &req).await);
     assert_eq!(claude, codex_pattern(BAD_DRAFT, &req).await);
+    assert_eq!(claude, openai_pattern(BAD_DRAFT, &req).await);
 
     assert_eq!(claude.name, "Messy Draft");
     assert_eq!(claude.tempo_bpm, 240);
@@ -99,6 +117,7 @@ async fn every_provider_normalizes_the_same_bad_melodic_draft_identically() {
     let claude = claude_pattern(BAD_PIANO_DRAFT, &req).await;
     assert_eq!(claude, ollama_pattern(BAD_PIANO_DRAFT, &req).await);
     assert_eq!(claude, codex_pattern(BAD_PIANO_DRAFT, &req).await);
+    assert_eq!(claude, openai_pattern(BAD_PIANO_DRAFT, &req).await);
 
     assert_eq!(claude.name, "Messy Keys");
     assert_eq!(claude.midi_program, Some(1));

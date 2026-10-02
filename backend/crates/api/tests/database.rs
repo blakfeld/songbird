@@ -3,7 +3,7 @@
 
 mod common;
 
-use api::config::{Config, AI_PROVIDER, DATABASE_URL};
+use api::config::{Config, AI_PROVIDER, DATABASE_URL, ENV};
 use api::db::{Backend, DatabaseConfig, Db, POSTGRES_MIGRATIONS, SQLITE_MIGRATIONS};
 use api::startup::build_state;
 use axum::body::Body;
@@ -16,6 +16,7 @@ use tower::ServiceExt;
 
 fn config_with_database(url: &str) -> Config {
     Config::from_lookup(|k| match k {
+        ENV => Some("development".to_string()),
         AI_PROVIDER => Some("mock".to_string()),
         DATABASE_URL => Some(url.to_string()),
         _ => None,
@@ -34,7 +35,12 @@ async fn get(app: axum::Router, uri: &str) -> (StatusCode, Value) {
 }
 
 async fn app_over(db: common::db::TestDb) -> axum::Router {
-    let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
+    let config = Config::from_lookup(|k| match k {
+        ENV => Some("development".to_string()),
+        AI_PROVIDER => Some("mock".to_string()),
+        _ => None,
+    })
+    .unwrap();
     let state = api::state::AppState::new(
         api::provider::Providers::mock(),
         music::InstrumentRegistry::builtin(),
@@ -265,8 +271,12 @@ async fn readyz_is_503_within_the_timeout_when_the_database_never_answers() {
     config.max_connections = 1;
     let db = Db::connect(&config).await.unwrap();
     let _held = db.pool().acquire().await.unwrap();
-    let app_config =
-        Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
+    let app_config = Config::from_lookup(|k| match k {
+        ENV => Some("development".to_string()),
+        AI_PROVIDER => Some("mock".to_string()),
+        _ => None,
+    })
+    .unwrap();
     let app = api::app(api::state::AppState::new(
         api::provider::Providers::mock(),
         music::InstrumentRegistry::builtin(),

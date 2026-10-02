@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { API_PORT, DATABASE_URL, DB_PATH, E2E_EMAIL, E2E_PASSWORD, STORAGE_STATE, WEB_PORT } from "./e2e/account";
+import { API_PORT, DATABASE_URL, DB_PATH, E2E_EMAIL, E2E_PASSWORD, MASTER_KEYS, STORAGE_STATE, WEB_PORT } from "./e2e/account";
 
 // Playwright starts web servers before global setup, so the fresh database and the seeded user are
 // made here, ahead of the backend opening the file. Ports are distinct from the dev ports so a
@@ -37,7 +37,10 @@ export default defineConfig({
       reuseExistingServer: false,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: {
-        SONGBIRD_AI_PROVIDER: "mock",
+        // Production is the backend's default and rejects the mock provider.
+        SONGBIRD_ENV: "development",
+        SONGBIRD_AI_PROVIDER: "user-mock",
+        SONGBIRD_MASTER_KEYS: MASTER_KEYS,
         SONGBIRD_BIND_ADDR: `127.0.0.1:${API_PORT}`,
         SONGBIRD_MAX_INPUT_TOKENS: "256",
         SONGBIRD_DATABASE_URL: DATABASE_URL,

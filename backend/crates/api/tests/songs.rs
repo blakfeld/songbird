@@ -2,7 +2,7 @@ mod common;
 
 use std::sync::Arc;
 
-use api::config::{Config, AI_PROVIDER};
+use api::config::{Config, AI_PROVIDER, ENV};
 use api::provider::Providers;
 use api::routes::SONG_MAX_BODY_BYTES;
 use api::state::AppState;
@@ -20,7 +20,12 @@ const ONE_MIB: usize = 1024 * 1024;
 
 async fn app() -> axum::Router {
     let db = common::db::test_db().await;
-    let config = Config::from_lookup(|k| (k == AI_PROVIDER).then(|| "mock".to_string())).unwrap();
+    let config = Config::from_lookup(|k| match k {
+        ENV => Some("development".to_string()),
+        AI_PROVIDER => Some("mock".to_string()),
+        _ => None,
+    })
+    .unwrap();
     let router = api::app(AppState::new(
         Providers::mock(),
         InstrumentRegistry::builtin(),

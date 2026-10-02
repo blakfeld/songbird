@@ -8,6 +8,7 @@ import { withBuiltIns } from "./sampler";
 import { samplerProblem, type SamplerErrorKind } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
+  LYRICS_MAX_CHARS,
   MAX_TRACKS,
   MEASURE_RANGE,
   PAN_RANGE,
@@ -40,6 +41,7 @@ export type ProjectErrorKind =
   | "key"
   | "loop_region"
   | "chat"
+  | "lyrics"
   | "track_count"
   | "track_name"
   | "volume"
@@ -154,6 +156,14 @@ function checkHeader(raw: Raw): Problem | null {
       )
     )
       return problem("chat", "the saved chat must be at most 20 messages of 4000 characters");
+  }
+  if (raw.lyrics !== undefined) {
+    // Code points rather than charLength's UTF-16 units, because the server counts lyrics that way.
+    if (typeof raw.lyrics !== "string" || [...raw.lyrics].length > LYRICS_MAX_CHARS)
+      return problem(
+        "lyrics",
+        `the lyrics must be text of at most ${LYRICS_MAX_CHARS.toLocaleString("en-US")} characters`,
+      );
   }
   return null;
 }

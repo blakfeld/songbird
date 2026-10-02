@@ -5,6 +5,7 @@ pub mod claude;
 pub mod codex;
 pub mod mock;
 pub mod ollama;
+pub mod openai;
 pub mod plan;
 pub mod prompt;
 
@@ -21,7 +22,10 @@ pub use claude::ClaudeProvider;
 pub use codex::CodexCliProvider;
 pub use mock::MockProvider;
 pub use ollama::OllamaProvider;
+pub use openai::OpenAiProvider;
 pub use plan::{MockPlanProvider, PlanProvider, SchemaPlanProvider};
+/// Re-exported so callers can share one pooled client without depending on reqwest.
+pub use reqwest::Client as HttpClient;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructuredRequest {
@@ -45,6 +49,89 @@ pub enum ProviderError {
     Request(String),
     #[error("provider returned invalid output: {0}")]
     InvalidOutput(String),
+    /// Fixed text only: these three come from classifying a vendor error and must not carry its body.
+    #[error("the provider rejected the API key")]
+    Unauthorized,
+    #[error("the provider account has no remaining quota or credit")]
+    QuotaExhausted,
+    #[error("the provider rate limit was reached")]
+    RateLimited { retry_after: Option<u64> },
+}
+
+/// Why a stored key could not be confirmed, kept coarse so callers can show a fixed message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum KeyCheckError {
+    #[error("the provider rejected the API key")]
+    Rejected,
+    #[error("the provider could not be reached")]
+    Unreachable,
+}
+
+/// A hostile or buggy upstream could otherwise make the client tell users to wait for days.
+const MAX_RETRY_AFTER_SECS: u64 = 3600;
+
+pub(crate) fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(|secs| secs.min(MAX_RETRY_AFTER_SECS))
+}
+
+/// Only the machine-readable fields are kept, because the message text can echo request content.
+#[derive(Debug, Default, serde::Deserialize)]
+pub(crate) struct ErrorFields {
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub code: Option<String>,
+}
+
+impl ErrorFields {
+    pub fn is_any_of(&self, names: &[&str]) -> bool {
+        [&self.kind, &self.code]
+            .into_iter()
+            .flatten()
+            .any(|v| names.contains(&v.as_str()))
+    }
+}
+
+/// Both vendors nest the fields under `error`; anything unparseable yields no fields, so the
+/// caller falls back to the status alone.
+pub(crate) async fn read_error_fields(response: reqwest::Response) -> ErrorFields {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        error: Option<ErrorFields>,
+    }
+    read_json_capped(response)
+        .await
+        .ok()
+        .and_then(|body| serde_json::from_value::<Envelope>(body).ok())
+        .and_then(|e| e.error)
+        .unwrap_or_default()
+}
+
+/// Shared by both vendors' `check_key`: the models list costs no tokens, and the body is never
+/// read so an error that echoes the key cannot reach a log or a caller.
+pub(crate) async fn probe_models(
+    request: reqwest::RequestBuilder,
+    timeout: Duration,
+) -> Result<(), KeyCheckError> {
+    let response = request
+        .timeout(timeout)
+        .send()
+        .await
+        .map_err(|_| KeyCheckError::Unreachable)?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else if status.is_server_error() {
+        Err(KeyCheckError::Unreachable)
+    } else {
+        Err(KeyCheckError::Rejected)
+    }
 }
 
 /// Fails fast when the host is down instead of consuming the whole request budget.
@@ -55,8 +142,25 @@ pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// and buffering it unbounded would let one response exhaust memory.
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
-pub(crate) fn http_client(timeout: Duration) -> reqwest::Client {
+/// Fixed strings only: a reqwest error's text includes the URL and can carry connection
+/// detail, and nothing from a request that bore a user's key should reach a log verbatim.
+pub(crate) fn transport_error(vendor: &str, error: &reqwest::Error) -> ProviderError {
+    let what = if error.is_timeout() {
+        "timed out waiting for"
+    } else if error.is_connect() {
+        "could not connect to"
+    } else {
+        "could not complete the request to"
+    };
+    ProviderError::Request(format!("{what} the {vendor} API"))
+}
+
+pub fn http_client(timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
+        // reqwest drops only `Authorization` and `Cookie` on a cross-host redirect, so a redirect
+        // from a provider endpoint would carry `x-api-key` to wherever it points; no provider
+        // API legitimately redirects, so refusing every redirect is the safe policy.
+        .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(timeout)
         .build()
@@ -81,7 +185,7 @@ async fn read_json_capped_at(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| ProviderError::Request(format!("could not read the response: {e}")))?
+        .map_err(|_| ProviderError::Request("could not read the response".into()))?
     {
         if body.len() + chunk.len() > limit {
             return Err(too_large());
@@ -209,5 +313,71 @@ mod capped_read_tests {
         let response = chunked_response(r#"{"ok":true}"#).await;
         let value = read_json_capped_at(response, 1024).await.unwrap();
         assert_eq!(value, serde_json::json!({"ok": true}));
+    }
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use super::*;
+    use secrecy::SecretString;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn redirecting_pair() -> (MockServer, MockServer) {
+        let target = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&target)
+            .await;
+        let origin = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("location", format!("{}/stolen", target.uri()).as_str()),
+            )
+            .mount(&origin)
+            .await;
+        (origin, target)
+    }
+
+    fn request() -> StructuredRequest {
+        StructuredRequest {
+            system: "s".into(),
+            user: "u".into(),
+            schema: serde_json::json!({"type": "object"}),
+            tool_name: "emit_pattern".into(),
+            tool_description: "d".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_provider_redirect_is_not_followed_so_the_key_header_cannot_travel() {
+        let key = SecretString::from("sk-redirect-secret-key-0000");
+        for openai in [false, true] {
+            let (origin, target) = redirecting_pair().await;
+            let transport: Box<dyn StructuredProvider> = if openai {
+                Box::new(OpenAiProvider::new(key.clone(), "m").with_base_url(origin.uri()))
+            } else {
+                Box::new(ClaudeProvider::new(key.clone(), "m").with_base_url(origin.uri()))
+            };
+            let error = transport.generate(&request()).await.unwrap_err();
+            assert!(matches!(error, ProviderError::Request(_)), "{error}");
+            assert!(error.to_string().contains("302"), "{error}");
+            assert!(!error.to_string().contains("redirect-secret"));
+            assert!(
+                target.received_requests().await.unwrap().is_empty(),
+                "the redirect target was contacted (openai: {openai})"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_key_check_redirect_is_rejected_without_contacting_the_target() {
+        let (origin, target) = redirecting_pair().await;
+        let key = SecretString::from("sk-redirect-secret-key-0000");
+        let client = http_client(Duration::from_secs(5));
+        let result = claude::check_key(&client, &origin.uri(), &key, Duration::from_secs(5)).await;
+        assert_eq!(result, Err(KeyCheckError::Rejected));
+        assert!(target.received_requests().await.unwrap().is_empty());
     }
 }

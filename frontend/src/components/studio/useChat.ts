@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { sendChat } from "@/lib/api";
+import { useAiKeys } from "@/components/ai/AiKeysProvider";
+import { ApiError, sendChat } from "@/lib/api";
+import { describeError, isKeyErrorCode, type DescribedError } from "@/lib/aiKeys/keyError";
 import { activeLoopRange } from "@/lib/song/songLoop";
 import { CHAT_LIMIT, type SongStore } from "@/lib/song/songStore";
 
@@ -12,7 +14,8 @@ export type SendOutcome = "sent" | "failed" | "ignored" | "stale";
 export function useChat(store: SongStore, announce: (message: string) => void) {
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedError | null>(null);
+  const { refresh } = useAiKeys();
   // A ref as well as state so a double submit in one tick cannot start two requests.
   const inFlight = useRef(false);
   // Tells a request that was abandoned by a song change apart from the current one when it finally settles.
@@ -57,14 +60,17 @@ export function useChat(store: SongStore, announce: (message: string) => void) {
         if (store.getState().loadEpoch !== epoch) return "stale";
         const refusal = store.getState().applyChatResult(content, response);
         if (refusal) {
-          setError(refusal);
+          setError({ message: refusal });
           return "failed";
         }
         announce(response.track ? `Added a ${response.track.name} track. Undo to remove it.` : "The assistant replied.");
         return "sent";
       } catch (err) {
         if (store.getState().loadEpoch !== epoch) return "stale";
-        setError(`${err instanceof Error ? err.message : "Something went wrong."} The song is unchanged.`);
+        // The gate must reflect a key that was removed or revoked elsewhere.
+        if (err instanceof ApiError && isKeyErrorCode(err.code)) void refresh();
+        const { message, action } = describeError(err);
+        setError({ message: `${message} The song is unchanged.`, action });
         return "failed";
       } finally {
         if (requestId.current === id) {
@@ -74,10 +80,10 @@ export function useChat(store: SongStore, announce: (message: string) => void) {
         }
       }
     },
-    [store, announce],
+    [store, announce, refresh],
   );
 
-  return { sending, pending, error, send, dismissError: () => setError(null) };
+  return { sending, pending, error: error?.message ?? null, errorAction: error?.action, send, dismissError: () => setError(null) };
 }
 
 export type ChatController = ReturnType<typeof useChat>;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useAiKeyGate } from "@/components/ai/AiKeyGate";
 import { ErrorAlert } from "@/components/editor/ErrorAlert";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -22,11 +23,14 @@ export function AssistantPanel({
   song,
   chat,
   instruments,
+  heading = true,
   className = "",
 }: {
   song: Song | null;
   instruments: readonly InstrumentInfo[] | null;
   chat: ChatController;
+  // Inside the tabbed column the tab names the panel and the column supplies the frame.
+  heading?: boolean;
   className?: string;
 }) {
   const titleId = useId();
@@ -49,19 +53,25 @@ export function AssistantPanel({
     // Text typed while waiting is newer than the failed message, so it is never overwritten.
     if (outcome === "failed") setDraft((current) => (current === "" ? text : current));
   };
-  const blocked = !song || chat.sending;
+  const { blocked: noKey, noticeId, notice } = useAiKeyGate();
+  const blocked = !song || chat.sending || noKey;
   const showLog = messages.length > 0 || chat.pending !== null;
 
+  const Root = heading ? "aside" : "div";
   return (
-    <aside
-      aria-labelledby={titleId}
-      className={`flex min-h-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${className}`}
+    <Root
+      aria-labelledby={heading ? titleId : undefined}
+      className={`flex min-h-0 flex-col bg-white dark:bg-zinc-950 ${
+        heading ? "border-l border-zinc-200 dark:border-zinc-800" : "flex-1"
+      } ${className}`}
     >
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 id={titleId} className="text-sm font-semibold">
-          Assistant
-        </h2>
-      </div>
+      {heading && (
+        <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <h2 id={titleId} className="text-sm font-semibold">
+            Assistant
+          </h2>
+        </div>
+      )}
       <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         {!showLog ? (
           <div className="m-auto max-w-60 text-center">
@@ -109,9 +119,10 @@ export function AssistantPanel({
           </p>
         )}
       </div>
+      {notice && <div className="px-3 pb-2">{notice}</div>}
       {chat.error && (
         <div className="px-3 pb-2">
-          <ErrorAlert message={chat.error} onDismiss={chat.dismissError} />
+          <ErrorAlert message={chat.error} action={chat.errorAction} onDismiss={chat.dismissError} />
         </div>
       )}
       <form
@@ -135,7 +146,7 @@ export function AssistantPanel({
             }
           }}
           aria-label="Message the assistant"
-          aria-describedby={!showLog ? noteId : undefined}
+          aria-describedby={[!showLog ? noteId : undefined, noticeId].filter(Boolean).join(" ") || undefined}
           placeholder="Describe a part to add"
           className={`${inputClass} h-auto flex-1 resize-none py-2`}
         />
@@ -144,6 +155,7 @@ export function AssistantPanel({
           variant="primary"
           disabled={blocked || draft.trim() === ""}
           aria-label="Send message"
+          aria-describedby={noticeId}
           // Matches the textarea's height and corners so the pair reads as one
           // control; `!` is needed because Button's pill padding and radius
           // share these properties and would otherwise win by CSS order.
@@ -152,6 +164,6 @@ export function AssistantPanel({
           <span aria-hidden="true">➤</span>
         </Button>
       </form>
-    </aside>
+    </Root>
   );
 }

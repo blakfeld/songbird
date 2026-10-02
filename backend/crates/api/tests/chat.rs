@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use api::config::{Config, AI_PROVIDER, GENERATION_TIMEOUT_SECS, MAX_CONCURRENT_GENERATIONS};
+use api::config::{Config, AI_PROVIDER, ENV, GENERATION_TIMEOUT_SECS, MAX_CONCURRENT_GENERATIONS};
 use api::provider::Providers;
 use api::state::AppState;
 use async_trait::async_trait;
@@ -109,6 +109,9 @@ impl PlanProvider for UnknownInstrument {
 async fn app_with(providers: Providers, extra: &[(&str, &str)]) -> axum::Router {
     let db = common::db::test_db().await;
     let config = Config::from_lookup(|k| {
+        if k == ENV {
+            return Some("development".into());
+        }
         if k == AI_PROVIDER {
             return Some("mock".into());
         }

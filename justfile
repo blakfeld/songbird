@@ -18,6 +18,10 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'kill 0' EXIT INT TERM
+    # Production is the backend's default, so the dev recipe has to opt in to run without user keys.
+    export SONGBIRD_ENV="${SONGBIRD_ENV:-development}"
+    # A seed failure, such as refusing a non-local database, must not stop dev from starting.
+    just seed || echo "Skipped seeding the dev account; see above." >&2
     (cd {{backend}} && cargo run -p api) &
     (cd {{frontend}} && pnpm dev) &
     wait
@@ -26,6 +30,26 @@ dev:
 dev-pg:
     docker compose --profile postgres up -d --wait postgres
     @echo "export SONGBIRD_DATABASE_URL=postgres://songbird:songbird@localhost:5432/songbird"
+
+# Create the local dev account (dev@example.com / songbird-dev-password); safe to re-run
+seed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{backend}}
+    url="${SONGBIRD_DATABASE_URL:-$(grep -sE '^SONGBIRD_DATABASE_URL=' .env | cut -d= -f2- || true)}"
+    # The password is public, so the account must never land in a database anyone else can reach.
+    if [[ -n "$url" && "$url" != sqlite:* && ! "$url" =~ ^postgres(ql)?://[^/]*@(localhost|127\.0\.0\.1)(:[0-9]+)?/ ]]; then
+        echo "Refusing to seed: SONGBIRD_DATABASE_URL is not a local database." >&2
+        exit 1
+    fi
+    if out=$(printf '%s\n' "songbird-dev-password" | cargo run -q -p api -- user create dev@example.com 2>&1); then
+        echo "$out"
+    elif grep -q "already in use" <<<"$out"; then
+        echo "dev@example.com already exists."
+    else
+        echo "$out" >&2
+        exit 1
+    fi
 
 # Run all tests (Rust, Vitest, Playwright). Needs no API key.
 test: test-backend test-frontend test-e2e
@@ -54,18 +78,28 @@ test-live:
 test-live-ollama:
     cd {{backend}} && cargo test --workspace -- --ignored live_ollama
 
+# Live test against the OpenAI API (needs OPENAI_API_KEY)
+test-live-openai:
+    cd {{backend}} && cargo test --workspace -- --ignored live_openai
+
 # Live test against a signed-in Codex CLI
 test-live-codex:
     cd {{backend}} && cargo test --workspace -- --ignored live_codex
 
 # Regenerate frontend/src/generated TypeScript types from the Rust types
 gen-types:
-    cd {{backend}} && UPDATE_TS_BINDINGS=1 cargo test -p music --test ts_bindings
+    cd {{backend}} && UPDATE_TS_BINDINGS=1 cargo test -p api --test ts_bindings
 
 # Formatting check, clippy, ESLint, TypeScript type check, and production build
-lint:
+lint: lint-backend lint-frontend
+
+# Rust formatting check and clippy
+lint-backend:
     cd {{backend}} && cargo fmt --all -- --check
     cd {{backend}} && cargo clippy --workspace --all-targets -- -D warnings
+
+# ESLint, TypeScript type check, and production build
+lint-frontend:
     cd {{frontend}} && pnpm lint
     cd {{frontend}} && pnpm typecheck
     cd {{frontend}} && pnpm build

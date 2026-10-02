@@ -79,14 +79,19 @@ export function activeLoopRange(
   return { start_measure: region.start, end_measure: region.end };
 }
 
-// Chat is conversation state, not arrangement: undo must remove an added track but keep the message that
-// explains it, so snapshots restored by undo or redo take the live history.
-export function withLiveChat(snapshot: Song, current: Song): Song {
-  if (snapshot.chat === current.chat) return snapshot;
-  if (current.chat === undefined) {
-    const { chat: _dropped, ...rest } = snapshot;
-    void _dropped;
-    return rest;
+// Chat and lyrics are written by the user outside the arrangement: undo must remove an added track but keep the
+// message that explains it and the words being written, so snapshots restored by undo or redo take the live values.
+export function withLiveFields(snapshot: Song, current: Song): Song {
+  let result = snapshot;
+  for (const key of ["chat", "lyrics"] as const) {
+    if (result[key] === current[key]) continue;
+    if (current[key] === undefined) {
+      const { [key]: _dropped, ...rest } = result;
+      void _dropped;
+      result = rest;
+    } else {
+      result = { ...result, [key]: current[key] };
+    }
   }
-  return { ...snapshot, chat: current.chat };
+  return result;
 }
