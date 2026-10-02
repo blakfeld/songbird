@@ -14,7 +14,7 @@ vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   getInstruments: vi.fn(),
   getSongLimits: vi.fn(),
-  sendChat: vi.fn(),
+  streamChat: vi.fn(),
   generateTrack: vi.fn(),
 }));
 

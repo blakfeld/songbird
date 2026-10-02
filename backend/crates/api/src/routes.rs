@@ -97,10 +97,13 @@ pub fn routes(state: AppState) -> Router {
 async fn no_store(request: Request, next: Next) -> Response {
     let is_api = request.uri().path().starts_with("/api/v1");
     let mut response = next.run(request).await;
+    // A streamed response sets its own value, because it also needs `no-transform` to stay
+    // unbuffered.
     if is_api {
         response
             .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            .entry(header::CACHE_CONTROL)
+            .or_insert(HeaderValue::from_static("no-store"));
     }
     response
 }

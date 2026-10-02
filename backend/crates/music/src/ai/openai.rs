@@ -4,10 +4,13 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use std::ops::ControlFlow;
+
+use super::sse::SseParser;
 use super::{
-    http_client, probe_models, read_error_fields, read_json_capped, retry_after_secs,
-    transport_error, ErrorFields, KeyCheckError, ProviderError, StructuredProvider,
-    StructuredRequest, DEFAULT_REQUEST_TIMEOUT,
+    http_client, probe_models, read_error_fields, read_json_capped, read_stream_capped,
+    retry_after_secs, transport_error, ErrorFields, KeyCheckError, ProviderError,
+    StructuredProvider, StructuredRequest, TextSink, DEFAULT_REQUEST_TIMEOUT,
 };
 
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com";
@@ -98,24 +101,15 @@ impl OpenAiProvider {
     }
 }
 
-impl std::fmt::Debug for OpenAiProvider {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAiProvider")
-            .field("base_url", &self.base_url)
-            .field("model", &self.model)
-            .finish_non_exhaustive()
-    }
-}
-
-#[async_trait]
-impl StructuredProvider for OpenAiProvider {
-    fn name(&self) -> &'static str {
-        "openai"
-    }
-
-    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+impl OpenAiProvider {
+    /// Shared by both paths so status handling cannot drift between them.
+    async fn send(
+        &self,
+        request: &StructuredRequest,
+        stream: bool,
+    ) -> Result<reqwest::Response, ProviderError> {
         // Strict json_schema is what makes the model return schema-shaped JSON.
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "max_completion_tokens": self.max_tokens,
             "messages": [
@@ -132,6 +126,9 @@ impl StructuredProvider for OpenAiProvider {
                 },
             },
         });
+        if stream {
+            body["stream"] = json!(true);
+        }
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
@@ -142,16 +139,111 @@ impl StructuredProvider for OpenAiProvider {
             .map_err(|e| transport_error("OpenAI", &e))?;
 
         let status = response.status();
-        if !status.is_success() {
-            let retry_after = retry_after_secs(response.headers());
-            let fields = read_error_fields(response).await;
-            // The body text is dropped: it may echo request content.
-            return Err(
-                classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
-                    ProviderError::Request(format!("the OpenAI API returned HTTP {status}"))
-                }),
-            );
+        if status.is_success() {
+            return Ok(response);
         }
+        let retry_after = retry_after_secs(response.headers());
+        let fields = read_error_fields(response).await;
+        // The body text is dropped: it may echo request content.
+        Err(
+            classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
+                ProviderError::Request(format!("the OpenAI API returned HTTP {status}"))
+            }),
+        )
+    }
+}
+
+/// The same early-end checks as the buffered path, applied as chunks arrive so a refusal or
+/// truncation fails without waiting for the rest of the stream.
+#[derive(Default)]
+struct CompletionStream {
+    content: String,
+    finished: bool,
+}
+
+impl CompletionStream {
+    fn handle(
+        &mut self,
+        data: &str,
+        text: &TextSink<'_>,
+    ) -> Result<ControlFlow<()>, ProviderError> {
+        if data.trim() == "[DONE]" {
+            self.finished = true;
+            return Ok(ControlFlow::Break(()));
+        }
+        let chunk: Value = serde_json::from_str(data)
+            .map_err(|_| ProviderError::InvalidOutput("stream event is not JSON".into()))?;
+        if chunk.get("error").is_some() {
+            return Err(stream_error(&chunk["error"]));
+        }
+        let choice = &chunk["choices"][0];
+        let delta = &choice["delta"];
+        if delta["refusal"].as_str().is_some_and(|r| !r.is_empty()) {
+            return Err(ProviderError::InvalidOutput("the model refused".into()));
+        }
+        if let Some(fragment) = delta["content"].as_str().filter(|c| !c.is_empty()) {
+            self.content.push_str(fragment);
+            text.emit(fragment);
+        }
+        if let Some(reason) = choice["finish_reason"].as_str() {
+            if matches!(reason, "length" | "content_filter") {
+                return Err(ProviderError::InvalidOutput(format!(
+                    "generation ended early ({reason})"
+                )));
+            }
+            self.finished = true;
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn finish(self) -> Result<Value, ProviderError> {
+        if !self.finished {
+            return Err(ProviderError::Request(
+                "the OpenAI stream ended before the response finished".into(),
+            ));
+        }
+        if self.content.trim().is_empty() {
+            return Err(ProviderError::InvalidOutput(
+                "response had no content".into(),
+            ));
+        }
+        serde_json::from_str(&self.content)
+            .map_err(|e| ProviderError::InvalidOutput(format!("content is not JSON: {e}")))
+    }
+}
+
+/// Only the machine-readable fields are read, as for HTTP errors, because the status line was
+/// already sent as 200 and the message text can echo request content.
+fn stream_error(error: &Value) -> ProviderError {
+    let fields: ErrorFields = serde_json::from_value(error.clone()).unwrap_or_default();
+    if fields.is_any_of(&QUOTA_MARKERS) {
+        ProviderError::QuotaExhausted
+    } else if fields.is_any_of(&["rate_limit_exceeded"]) {
+        ProviderError::RateLimited { retry_after: None }
+    } else if fields.is_any_of(&["invalid_api_key"]) {
+        ProviderError::Unauthorized
+    } else {
+        ProviderError::Request("the OpenAI API reported an error during the response".into())
+    }
+}
+
+impl std::fmt::Debug for OpenAiProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiProvider")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl StructuredProvider for OpenAiProvider {
+    fn name(&self) -> &'static str {
+        "openai"
+    }
+
+    async fn generate(&self, request: &StructuredRequest) -> Result<Value, ProviderError> {
+        let response = self.send(request, false).await?;
         let payload = read_json_capped(response).await?;
         let choice = &payload["choices"][0];
         let message = &choice["message"];
@@ -170,6 +262,26 @@ impl StructuredProvider for OpenAiProvider {
             .ok_or_else(|| ProviderError::InvalidOutput("response had no content".into()))?;
         serde_json::from_str(content)
             .map_err(|e| ProviderError::InvalidOutput(format!("content is not JSON: {e}")))
+    }
+
+    async fn generate_streaming(
+        &self,
+        request: &StructuredRequest,
+        text: &TextSink<'_>,
+    ) -> Result<Value, ProviderError> {
+        let response = self.send(request, true).await?;
+        let mut parser = SseParser::new();
+        let mut stream = CompletionStream::default();
+        read_stream_capped(response, |chunk| {
+            for event in parser.push(chunk) {
+                if stream.handle(&event.data, text)?.is_break() {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+            Ok(ControlFlow::Continue(()))
+        })
+        .await?;
+        stream.finish()
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -445,5 +557,194 @@ mod tests {
     fn debug_never_shows_the_key() {
         let p = OpenAiProvider::new(SecretString::from("sk-very-secret"), "m");
         assert!(!format!("{p:?}").contains("sk-very-secret"));
+    }
+
+    mod streaming {
+        use super::*;
+        use std::sync::Mutex;
+
+        fn chunk(delta: Value, finish_reason: Value) -> String {
+            let data = json!({"choices": [{"delta": delta, "finish_reason": finish_reason}]});
+            format!("data: {data}\n\n")
+        }
+
+        fn content_stream(fragments: &[&str], finish_reason: &str) -> String {
+            let mut body = chunk(json!({"role": "assistant", "content": ""}), Value::Null);
+            for fragment in fragments {
+                body += &chunk(json!({"content": fragment}), Value::Null);
+            }
+            body += &chunk(json!({}), json!(finish_reason));
+            body + "data: [DONE]\n\n"
+        }
+
+        fn stream_response(body: String) -> ResponseTemplate {
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+
+        async fn run(response: ResponseTemplate) -> (Result<Value, ProviderError>, Vec<String>) {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/chat/completions"))
+                .respond_with(response)
+                .mount(&server)
+                .await;
+            let seen = Mutex::new(Vec::new());
+            let push = |fragment: &str| seen.lock().unwrap().push(fragment.to_string());
+            let result = provider(&server)
+                .generate_streaming(&request(), &TextSink::new(&push))
+                .await;
+            (result, seen.into_inner().unwrap())
+        }
+
+        #[tokio::test]
+        async fn fragments_reach_the_sink_in_order_and_the_value_matches_the_buffered_result() {
+            let fragments = ["{\"na", "me\":\"o", "k\"}"];
+            let (result, seen) = run(stream_response(content_stream(&fragments, "stop"))).await;
+            assert_eq!(seen, fragments);
+            let streamed = result.unwrap();
+
+            let buffered = generate_with(ResponseTemplate::new(200).set_body_json(completion(
+                json!({"role": "assistant", "content": "{\"name\":\"ok\"}"}),
+                "stop",
+            )))
+            .await
+            .unwrap();
+            assert_eq!(streamed, buffered);
+        }
+
+        #[tokio::test]
+        async fn the_request_asks_for_a_stream_with_the_strict_schema() {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(header("authorization", "Bearer test-key"))
+                .respond_with(stream_response(content_stream(&["{}"], "stop")))
+                .mount(&server)
+                .await;
+            provider(&server)
+                .generate_streaming(&request(), &TextSink::discard())
+                .await
+                .unwrap();
+            let sent: Value = server.received_requests().await.unwrap()[0]
+                .body_json()
+                .unwrap();
+            assert_eq!(sent["stream"], true);
+            assert_eq!(sent["response_format"]["json_schema"]["strict"], true);
+        }
+
+        #[tokio::test]
+        async fn http_errors_map_as_they_do_without_streaming() {
+            let quota =
+                json!({"error": {"type": "insufficient_quota", "message": "SECRET-BODY-TEXT"}});
+            let cases = [
+                (
+                    401,
+                    json!({"error": {"type": "invalid_request_error"}}),
+                    None,
+                    ProviderError::Unauthorized,
+                ),
+                (
+                    429,
+                    json!({"error": {"type": "requests"}}),
+                    Some("20"),
+                    ProviderError::RateLimited {
+                        retry_after: Some(20),
+                    },
+                ),
+                (429, quota, None, ProviderError::QuotaExhausted),
+            ];
+            for (status, body, retry_after, expected) in cases {
+                let mut response = ResponseTemplate::new(status).set_body_json(body);
+                if let Some(value) = retry_after {
+                    response = response.insert_header("retry-after", value);
+                }
+                let (result, seen) = run(response).await;
+                let err = result.unwrap_err();
+                assert_eq!(err, expected);
+                assert!(!err.to_string().contains("SECRET-BODY-TEXT"));
+                assert!(seen.is_empty());
+            }
+            let (result, _) =
+                run(ResponseTemplate::new(503).set_body_string("secret upstream detail")).await;
+            let err = result.unwrap_err();
+            assert!(matches!(err, ProviderError::Request(_)));
+            assert!(err.to_string().contains("503"));
+            assert!(!err.to_string().contains("secret upstream detail"));
+        }
+
+        #[tokio::test]
+        async fn a_mid_stream_error_maps_without_the_body() {
+            for (code, expected) in [
+                ("insufficient_quota", Some(ProviderError::QuotaExhausted)),
+                (
+                    "rate_limit_exceeded",
+                    Some(ProviderError::RateLimited { retry_after: None }),
+                ),
+                ("invalid_api_key", Some(ProviderError::Unauthorized)),
+                ("server_error", None),
+            ] {
+                let mut body = chunk(json!({"content": "{\"na"}), Value::Null);
+                let error = json!({"error": {"code": code, "message": "SECRET-BODY-TEXT"}});
+                body += &format!("data: {error}\n\n");
+                let (result, seen) = run(stream_response(body)).await;
+                let err = result.unwrap_err();
+                match expected {
+                    Some(expected) => assert_eq!(err, expected, "{code}"),
+                    None => assert!(matches!(err, ProviderError::Request(_)), "{err}"),
+                }
+                assert!(!err.to_string().contains("SECRET-BODY-TEXT"));
+                assert_eq!(seen, ["{\"na"]);
+            }
+        }
+
+        #[tokio::test]
+        async fn truncation_filtering_and_refusals_are_invalid_output() {
+            for reason in ["length", "content_filter"] {
+                let (result, _) = run(stream_response(content_stream(&["{}"], reason))).await;
+                let err = result.unwrap_err();
+                assert!(
+                    matches!(&err, ProviderError::InvalidOutput(m) if m.contains(reason)),
+                    "{err}"
+                );
+            }
+            let refusal = chunk(json!({"refusal": "I cannot"}), Value::Null);
+            let (result, _) = run(stream_response(refusal + "data: [DONE]\n\n")).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+        }
+
+        #[tokio::test]
+        async fn empty_and_non_json_content_are_invalid_output() {
+            let (result, _) = run(stream_response(content_stream(&[], "stop"))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+            let (result, _) = run(stream_response(content_stream(&["not json"], "stop"))).await;
+            assert!(matches!(
+                result.unwrap_err(),
+                ProviderError::InvalidOutput(_)
+            ));
+        }
+
+        #[tokio::test]
+        async fn a_stream_that_ends_early_is_a_request_error() {
+            let body = chunk(json!({"content": "{\"na"}), Value::Null);
+            let (result, _) = run(stream_response(body)).await;
+            assert!(matches!(result.unwrap_err(), ProviderError::Request(_)));
+        }
+
+        #[tokio::test]
+        async fn an_oversize_stream_is_rejected() {
+            let padding = "x".repeat(5 * 1024 * 1024);
+            let (result, _) =
+                run(stream_response(content_stream(&[padding.as_str()], "stop"))).await;
+            assert!(
+                matches!(result.unwrap_err(), ProviderError::Request(m) if m.contains("limit"))
+            );
+        }
     }
 }

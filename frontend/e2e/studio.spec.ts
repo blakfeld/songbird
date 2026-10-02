@@ -506,7 +506,7 @@ test("a sent chat message shows at once and the input stays typeable while the r
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  // The mock replies instantly, so the request is held to make the pending state observable.
+  // The request is held before it reaches the backend, so the pending state outlasts the mock's short stream.
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/api/v1/songs/chat", async (route) => {
@@ -523,7 +523,7 @@ test("a sent chat message shows at once and the input stays typeable while the r
   await input.fill("give me a bass line");
   await send.click();
   await expect(log.getByText("give me a bass line")).toBeVisible();
-  await expect(page.getByText("Thinking…")).toBeVisible();
+  await expect(page.getByText("Planning…")).toBeVisible();
   await expect(input).toHaveValue("");
   await expect(input).toBeEnabled();
   await expect(input).toBeFocused();
@@ -535,8 +535,99 @@ test("a sent chat message shows at once and the input stays typeable while the r
 
   release();
   await expect(log.getByText("Added a Bass track.")).toBeVisible();
-  await expect(page.getByText("Thinking…")).toHaveCount(0);
+  await expect(page.getByText("Planning…")).toHaveCount(0);
   await expect(input).toHaveValue("next idea");
+
+  expect(problems).toEqual([]);
+});
+
+test("the reply text grows and the step moves from planning to writing before the track is added", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  await page.goto("/studio");
+  await newSong(page, "Streaming Song");
+
+  // The mock's stream lasts a fraction of a second, so the DOM is recorded as it changes rather than polled.
+  await page.evaluate(() => {
+    const seen: { text: string; step: string; clips: number }[] = [];
+    (window as unknown as { __chatFrames: typeof seen }).__chatFrames = seen;
+    const record = () => {
+      const bubble = document.querySelector('[role="log"] ~ div');
+      if (!bubble) return;
+      seen.push({
+        text: bubble.querySelector('[aria-live="off"]')?.textContent ?? "",
+        step: bubble.querySelector('[aria-hidden="true"]')?.textContent ?? "",
+        clips: document.querySelectorAll("[data-clip-id]").length,
+      });
+    };
+    new MutationObserver(record).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+
+  await page.getByRole("textbox", { name: "Message the assistant" }).fill("give me a piano that plays slow jazzy chords");
+  await page.getByRole("button", { name: "Send message" }).click();
+  const log = page.getByRole("log", { name: "Conversation" });
+  await expect(log.getByText("Added a Piano track.")).toBeVisible();
+  await expect(page.getByRole("group", { name: /^Track 1: Piano/ }).locator("[data-clip-id]")).toHaveCount(1);
+
+  const frames = await page.evaluate(
+    () => (window as unknown as { __chatFrames: { text: string; step: string; clips: number }[] }).__chatFrames,
+  );
+  const texts = [...new Set(frames.map((f) => f.text).filter(Boolean))];
+  expect(texts.length).toBeGreaterThan(1);
+  texts.forEach((t, i) => i > 0 && expect(t.startsWith(texts[i - 1])).toBe(true));
+  expect(texts.at(-1)).toBe("Added a Piano track.");
+  const steps = frames.map((f) => f.step);
+  expect(steps).toContain("Planning…");
+  expect(steps).toContain("Writing Piano…");
+  expect(steps.indexOf("Planning…")).toBeLessThan(steps.indexOf("Writing Piano…"));
+  expect(frames.filter((f) => f.text !== "" || f.step !== "").every((f) => f.clips === 0)).toBe(true);
+  await expect(page.getByText("Planning…")).toHaveCount(0);
+
+  expect(problems).toEqual([]);
+});
+
+test("opening another song mid-request adds no track and shows no error in either song", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+
+  // Held before it reaches the backend, so the request is certainly still in flight when the song changes.
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let aborted = false;
+  page.on("requestfailed", (r) => r.url().endsWith("/api/v1/songs/chat") && (aborted = true));
+  await page.route("**/api/v1/songs/chat", async (route) => {
+    await gate;
+    await route.continue().catch(() => undefined);
+  });
+
+  await page.goto("/studio");
+  await newSong(page, "First Song");
+  await page.getByRole("textbox", { name: "Message the assistant" }).fill("give me a bass line");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Planning…")).toBeVisible();
+
+  await page.getByRole("button", { name: "Songs" }).click();
+  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: "New song", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Songs" })).toBeHidden();
+  await expect(page.getByText("Planning…")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled();
+  await expect.poll(() => aborted).toBe(true);
+
+  release();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("group", { name: /^Track \d+:/ })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
+  await expect(page.getByText("give me a bass line")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Songs" }).click();
+  await page.getByRole("dialog", { name: "Songs" }).getByRole("button", { name: /^First Song/ }).click();
+  await expect(page.getByRole("button", { name: "Rename song First Song" })).toBeVisible();
+  await expect(page.getByRole("group", { name: /^Track \d+:/ })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(0);
+  await expect(page.getByText("give me a bass line")).toHaveCount(0);
 
   expect(problems).toEqual([]);
 });

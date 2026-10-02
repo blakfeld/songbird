@@ -9,14 +9,28 @@ import { inputClass } from "@/components/ui/classes";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { isSubmitEnter } from "@/lib/isSubmitEnter";
 import type { Song, Track } from "@/lib/song/types";
-import type { ChatController } from "./useChat";
+import { trackLabel } from "./trackLabel";
+import type { ChatController, ChatStage } from "./useChat";
 
-// The instrument is named so the user can see what the assistant chose; it is dropped when the track name already says it.
+// Within this distance of the end counts as following the conversation; further up means the user is rereading.
+const STICK_TO_BOTTOM_PX = 32;
+
 function addedLabel(track: Track, instruments: readonly InstrumentInfo[] | null): string {
-  const instrument = instruments?.find((i) => i.id === track.instrument)?.name;
-  return instrument && instrument !== track.name
-    ? `Added track: ${track.name} (${instrument})`
-    : `Added track: ${track.name}`;
+  return `Added track: ${trackLabel(track.name, track.instrument, instruments)}`;
+}
+
+// The spoken form omits the ellipsis because some screen readers read it aloud as "dot dot dot".
+function stepLabel(stage: ChatStage, instruments: readonly InstrumentInfo[] | null) {
+  switch (stage.kind) {
+    case "planning":
+      return { visible: "Planning…", spoken: "Assistant is planning." };
+    case "replanning":
+      return { visible: "Planning again…", spoken: "Assistant is planning again." };
+    case "writing": {
+      const label = trackLabel(stage.name, stage.instrument, instruments, { idFallback: true });
+      return { visible: `Writing ${label}…`, spoken: `Assistant is writing ${label}.` };
+    }
+  }
 }
 
 export function AssistantPanel({
@@ -40,9 +54,17 @@ export function AssistantPanel({
   const input = useRef<HTMLTextAreaElement>(null);
   const messages = song?.chat ?? [];
 
+  const following = useRef(true);
+  const step = chat.sending ? stepLabel(chat.stage, instruments) : null;
+  const stageKey = chat.stage.kind === "writing" ? `writing:${chat.stage.name}` : chat.stage.kind;
+
   useEffect(() => {
-    scroller.current?.scrollTo?.({ top: scroller.current.scrollHeight });
-  }, [messages.length, chat.pending, chat.sending]);
+    // The user's own send always jumps to the end; later growth only follows a reader who is already there.
+    if (chat.pending !== null) following.current = true;
+  }, [chat.pending]);
+  useEffect(() => {
+    if (following.current) scroller.current?.scrollTo?.({ top: scroller.current.scrollHeight });
+  }, [messages.length, chat.pending, chat.sending, chat.streamedReply, stageKey]);
 
   const submit = async () => {
     const text = draft;
@@ -72,7 +94,14 @@ export function AssistantPanel({
           </h2>
         </div>
       )}
-      <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+      <div
+        ref={scroller}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_PX;
+        }}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4"
+      >
         {!showLog ? (
           <div className="m-auto max-w-60 text-center">
             <p className="text-sm font-medium">Your song assistant</p>
@@ -112,12 +141,24 @@ export function AssistantPanel({
             )}
           </ol>
         )}
-        {chat.sending && (
-          <p role="status" className="mt-3 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <Spinner />
-            Thinking…
-          </p>
+        {step && (
+          <div className="mt-3 flex max-w-[90%] flex-col gap-1 self-start rounded-lg bg-zinc-100 px-3 py-2 text-sm dark:bg-zinc-900">
+            <span className="sr-only">Assistant:</span>
+            {chat.streamedReply && (
+              <p aria-live="off" className="whitespace-pre-wrap break-words">
+                {chat.streamedReply}
+              </p>
+            )}
+            <p aria-hidden="true" className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <Spinner />
+              {step.visible}
+            </p>
+          </div>
         )}
+        {/* Always mounted: a live region that appears together with its text is often not announced. */}
+        <p role="status" data-testid="assistant-status" className="sr-only">
+          {step?.spoken ?? ""}
+        </p>
       </div>
       {notice && <div className="px-3 pb-2">{notice}</div>}
       {chat.error && (

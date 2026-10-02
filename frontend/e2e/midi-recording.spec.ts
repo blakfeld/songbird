@@ -92,7 +92,7 @@ test("record over empty studio lane space, then undo the take", async ({ page })
   await sendNote(page, 60, 300);
   await page.waitForTimeout(300);
   await record.click();
-  await expect(page.getByRole("status")).toContainText(/Recorded \d+ notes?/);
+  await expect(page.getByRole("status").filter({ hasText: /Recorded \d+ notes?/ })).toBeVisible();
   await expect(clips).toHaveCount(1);
 
   // Focus must leave the Record button so the shortcut reaches the page rather than a control.

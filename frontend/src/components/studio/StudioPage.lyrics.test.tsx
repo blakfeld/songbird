@@ -9,6 +9,7 @@ import { createServerSongLibrary, type SongLibrary } from "@/lib/song/songLibrar
 import { newSong, newTrack, type Song } from "@/lib/song/types";
 import { clearStoredValueCache } from "@/lib/useStoredValue";
 import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
+import { chatResult } from "@/test/chatStream";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
 import { RIGHT_TAB_KEY } from "./RightColumnTabs";
 import { StudioPage } from "./StudioPage";
@@ -17,7 +18,7 @@ vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   getInstruments: vi.fn(),
   getSongLimits: vi.fn(),
-  sendChat: vi.fn(),
+  streamChat: vi.fn(),
   assistLyrics: vi.fn(),
 }));
 
@@ -115,7 +116,7 @@ afterEach(() => {
 describe("right column tabs", () => {
   it("shows the assistant first and swaps to the notepad, keeping chat history", async () => {
     const reply: ChatResponse = { reply: "Added a Bass track.", track: null };
-    vi.mocked(api.sendChat).mockResolvedValue(reply);
+    vi.mocked(api.streamChat).mockImplementation(chatResult(reply));
     await renderStudio();
     expect(screen.getByRole("tab", { name: "Assistant" })).toHaveAttribute("aria-selected", "true");
     await userEvent.type(screen.getByRole("textbox", { name: "Message the assistant" }), "a bass");
@@ -299,7 +300,7 @@ describe("lyric assistant in the Studio", () => {
 
   it("keeps the lyric and song conversations apart", async () => {
     vi.mocked(api.assistLyrics).mockResolvedValue({ reply: "Lyric reply.", suggestions: [] });
-    vi.mocked(api.sendChat).mockResolvedValue({ reply: "Song reply.", track: null });
+    vi.mocked(api.streamChat).mockImplementation(chatResult({ reply: "Song reply.", track: null }));
     await renderStudio("lyrics");
     await notepad();
     await ask("lyrics question");
@@ -314,7 +315,7 @@ describe("lyric assistant in the Studio", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Lyrics" }));
     expect(screen.getByText("Lyric reply.")).toBeInTheDocument();
     expect(screen.queryByText("Song reply.")).not.toBeInTheDocument();
-    expect(api.sendChat).toHaveBeenCalledTimes(1);
+    expect(api.streamChat).toHaveBeenCalledTimes(1);
   });
 
   it("discards a reply that arrives after another song was opened", async () => {

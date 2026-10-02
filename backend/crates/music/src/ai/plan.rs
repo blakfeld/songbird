@@ -7,9 +7,10 @@ use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Duration;
 
 use super::prompt::strictify;
-use super::{ProviderError, StructuredProvider, StructuredRequest};
+use super::{ProviderError, StructuredProvider, StructuredRequest, TextSink};
 use crate::draft::DraftError;
 use crate::expand::MAX_SPAN_MEASURES;
 use crate::instruments::pitch::pitch_name;
@@ -75,6 +76,16 @@ pub struct PlanRequest {
 #[async_trait]
 pub trait PlanProvider: Send + Sync {
     async fn plan(&self, request: &PlanRequest) -> Result<PlanDraft, ProviderError>;
+
+    /// Defaults to the buffered call so planners that cannot stream need no code: they emit
+    /// nothing and the reply arrives with the plan.
+    async fn plan_streaming(
+        &self,
+        request: &PlanRequest,
+        _text: &TextSink<'_>,
+    ) -> Result<PlanDraft, ProviderError> {
+        self.plan(request).await
+    }
 
     /// Run at startup so a misconfigured provider fails fast instead of on the
     /// first user request.
@@ -240,10 +251,9 @@ impl<T: StructuredProvider> SchemaPlanProvider<T> {
     }
 }
 
-#[async_trait]
-impl<T: StructuredProvider> PlanProvider for SchemaPlanProvider<T> {
-    async fn plan(&self, request: &PlanRequest) -> Result<PlanDraft, ProviderError> {
-        let structured = StructuredRequest {
+impl<T: StructuredProvider> SchemaPlanProvider<T> {
+    fn structured(request: &PlanRequest) -> StructuredRequest {
+        StructuredRequest {
             system: format!(
                 "{PLANNER_SYSTEM_PROMPT}\n\nInstruments:\n{}",
                 instrument_list(&request.instruments)
@@ -252,9 +262,27 @@ impl<T: StructuredProvider> PlanProvider for SchemaPlanProvider<T> {
             schema: plan_schema(&request.instruments),
             tool_name: PLAN_TOOL_NAME.into(),
             tool_description: PLAN_TOOL_DESCRIPTION.into(),
-        };
-        let value = self.transport.generate(&structured).await?;
-        serde_json::from_value(value).map_err(|e| ProviderError::InvalidOutput(e.to_string()))
+        }
+    }
+}
+
+fn draft_from(value: Value) -> Result<PlanDraft, ProviderError> {
+    serde_json::from_value(value).map_err(|e| ProviderError::InvalidOutput(e.to_string()))
+}
+
+#[async_trait]
+impl<T: StructuredProvider> PlanProvider for SchemaPlanProvider<T> {
+    async fn plan(&self, request: &PlanRequest) -> Result<PlanDraft, ProviderError> {
+        draft_from(self.transport.generate(&Self::structured(request)).await?)
+    }
+
+    async fn plan_streaming(
+        &self,
+        request: &PlanRequest,
+        text: &TextSink<'_>,
+    ) -> Result<PlanDraft, ProviderError> {
+        let structured = Self::structured(request);
+        draft_from(self.transport.generate_streaming(&structured, text).await?)
     }
 
     async fn check(&self) -> Result<(), ProviderError> {
@@ -395,6 +423,84 @@ impl PlanProvider for MockPlanProvider {
     }
 }
 
+/// How long the streaming mock waits between fragments: long enough for a browser test to
+/// observe the reply growing, short enough not to slow every e2e chat noticeably.
+const STREAM_FRAGMENT_DELAY: Duration = Duration::from_millis(50);
+/// Small enough that even the short mock replies arrive in several fragments.
+const STREAM_FRAGMENT_CHARS: usize = 8;
+
+/// The mock planner for browser tests that exercise the streamed path: it plans exactly like
+/// `MockPlanProvider` but writes its JSON out in delayed fragments, reply first.
+#[derive(Debug, Clone, Copy)]
+pub struct StreamingMockPlanProvider {
+    delay: Duration,
+}
+
+impl Default for StreamingMockPlanProvider {
+    fn default() -> Self {
+        Self {
+            delay: STREAM_FRAGMENT_DELAY,
+        }
+    }
+}
+
+impl StreamingMockPlanProvider {
+    /// Lets unit tests stream without waiting.
+    pub fn with_delay(delay: Duration) -> Self {
+        Self { delay }
+    }
+}
+
+/// Splits the plan's JSON so the reply's text is the only part sent in pieces; the rest goes
+/// out whole, which keeps a mock chat fast once the reply is done.
+fn mock_fragments(draft: &PlanDraft) -> Vec<String> {
+    let json = serde_json::to_string(draft).expect("plan serializes");
+    let marker = "\"reply\":\"";
+    let start = json.find(marker).expect("reply is serialized") + marker.len();
+    let reply_len = serde_json::to_string(&draft.reply)
+        .expect("reply serializes")
+        .len()
+        - 2;
+    let end = start + reply_len;
+    let reply_chars: Vec<char> = json[start..end].chars().collect();
+    let mut fragments = vec![json[..start].to_string()];
+    fragments.extend(
+        reply_chars
+            .chunks(STREAM_FRAGMENT_CHARS)
+            .map(|c| c.iter().collect::<String>()),
+    );
+    fragments.push(json[end..].to_string());
+    fragments
+}
+
+#[async_trait]
+impl PlanProvider for StreamingMockPlanProvider {
+    async fn plan(&self, request: &PlanRequest) -> Result<PlanDraft, ProviderError> {
+        MockPlanProvider.plan(request).await
+    }
+
+    async fn plan_streaming(
+        &self,
+        request: &PlanRequest,
+        text: &TextSink<'_>,
+    ) -> Result<PlanDraft, ProviderError> {
+        let draft = MockPlanProvider.plan(request).await?;
+        let fragments = mock_fragments(&draft);
+        let last = fragments.len() - 1;
+        for (i, fragment) in fragments.iter().enumerate() {
+            text.emit(fragment);
+            if i != last {
+                tokio::time::sleep(self.delay).await;
+            }
+        }
+        Ok(draft)
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,11 +548,11 @@ mod tests {
             schema["required"],
             json!([
                 "action",
-                "instrument",
-                "measures",
-                "prompt",
                 "reply",
-                "track_name"
+                "instrument",
+                "track_name",
+                "prompt",
+                "measures"
             ])
         );
         // Strict structured outputs need a nullable type spelled out, not an
@@ -598,5 +704,96 @@ mod tests {
     #[tokio::test]
     async fn mock_plans_are_deterministic() {
         assert_eq!(mock("now the bass").await, mock("now the bass").await);
+    }
+
+    /// Models usually write properties in schema order, so this decides how early the reply
+    /// can stream; the planner stays correct if it moves, but streams later.
+    #[test]
+    fn reply_is_the_second_property_of_the_plan_schema() {
+        let schema = plan_schema(&instruments());
+        let properties: Vec<&String> = schema["properties"].as_object().unwrap().keys().collect();
+        assert_eq!(properties[..2], ["action", "reply"]);
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(required[..2], ["action", "reply"]);
+    }
+
+    struct Collected(std::sync::Mutex<Vec<String>>);
+
+    impl Collected {
+        fn new() -> Self {
+            Self(std::sync::Mutex::new(Vec::new()))
+        }
+
+        fn push(&self, fragment: &str) {
+            self.0.lock().unwrap().push(fragment.to_string());
+        }
+
+        fn take(&self) -> Vec<String> {
+            std::mem::take(&mut self.0.lock().unwrap())
+        }
+    }
+
+    #[tokio::test]
+    async fn the_streaming_mock_plans_like_the_plain_mock() {
+        let collected = Collected::new();
+        let sink = |f: &str| collected.push(f);
+        let provider = StreamingMockPlanProvider::with_delay(Duration::ZERO);
+        for message in ["now the bass", "what tempo is this?", "8 bars of drums"] {
+            let streamed = provider
+                .plan_streaming(&request(message), &TextSink::new(&sink))
+                .await
+                .unwrap();
+            assert_eq!(streamed, mock(message).await, "{message}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_streaming_mock_writes_the_plan_json_with_the_reply_in_several_fragments() {
+        let collected = Collected::new();
+        let sink = |f: &str| collected.push(f);
+        let provider = StreamingMockPlanProvider::with_delay(Duration::ZERO);
+        let draft = provider
+            .plan_streaming(&request("what tempo is this?"), &TextSink::new(&sink))
+            .await
+            .unwrap();
+        let fragments = collected.take();
+        assert!(fragments.len() > 3, "{fragments:?}");
+        let whole = fragments.concat();
+        assert_eq!(serde_json::from_str::<PlanDraft>(&whole).unwrap(), draft);
+
+        let mut extractor = crate::ai::reply_stream::ReplyExtractor::new();
+        let deltas: Vec<String> = fragments.iter().map(|f| extractor.push(f)).collect();
+        assert!(
+            deltas.iter().filter(|d| !d.is_empty()).count() > 2,
+            "{deltas:?}"
+        );
+        assert_eq!(deltas.concat(), draft.reply);
+    }
+
+    #[tokio::test]
+    async fn the_streaming_mock_waits_between_fragments() {
+        let provider = StreamingMockPlanProvider::with_delay(Duration::from_millis(20));
+        let started = std::time::Instant::now();
+        provider
+            .plan_streaming(&request("now the bass"), &TextSink::discard())
+            .await
+            .unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(60));
+    }
+
+    #[tokio::test]
+    async fn the_plain_mock_streams_nothing() {
+        let collected = Collected::new();
+        let sink = |f: &str| collected.push(f);
+        MockPlanProvider
+            .plan_streaming(&request("now the bass"), &TextSink::new(&sink))
+            .await
+            .unwrap();
+        assert!(collected.take().is_empty());
     }
 }

@@ -183,7 +183,7 @@ mod tests {
         let schema = draft_schema(&DRUMS);
         assert_eq!(
             schema["required"],
-            json!(["arrangement", "name", "sections", "swing", "tempo_bpm"])
+            json!(["name", "tempo_bpm", "swing", "sections", "arrangement"])
         );
         assert_eq!(
             schema["properties"]["swing"]["type"],

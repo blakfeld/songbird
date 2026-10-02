@@ -9,8 +9,9 @@ use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use music::ai::{
-    claude, openai, ClaudeProvider, HttpClient, KeyCheckError, LyricsProvider, OpenAiProvider,
-    PatternProvider, PlanProvider, ProviderError, StructuredProvider,
+    claude, openai, ClaudeProvider, HttpClient, KeyCheckError, LyricsProvider, MockProvider,
+    OpenAiProvider, PatternProvider, PlanProvider, ProviderError, StreamingMockPlanProvider,
+    StructuredProvider,
 };
 use music::generate::GenerationError;
 use music::{Instrument, PatternDraft};
@@ -169,7 +170,7 @@ impl MockUserProviders {
 impl UserProviders for MockUserProviders {
     fn providers(&self, _: AiProvider, key: UserApiKey) -> Providers {
         match Self::failure(&key) {
-            None => Providers::mock(),
+            None => Providers::new(SlowMockPatterns, StreamingMockPlanProvider::default()),
             Some(error) => Providers::new(Failing(error.clone()), Failing(error.clone()))
                 .with_lyrics(Failing(error)),
         }
@@ -184,6 +185,29 @@ impl UserProviders for MockUserProviders {
         } else {
             Ok(())
         }
+    }
+}
+
+/// Browser tests assert on the "Writing ..." step, which the instant mock would replace with
+/// the track before it could render; only `user-mock` pays this delay, so unit and API tests
+/// on the plain mock stay fast.
+struct SlowMockPatterns;
+
+const MOCK_GENERATION_DELAY: Duration = Duration::from_millis(300);
+
+#[async_trait]
+impl PatternProvider for SlowMockPatterns {
+    async fn generate(
+        &self,
+        request: &music::GenerateRequest,
+        instrument: &Instrument,
+    ) -> Result<PatternDraft, ProviderError> {
+        tokio::time::sleep(MOCK_GENERATION_DELAY).await;
+        MockProvider.generate(request, instrument).await
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
     }
 }
 

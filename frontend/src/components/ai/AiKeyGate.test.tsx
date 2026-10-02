@@ -33,6 +33,8 @@ const song = newSongWithTracks();
 const chat: ChatController = {
   sending: false,
   pending: null,
+  stage: { kind: "planning" },
+  streamedReply: "",
   error: null,
   errorAction: undefined,
   send: vi.fn(async () => "sent" as const),

@@ -7,7 +7,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use api::keys::{AiKeyEntry, AiKeySummary, AiProvider};
-use music::chat::{ChatBody, ChatMessage, ChatResponse, ChatTrack};
+use music::chat::{
+    ChatBody, ChatEvent, ChatMessage, ChatProgress, ChatReplyDelta, ChatReplyReset, ChatResponse,
+    ChatStreamError, ChatTrack,
+};
 use music::instruments::{InstrumentKind, PitchRange};
 use music::lyrics::{
     LyricSelection, LyricSuggestion, LyricsAssistBody, LyricsAssistResponse, LyricsSectionContext,
@@ -60,6 +63,11 @@ fn export_into(dir: &Path) {
     ChatMessage::export_all(&cfg).unwrap();
     ChatResponse::export_all(&cfg).unwrap();
     ChatTrack::export_all(&cfg).unwrap();
+    ChatEvent::export_all(&cfg).unwrap();
+    ChatProgress::export_all(&cfg).unwrap();
+    ChatReplyDelta::export_all(&cfg).unwrap();
+    ChatReplyReset::export_all(&cfg).unwrap();
+    ChatStreamError::export_all(&cfg).unwrap();
     ChatRole::export_all(&cfg).unwrap();
     ChatEntry::export_all(&cfg).unwrap();
     Section::export_all(&cfg).unwrap();

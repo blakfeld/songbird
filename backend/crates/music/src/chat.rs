@@ -2,12 +2,15 @@
 //! HTTP layer sequences the planner and generation calls so each runs under
 //! its own timeout.
 
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::ai::plan::{Plan, PlanProvider, PlanRequest};
 use crate::ai::prompt::{escape_for_fence, escape_name};
-use crate::ai::ProviderError;
+use crate::ai::reply_stream::ReplyExtractor;
+use crate::ai::{ProviderError, TextSink};
 use crate::draft::DraftError;
 use crate::generate::{GenerationError, ATTEMPTS};
 use crate::instruments::{InstrumentKind, InstrumentRegistry};
@@ -72,6 +75,70 @@ impl ChatResponse {
     }
 }
 
+/// Tagged by `stage` so the frontend can narrow on it; `writing` carries the track's identity
+/// because the UI names it before any notes exist.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+pub enum ChatProgress {
+    Planning,
+    Writing { name: String, instrument: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ChatReplyDelta {
+    pub text: String,
+}
+
+/// Empty because the event name alone means "discard the streamed reply".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(type = "Record<string, never>")]
+pub struct ChatReplyReset {}
+
+/// Mirrors the HTTP error body so clients handle both the same way; the message is the fixed
+/// API text, never provider output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ChatStreamError {
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub retry_after: Option<u64>,
+}
+
+/// The SSE event name is the variant's `event` tag and the JSON `data` line is its payload, so
+/// a client can decode `{event, data}` pairs into this union directly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "event", content = "data", rename_all = "snake_case")]
+pub enum ChatEvent {
+    Progress(ChatProgress),
+    ReplyDelta(ChatReplyDelta),
+    ReplyReset(ChatReplyReset),
+    Result(ChatResponse),
+    Error(ChatStreamError),
+}
+
+impl ChatEvent {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Progress(_) => "progress",
+            Self::ReplyDelta(_) => "reply_delta",
+            Self::ReplyReset(_) => "reply_reset",
+            Self::Result(_) => "result",
+            Self::Error(_) => "error",
+        }
+    }
+
+    /// The `data` line alone, because the event name travels in the SSE `event:` field.
+    pub fn data_json(&self) -> String {
+        let value = serde_json::to_value(self).expect("chat events serialize");
+        value
+            .get("data")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}))
+            .to_string()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ChatRequestError {
     #[error(transparent)]
@@ -117,6 +184,29 @@ pub struct ValidChat<'a> {
 }
 
 impl ValidChat<'_> {
+    pub fn range_for(&self, named_measures: Option<u32>) -> ChatRange {
+        self.range_rule().range_for(named_measures)
+    }
+
+    pub fn range_rule(&self) -> RangeRule {
+        RangeRule {
+            song_is_empty: self.song.song.tracks.iter().all(|t| t.clips.is_empty()),
+            song_measures: self.song.song.measures,
+            loop_range: self.loop_range,
+        }
+    }
+}
+
+/// Owned so a streamed chat, whose task cannot borrow the request, still decides the range
+/// from exactly the facts validation saw.
+#[derive(Debug, Clone, Copy)]
+pub struct RangeRule {
+    song_is_empty: bool,
+    song_measures: u32,
+    loop_range: Option<MeasureRange>,
+}
+
+impl RangeRule {
     /// Order matters: a length the user named wins because it is the most
     /// explicit request; an empty song gets a default because "the whole song"
     /// would be one measure; only then does the song's own length decide.
@@ -130,12 +220,11 @@ impl ValidChat<'_> {
         if let Some(measures) = named_measures {
             return whole(measures);
         }
-        if self.song.song.tracks.iter().all(|t| t.clips.is_empty()) {
+        if self.song_is_empty {
             return whole(DEFAULT_EMPTY_SONG_MEASURES);
         }
-        let song_measures = self.song.song.measures;
-        if song_measures <= MAX_RANGE_MEASURES {
-            return whole(song_measures);
+        if self.song_measures <= MAX_RANGE_MEASURES {
+            return whole(self.song_measures);
         }
         match self.loop_range {
             Some(range) if range.measures() <= MAX_RANGE_MEASURES => ChatRange::Range(range),
@@ -194,15 +283,52 @@ pub fn track_limit_reached(song: &ValidSong) -> bool {
     song.tracks.len() >= MAX_TRACKS
 }
 
+/// Lets a client render the reply before the validated plan exists: deltas since the last
+/// reset concatenate to a prefix of the reply the planner wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanEvent {
+    ReplyDelta(String),
+    /// The attempt that streamed the earlier deltas failed, so a retry starts the reply over.
+    ReplyReset,
+}
+
 /// Runs the planner with the same one retry as pattern generation, because an
 /// unknown instrument id is as unusable as an unparseable draft.
+///
+/// Without a sink the planner is called through its buffered entry point, so a plain JSON
+/// request never asks a provider to stream.
 pub async fn plan_chat(
     provider: &dyn PlanProvider,
     request: &PlanRequest,
+    events: Option<&(dyn Fn(PlanEvent) + Send + Sync)>,
 ) -> Result<Plan, GenerationError> {
     let mut last_error = None;
     for attempt in 1..=ATTEMPTS {
-        let draft = match provider.plan(request).await {
+        if attempt > 1 {
+            if let Some(events) = events {
+                // Sent unconditionally: the first attempt may have streamed text the user must
+                // not see joined to the second attempt's.
+                events(PlanEvent::ReplyReset);
+            }
+        }
+        let streamed = Mutex::new(StreamedReply::default());
+        let draft = match events {
+            None => provider.plan(request).await,
+            Some(events) => {
+                let forward = |fragment: &str| {
+                    let mut streamed = streamed.lock().expect("no panic while the lock is held");
+                    let text = streamed.extractor.push(fragment);
+                    if !text.is_empty() {
+                        streamed.text.push_str(&text);
+                        events(PlanEvent::ReplyDelta(text));
+                    }
+                };
+                provider
+                    .plan_streaming(request, &TextSink::new(&forward))
+                    .await
+            }
+        };
+        let draft = match draft {
             Ok(draft) => draft,
             Err(ProviderError::InvalidOutput(message)) => {
                 tracing::warn!(attempt, %message, "planner output was unparseable");
@@ -214,7 +340,18 @@ pub async fn plan_chat(
             Err(other) => return Err(other.into()),
         };
         match draft.check(&request.instruments) {
-            Ok(plan) => return Ok(plan),
+            Ok(plan) => {
+                let streamed = streamed.lock().expect("no panic while the lock is held");
+                // The extractor reads the first `reply` key but the parsed draft keeps the
+                // last, so a planner that repeats the key would otherwise leave streamed
+                // text that is not a prefix of its reply.
+                if let Some(events) = events {
+                    if !draft.reply.starts_with(&streamed.text) {
+                        events(PlanEvent::ReplyReset);
+                    }
+                }
+                return Ok(plan);
+            }
             Err(error) => {
                 tracing::warn!(attempt, %error, "plan failed validation");
                 last_error = Some(error.into());
@@ -222,6 +359,13 @@ pub async fn plan_chat(
         }
     }
     Err(last_error.unwrap_or_else(|| DraftError::InvalidPlan("no attempts".into()).into()))
+}
+
+/// Fresh per attempt because a failed attempt can stop mid-string.
+#[derive(Default)]
+struct StreamedReply {
+    extractor: ReplyExtractor,
+    text: String,
 }
 
 /// The new track is appended to a copy of the song so generation sees it as
@@ -346,7 +490,7 @@ fn measure_runs(sounding: &[bool]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::plan::{MockPlanProvider, PlanAction, PlanDraft};
+    use crate::ai::plan::{MockPlanProvider, PlanAction, PlanDraft, StreamingMockPlanProvider};
     use crate::song::tests::{clip, lp, note, song, track};
     use async_trait::async_trait;
     use std::sync::Mutex;
@@ -566,14 +710,14 @@ mod tests {
     #[tokio::test]
     async fn an_unknown_instrument_is_retried_once_then_fails() {
         let retried = Scripted(Mutex::new(vec![Ok(add("kazoo")), Ok(add("bass"))]));
-        assert!(plan_chat(&retried, &plan_request()).await.is_ok());
+        assert!(plan_chat(&retried, &plan_request(), None).await.is_ok());
 
         let failing = Scripted(Mutex::new(vec![
             Ok(add("kazoo")),
             Ok(add("oboe")),
             Ok(add("bass")),
         ]));
-        assert!(plan_chat(&failing, &plan_request()).await.is_err());
+        assert!(plan_chat(&failing, &plan_request(), None).await.is_err());
         assert_eq!(failing.0.lock().unwrap().len(), 1);
     }
 
@@ -583,7 +727,7 @@ mod tests {
             Err(ProviderError::Request("down".into())),
             Ok(add("bass")),
         ]));
-        assert!(plan_chat(&provider, &plan_request()).await.is_err());
+        assert!(plan_chat(&provider, &plan_request(), None).await.is_err());
         assert_eq!(provider.0.lock().unwrap().len(), 1);
     }
 
@@ -595,7 +739,7 @@ mod tests {
             ProviderError::RateLimited { retry_after: None },
         ] {
             let provider = Scripted(Mutex::new(vec![Err(error), Ok(add("bass"))]));
-            assert!(plan_chat(&provider, &plan_request()).await.is_err());
+            assert!(plan_chat(&provider, &plan_request(), None).await.is_err());
             assert_eq!(provider.0.lock().unwrap().len(), 1);
         }
     }
@@ -604,7 +748,7 @@ mod tests {
     async fn the_mock_planner_plans_through_the_recheck() {
         let mut request = plan_request();
         request.latest_user_message = "give me the drums".into();
-        let plan = plan_chat(&MockPlanProvider, &request).await.unwrap();
+        let plan = plan_chat(&MockPlanProvider, &request, None).await.unwrap();
         assert!(matches!(plan, Plan::AddTrack { instrument, .. } if instrument.id == "drums"));
     }
 
@@ -615,5 +759,221 @@ mod tests {
         assert_eq!(extended.tracks.len(), 2);
         assert_eq!(b.song.tracks.len(), 1);
         assert!(extended.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    /// Streams each attempt's scripted JSON in the given fragments, so the sink sees what a
+    /// transport would forward.
+    type Attempt = (Vec<&'static str>, Result<PlanDraft, ProviderError>);
+    struct ScriptedStream(Mutex<Vec<Attempt>>);
+
+    #[async_trait]
+    impl PlanProvider for ScriptedStream {
+        async fn plan(&self, _: &PlanRequest) -> Result<PlanDraft, ProviderError> {
+            unreachable!("the planner is always called through plan_streaming")
+        }
+
+        async fn plan_streaming(
+            &self,
+            _: &PlanRequest,
+            text: &TextSink<'_>,
+        ) -> Result<PlanDraft, ProviderError> {
+            let (fragments, result) = self.0.lock().unwrap().remove(0);
+            fragments.into_iter().for_each(|f| text.emit(f));
+            result
+        }
+
+        async fn check(&self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+    }
+
+    async fn events_of(
+        provider: &dyn PlanProvider,
+    ) -> (Result<Plan, GenerationError>, Vec<PlanEvent>) {
+        let events = Mutex::new(Vec::new());
+        let result = plan_chat(
+            provider,
+            &plan_request(),
+            Some(&|e| events.lock().unwrap().push(e)),
+        )
+        .await;
+        (result, events.into_inner().unwrap())
+    }
+
+    fn replying(instrument: &str, reply: &str) -> PlanDraft {
+        PlanDraft {
+            reply: reply.into(),
+            ..add(instrument)
+        }
+    }
+
+    #[tokio::test]
+    async fn streamed_text_that_is_not_a_prefix_of_the_final_reply_is_reset() {
+        let provider = ScriptedStream(Mutex::new(vec![(
+            vec![r#"{"reply":"one","reply":"two","action":"add_track"}"#],
+            Ok(replying("bass", "two")),
+        )]));
+        let (result, events) = events_of(&provider).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            events,
+            vec![PlanEvent::ReplyDelta("one".into()), PlanEvent::ReplyReset]
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_sink_the_planner_is_called_through_the_buffered_entry_point() {
+        struct BufferedOnly;
+
+        #[async_trait]
+        impl PlanProvider for BufferedOnly {
+            async fn plan(&self, _: &PlanRequest) -> Result<PlanDraft, ProviderError> {
+                Ok(add("bass"))
+            }
+            async fn plan_streaming(
+                &self,
+                _: &PlanRequest,
+                _: &TextSink<'_>,
+            ) -> Result<PlanDraft, ProviderError> {
+                unreachable!("a request without a sink must not stream")
+            }
+            async fn check(&self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+        }
+        assert!(plan_chat(&BufferedOnly, &plan_request(), None)
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn reply_text_is_forwarded_as_the_planner_writes_it() {
+        let provider = ScriptedStream(Mutex::new(vec![(
+            vec![
+                r#"{"action":"add_track","reply":"Add"#,
+                r#"ing "#,
+                r#"drums","instrument":"drums"}"#,
+            ],
+            Ok(replying("drums", "Adding drums")),
+        )]));
+        let (result, events) = events_of(&provider).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            events,
+            vec![
+                PlanEvent::ReplyDelta("Add".into()),
+                PlanEvent::ReplyDelta("ing ".into()),
+                PlanEvent::ReplyDelta("drums".into()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_first_attempt_resets_the_reply_before_the_second_attempts_text() {
+        let provider = ScriptedStream(Mutex::new(vec![
+            (
+                vec![r#"{"action":"add_track","reply":"First try"#],
+                Ok(add("kazoo")),
+            ),
+            (
+                vec![r#"{"action":"add_track","reply":"Second try"}"#],
+                Ok(replying("bass", "Second try")),
+            ),
+        ]));
+        let (result, events) = events_of(&provider).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            events,
+            vec![
+                PlanEvent::ReplyDelta("First try".into()),
+                PlanEvent::ReplyReset,
+                PlanEvent::ReplyDelta("Second try".into()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_attempt_starts_with_a_fresh_extractor() {
+        let provider = ScriptedStream(Mutex::new(vec![
+            (
+                vec![r#"{"reply":"cut off in a str"#],
+                Err(ProviderError::InvalidOutput("truncated".into())),
+            ),
+            (
+                vec![r#"{"action":"add_track","reply":"ok"}"#],
+                Ok(replying("bass", "ok")),
+            ),
+        ]));
+        let (result, events) = events_of(&provider).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            events,
+            vec![
+                PlanEvent::ReplyDelta("cut off in a str".into()),
+                PlanEvent::ReplyReset,
+                PlanEvent::ReplyDelta("ok".into()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn no_reset_is_sent_when_the_first_attempt_succeeds_or_the_error_is_final() {
+        let ok = ScriptedStream(Mutex::new(vec![(vec![], Ok(add("bass")))]));
+        assert!(events_of(&ok).await.1.is_empty());
+
+        let down = ScriptedStream(Mutex::new(vec![(
+            vec![r#"{"reply":"hi"#],
+            Err(ProviderError::Request("down".into())),
+        )]));
+        let (result, events) = events_of(&down).await;
+        assert!(result.is_err());
+        assert_eq!(events, vec![PlanEvent::ReplyDelta("hi".into())]);
+    }
+
+    #[tokio::test]
+    async fn the_non_streaming_mock_produces_no_events() {
+        let mut request = plan_request();
+        request.latest_user_message = "give me the drums".into();
+        let events = Mutex::new(Vec::new());
+        let result = plan_chat(
+            &MockPlanProvider,
+            &request,
+            Some(&|e| events.lock().unwrap().push(e)),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(events.into_inner().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_streaming_mock_streams_its_reply_and_plans_the_same_track() {
+        let mut request = plan_request();
+        request.latest_user_message = "give me the drums".into();
+        let events = Mutex::new(Vec::new());
+        let provider = StreamingMockPlanProvider::with_delay(std::time::Duration::ZERO);
+        let plan = plan_chat(
+            &provider,
+            &request,
+            Some(&|e| events.lock().unwrap().push(e)),
+        )
+        .await
+        .unwrap();
+        let Plan::AddTrack {
+            reply, instrument, ..
+        } = plan
+        else {
+            panic!("expected a track");
+        };
+        assert_eq!(instrument.id, "drums");
+        let events = events.into_inner().unwrap();
+        assert!(events.len() > 1, "{events:?}");
+        let streamed: String = events
+            .iter()
+            .map(|e| match e {
+                PlanEvent::ReplyDelta(text) => text.as_str(),
+                PlanEvent::ReplyReset => panic!("unexpected reset"),
+            })
+            .collect();
+        assert_eq!(streamed, reply);
     }
 }

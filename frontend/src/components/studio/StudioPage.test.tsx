@@ -133,7 +133,7 @@ describe("loading", () => {
   it("shows a loading state while the song opens, then the studio", async () => {
     await library.create(newSongWithTracks());
     render(<StudioPage library={library} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading song…");
+    expect(screen.getByText("Loading song…").closest("[role=status]")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Arrangement" })).toBeInTheDocument();
   });
@@ -861,7 +861,9 @@ function clipSong(drumsLoops: Loop[], drumsClips: Clip[]): Song {
 const clipButton = (name: string | RegExp) => screen.getByRole("button", { name });
 const laneOf = (name: string) => within(lane(name)).getByTestId("clip-lane");
 const dockRegion = () => screen.getByRole("region", { name: /^Editor:/ });
-const status = () => screen.getByRole("status");
+// The assistant column keeps its own always-mounted status region, which is not the studio status line.
+const status = () =>
+  screen.getAllByRole("status").find((el) => el.dataset.testid !== "assistant-status")!;
 
 describe("clips in the lane", () => {
   beforeEach(() => stubLaneRects());

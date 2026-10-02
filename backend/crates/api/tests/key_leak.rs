@@ -18,9 +18,11 @@ use axum::http::{header, Request};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use common::app::{request, Response, TestApp};
+use http_body_util::BodyExt;
 use music::ai::{ClaudeProvider, OpenAiProvider};
 use secrecy::SecretString;
 use serde_json::{json, Value};
+use tower::ServiceExt;
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Record};
 use tracing::{Event, Id, Subscriber};
@@ -222,6 +224,31 @@ fn ai_routes() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// The streamed chat reports provider failures as events inside a 200 response, so its raw
+/// text, which `Response` would parse as JSON and lose, is recorded too.
+async fn send_streamed_chat(app: &TestApp, observed: &mut Observed, cookie: &str) {
+    let mut req = request(
+        "POST",
+        "/api/v1/songs/chat",
+        Some(cookie),
+        Some(
+            json!({"song": common::app::song("Late Train", 1), "messages": [{"role": "user", "content": "add a bass line"}]}),
+        ),
+    );
+    req.headers_mut()
+        .insert(header::ACCEPT, "text/event-stream".parse().unwrap());
+    let response = app.router.clone().oneshot(req).await.unwrap();
+    for (name, value) in response.headers() {
+        observed
+            .0
+            .push(format!("{name}: {}", value.to_str().unwrap_or("")));
+    }
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    observed
+        .0
+        .push(String::from_utf8_lossy(&bytes).into_owned());
+}
+
 /// Saves keys and drives every AI route, key removal and provider switch for users whose keys
 /// make the provider (real or mock) succeed or fail in each documented way.
 async fn drive(app: &TestApp, observed: &mut Observed) {
@@ -240,6 +267,7 @@ async fn drive(app: &TestApp, observed: &mut Observed) {
             )
             .await;
         }
+        send_streamed_chat(app, observed, &cookie).await;
     }
 
     let both = app.cookie_for("both@example.com").await;
@@ -259,6 +287,7 @@ async fn drive(app: &TestApp, observed: &mut Observed) {
     for (uri, body) in ai_routes() {
         send(app, observed, request("POST", uri, Some(&both), Some(body))).await;
     }
+    send_streamed_chat(app, observed, &both).await;
     for suffix in ["", "-revoked", "-ratelimited"] {
         let cookie = app.cookie_for(&format!("oa{suffix}@example.com")).await;
         put_key(app, observed, &cookie, "openai", &openai(suffix)).await;
@@ -270,6 +299,7 @@ async fn drive(app: &TestApp, observed: &mut Observed) {
             )
             .await;
         }
+        send_streamed_chat(app, observed, &cookie).await;
     }
     send(
         app,
