@@ -8,6 +8,21 @@ import { migrateSong } from "./migrate";
 import { projectsApi, type ProjectsApi } from "./projectsApi";
 import { newId, type Song } from "./types";
 
+interface RawSongSamples {
+  samples?: { id?: unknown }[];
+  tracks?: { sampler?: { keys?: { sample_id?: unknown }; pads?: { sample_id?: unknown }[] } }[];
+}
+
+// A saved song's sampler assignments count as uses beside its sample list, so audio only a pad plays is never freed.
+function rawSampleIds(raw: RawSongSamples | undefined): string[] {
+  const ids: unknown[] = (raw?.samples ?? []).map((s) => s?.id);
+  for (const t of raw?.tracks ?? []) {
+    ids.push(t?.sampler?.keys?.sample_id);
+    for (const p of t?.sampler?.pads ?? []) ids.push(p?.sample_id);
+  }
+  return ids.filter((id): id is string => typeof id === "string");
+}
+
 // Keyed by user so that if the tab closes before sign-out finishes clearing storage, the next
 // user on this browser still reads only their own entry.
 export const lastSongStorageKey = (userId: string) => `songbird.studio.lastSong.${userId}`;
@@ -272,12 +287,7 @@ export function createServerSongLibrary(
     const bySong = new Map<string, Set<string>>();
     for (const summary of await api.list()) {
       const { song } = await api.get(summary.id);
-      const raw = song as unknown as { samples?: { id?: unknown }[] };
-      const ids = new Set<string>();
-      for (const sample of raw.samples ?? []) {
-        if (typeof sample?.id === "string") ids.add(sample.id);
-      }
-      bySong.set(summary.id, ids);
+      bySong.set(summary.id, new Set(rawSampleIds(song as unknown as RawSongSamples)));
     }
     return bySong;
   };

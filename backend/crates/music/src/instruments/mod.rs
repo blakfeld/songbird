@@ -9,6 +9,7 @@ pub mod organ;
 pub mod piano;
 pub mod pitch;
 pub mod pluck;
+pub mod sampler;
 pub mod strings;
 pub mod synth_lead;
 pub mod synth_pad;

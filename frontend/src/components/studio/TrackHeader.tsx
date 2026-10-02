@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import { focusRing, hintClass } from "@/components/ui/classes";
+import { isSamplerId } from "@/lib/song/sampler";
 import { isSoundCustomized } from "@/lib/song/soundDefaults";
 import { TRACK_NAME_MAX, type Song, type Track } from "@/lib/song/types";
 import { LaneMenuItems, defaultLaneMeasure } from "./ClipMenu";
@@ -80,6 +81,8 @@ export function TrackHeader({
   const customizedHintId = `${track.id}-sound-hint`;
   const info = instrument.state === "ready" ? instrument.info : null;
   const isAudio = instrument.state === "audio";
+  // The model has no idea what a pad holds, and keys need sample-aware prompting, so neither can be generated into.
+  const generatable = !isAudio && !isSamplerId(track.instrument);
   const instrumentName = isAudio
     ? "Audio"
     : instrument.state === "missing"
@@ -219,7 +222,7 @@ export function TrackHeader({
               close={close}
               extra={
               <>
-              {!isAudio && (
+              {generatable && (
               <>
               <button
                 type="button"

@@ -35,7 +35,7 @@ Every note SHALL reference a row of its track's instrument. The track's `sound.t
 - **THEN** the song is rejected with `invalid_song` naming the track and `attack_s`
 
 ### Requirement: Adding sampler tracks
-The Add Track control SHALL offer "Sampler (keys)" and "Sampler (pads)" next to "Audio". The new tracks SHALL be named "Sampler" and "Pads", then "Sampler 2" or "Pads 2", and so on. They SHALL start with no sample assigned. Sampler tracks SHALL count toward the 16-track limit.
+The Add Track control SHALL offer "Sampler (keys)" and "Sampler (pads)" next to "Audio". The new tracks SHALL be named "Sampler" and "Pads", then "Sampler 2" or "Pads 2", and so on. They SHALL start with no sample assigned, and with one empty loop placed as a clip at measure 1, so the piano roll and pad labels are available at once. The track, loop, and clip SHALL be added as one undo step, and the new track SHALL be selected. Sampler tracks SHALL count toward the 16-track limit.
 
 #### Scenario: Add a pad sampler
 - **WHEN** the user chooses "Sampler (pads)" from Add Track
@@ -65,7 +65,7 @@ The Add Track control SHALL offer "Sampler (keys)" and "Sampler (pads)" next to 
 ### Requirement: Assigning sounds
 When a sampler track is selected, the editor dock SHALL show a sampler strip above its piano roll.
 - **Keys:** the strip SHALL show the chosen sample's name with Choose, Preview, and Clear actions, a root-note picker, and a One-shot toggle. Dropping a library sample or an audio file on the strip SHALL choose it.
-- **Pads:** each pad row's label SHALL be a drop target for a library sample or an audio file, and SHALL have a menu with Choose sample, Preview, Clear, Gain, and Pitch.
+- **Pads:** each pad row's label SHALL be a drop target for a library sample or an audio file, and SHALL have a menu with Choose sample, Preview, Clear, Gain, and Pitch. Dropping several audio files on a pad SHALL assign them in order to that pad and the pads below it, stopping at `pad-16`, as one undo step.
 - **Song samples:** choosing a sample SHALL add it to the song's `samples` if it is not already there. A dropped file SHALL be imported to the library first (see `songs/sample-library`).
 - **Undo:** each assignment, clear, and setting change SHALL be one undo step, and a gain or pitch drag SHALL be one step.
 - **Auditioning:** clicking a row's key or label SHALL audition it, as on other instruments.
@@ -73,6 +73,10 @@ When a sampler track is selected, the editor dock SHALL show a sampler strip abo
 #### Scenario: Drop a kick on a pad
 - **WHEN** the user drags "kick-808" from the library onto the "Pad 1" row label
 - **THEN** the row is labeled "kick-808", notes on that row play it, and one undo step was added
+
+#### Scenario: Drop several files on a pad
+- **WHEN** the user drops three audio files on the "Pad 14" row label
+- **THEN** they are imported and assigned to `pad-14`, `pad-15`, and `pad-16`, as one undo step
 
 #### Scenario: Choose a sample for keys
 - **WHEN** the user chooses "vox-ah" for a keys sampler and plays `E4` on a MIDI keyboard

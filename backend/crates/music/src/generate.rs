@@ -67,12 +67,13 @@ pub async fn generate_track(
 ) -> Result<TrackGenerateResponse, GenerationError> {
     let song = request.song.song;
     let target = &request.song.tracks[request.target];
-    // Both constructors of `ValidTrackRequest` refuse audio targets, so
-    // reaching this with one is a programming error rather than bad input.
+    // Both constructors of `ValidTrackRequest` refuse audio and sampler
+    // targets, so reaching this with one is a programming error rather than
+    // bad input.
     let instrument = target
         .instrument
         .instrument()
-        .expect("generation targets are never audio tracks");
+        .expect("generation targets are always registry instruments");
     let context = render_context(
         &request.song,
         request.target,

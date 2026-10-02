@@ -390,3 +390,21 @@ async fn audio_tracks_are_not_sent_as_generation_context() {
     assert!(context.contains("Track \"Drums\""), "{context}");
     assert!(!context.contains("Vocals"), "{context}");
 }
+
+#[tokio::test]
+async fn generating_into_a_sampler_track_is_400_without_a_provider_call() {
+    let mut s = drums_and_empty_bass(4);
+    s["tracks"].as_array_mut().unwrap().push(track(
+        "t9",
+        "Pads",
+        "sampler-pads",
+        json!([]),
+        json!([]),
+    ));
+    let mut request = body(s, None);
+    request["track_id"] = json!("t9");
+    assert_eq!(
+        rejected(request).await,
+        (StatusCode::BAD_REQUEST, json!("invalid_target"), 0)
+    );
+}

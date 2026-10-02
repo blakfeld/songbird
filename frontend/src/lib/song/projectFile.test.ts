@@ -17,7 +17,8 @@ import {
   serializeProject,
 } from "./projectFile";
 import { createProjectBundle, readProjectBundle, isBundleFile } from "./projectBundle";
-import type { Song } from "./types";
+import { addSamplerTrack, assignPad } from "./samplerOps";
+import { newSong, type Song } from "./types";
 
 interface Case {
   name: string;
@@ -302,6 +303,36 @@ describe("project bundles", () => {
     expect(stored).not.toBe("f".repeat(32));
     expect(result.ok.samples?.[0].id).toBe(stored);
     expect(result.ok.tracks[1].audio_clips?.[0].sample_id).toBe(stored);
+  });
+
+  const padSong = (id: string): Song => {
+    const added = addSamplerTrack(newSong(), "pads")!;
+    const kick = { id, name: "Kick", sample_rate: 48000, channels: 2, length_samples: FRAMES, origin: "import" as const };
+    return assignPad(added.song, added.trackId, "pad-1", kick).song!;
+  };
+
+  it("bundles audio that only a sampler plays, so the pad still sounds when the bundle is opened", async () => {
+    const { id } = await putSample(pcm(7));
+    const bytes = new Uint8Array(await (await createProjectBundle(padSong(id))).arrayBuffer());
+    await clear(createStore("songbird-samples", "samples"));
+    const result = await readProjectBundle(new File([bytes], "pads.songbird.zip"), instruments);
+    if (!("ok" in result)) throw new Error(result.error);
+    expect(await listStoredSampleIds()).toEqual([id]);
+    expect(result.ok.tracks[0].sampler?.pads?.[0].sample_id).toBe(id);
+  });
+
+  it("points a sampler at the audio's real id when the bundle's id was not its hash", async () => {
+    const song = padSong("f".repeat(32));
+    const file = manual({
+      "project.json": manifest(song),
+      [`audio/${"f".repeat(32)}.wav`]: encodeWavFloat32(pcm(5)),
+    });
+    const result = await readProjectBundle(file, instruments);
+    if (!("ok" in result)) throw new Error(result.error);
+    const [stored] = await listStoredSampleIds();
+    expect(stored).not.toBe("f".repeat(32));
+    expect(result.ok.tracks[0].sampler?.pads?.[0].sample_id).toBe(stored);
+    expect(result.ok.samples?.[0].id).toBe(stored);
   });
 
   it("refuses to bundle a sample whose audio this browser has lost", async () => {

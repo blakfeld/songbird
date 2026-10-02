@@ -665,3 +665,50 @@ async fn the_slot_is_released_when_a_generation_is_abandoned() {
         "expected the request to be running, got {next:?}"
     );
 }
+
+#[tokio::test]
+async fn chat_sends_keys_samplers_as_context_but_not_pads() {
+    let sample = json!({
+        "id": "s1", "name": "Vox", "sample_rate": 48000, "channels": 1,
+        "length_samples": 96000, "origin": "import",
+    });
+    let mut keys = track(
+        "t8",
+        "Vox",
+        "sampler-keys",
+        json!([{"id": "lk", "name": "Line", "measures": 1, "notes": [
+            {"row_id": "A2", "step": 0, "length_steps": 4, "velocity": 100}]}]),
+        json!([{"id": "ck", "loop_id": "lk", "start_measure": 1, "measures": 4}]),
+    );
+    keys["sampler"] = json!({"keys": {"sample_id": "s1", "root_note": 60, "one_shot": false}});
+    let mut pads = track(
+        "t9",
+        "Kit",
+        "sampler-pads",
+        json!([{"id": "lp", "name": "Hits", "measures": 1, "notes": [
+            {"row_id": "pad-1", "step": 0, "length_steps": 1, "velocity": 100}]}]),
+        json!([{"id": "cp", "loop_id": "lp", "start_measure": 1, "measures": 4}]),
+    );
+    pads["sampler"] = json!({"pads": [{"row_id": "pad-1", "sample_id": "s1"}]});
+    let mut s = song(4, vec![keys, pads]);
+    s["samples"] = json!([sample]);
+    let patterns = RecordingPatterns::default();
+    let generated = patterns.seen.clone();
+    let plans = RecordingPlans::default();
+    let planned = plans.seen.clone();
+    let (status, response) = chat(
+        app_with(Providers::new(patterns, plans), &[]).await,
+        json!({"song": s, "messages": [user("give me a bass part")]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(response["track"]["instrument"], "bass");
+
+    let generated = generated.lock().unwrap();
+    let context = generated[0].context.as_deref().unwrap();
+    assert!(context.contains("Track \"Vox (sampler)\""), "{context}");
+    assert!(context.contains("A2"), "{context}");
+    assert!(!context.contains("Kit"), "{context}");
+    let planner_prompt = &planned.lock().unwrap()[0].user;
+    assert!(!planner_prompt.contains("Vox") && !planner_prompt.contains("Kit"));
+}

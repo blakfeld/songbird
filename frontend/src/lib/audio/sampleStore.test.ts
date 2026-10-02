@@ -6,7 +6,7 @@ import { newSongWithTracks } from "@/lib/song/testFixtures";
 import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { createServerSongLibrary } from "@/lib/song/songLibrary";
 import { createSongStore } from "@/lib/song/songStore";
-import type { Song } from "@/lib/song/types";
+import { newTrack, type Song } from "@/lib/song/types";
 import { collectGarbage, setOpenSongSource, type GcSources } from "./sampleGc";
 import { addToLibrary, listLibrary, removeFromLibrary } from "./sampleLibrary";
 import { getSampleOverview, listStoredSampleIds, putSample, readSamplePcm } from "./sampleStore";
@@ -90,6 +90,54 @@ describe("sampleStore", () => {
 });
 
 describe("collectGarbage", () => {
+  it("keeps a sample only a pad uses, in a saved song and in open history", async () => {
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
+    const { id } = await putSample(pcm(0.9));
+    const pads: Song = {
+      ...newSongWithTracks(),
+      tracks: [
+        {
+          ...newTrack("sampler-pads", "Pads"),
+          sampler: { pads: [{ row_id: "pad-1", sample_id: id, gain_db: 0, pitch_semitones: 0 }] },
+        },
+      ],
+    };
+    await lib.put(pads);
+    expect(await collectGarbage(sources(lib))).toEqual([]);
+    await lib.remove(pads.id);
+    expect(await collectGarbage({ ...sources(lib), openSongs: () => [pads] })).toEqual([]);
+    expect(await listStoredSampleIds()).toEqual([id]);
+    expect(await collectGarbage(sources(lib))).toEqual([id]);
+  });
+
+  it("keeps a sample only a keys sampler uses", async () => {
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
+    const { id } = await putSample(pcm(0.95));
+    const keys: Song = {
+      ...newSongWithTracks(),
+      tracks: [{ ...newTrack("sampler-keys", "Sampler"), sampler: { keys: { sample_id: id, root_note: 60, one_shot: false } } }],
+    };
+    expect(await collectGarbage({ ...sources(lib), openSongs: () => [keys] })).toEqual([]);
+  });
+
+  it("counts a stored song's pad and keys references as uses of the sample", async () => {
+    const lib = createServerSongLibrary(createFakeProjectsApi().api);
+    const padSong: Song = {
+      ...newSongWithTracks(),
+      tracks: [{ ...newTrack("sampler-pads", "Pads"), sampler: { pads: [{ row_id: "pad-1", sample_id: "only-pad", gain_db: 0, pitch_semitones: 0 }] } }],
+    };
+    const keysSong: Song = {
+      ...newSongWithTracks(),
+      tracks: [{ ...newTrack("sampler-keys", "Sampler"), sampler: { keys: { sample_id: "only-keys", root_note: 60, one_shot: false } } }],
+    };
+    await lib.put(padSong);
+    await lib.put(keysSong);
+    expect((await lib.savedSampleIds()).sort()).toEqual(["only-keys", "only-pad"]);
+    expect(await lib.songsUsingSample("only-pad")).toBe(1);
+    expect(await lib.songsUsingSample("only-keys")).toBe(1);
+    expect(await lib.songsUsingSample("neither")).toBe(0);
+  });
+
   it("keeps audio an undo step can bring back", async () => {
     const lib = createServerSongLibrary(createFakeProjectsApi().api);
     const { id } = await putSample(pcm(0.7));

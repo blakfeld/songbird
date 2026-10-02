@@ -239,6 +239,7 @@ pub fn song_with_planned_track(song: &Song, name: &str, instrument_id: &str) -> 
         loops: vec![],
         clips: vec![],
         audio_clips: vec![],
+        sampler: Default::default(),
         sound: None,
     });
     extended

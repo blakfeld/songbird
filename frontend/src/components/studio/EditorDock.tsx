@@ -26,6 +26,10 @@ import type { ClipActions } from "./useClipActions";
 import type { AudioActions } from "./useAudioActions";
 import { AudioClipPanel } from "./audio/AudioClipPanel";
 import { sampleMap } from "@/lib/song/audioTiming";
+import { SAMPLER_KEYS_ID, SAMPLER_PADS_ID } from "@/lib/song/sampler";
+import { PadRowLabels } from "./sampler/PadRowLabels";
+import { SamplerStrip } from "./sampler/SamplerStrip";
+import type { SamplerActions, SamplerImporting } from "./useSamplerActions";
 
 function EmptyState({
   song,
@@ -36,6 +40,7 @@ function EmptyState({
   track: Track;
   actions: ClipActions;
 }) {
+  const pads = track.instrument === SAMPLER_PADS_ID;
   const hintId = useId();
   const measure = nextFreeMeasure(track, song, 1);
   const loopLimit = track.loops.length >= MAX_LOOPS;
@@ -59,7 +64,11 @@ function EmptyState({
         {none ? `${track.name} has no clips yet` : `No clip selected on ${track.name}`}
       </h2>
       <p className={hintClass}>
-        {none ? "Add a clip to start writing a loop." : "Select a clip in the lane, or add a new one."}
+        {pads
+          ? "Add a clip, then drop samples on the pad names to build a kit."
+          : none
+            ? "Add a clip to start writing a loop."
+            : "Select a clip in the lane, or add a new one."}
       </p>
       <Button
         variant="primary"
@@ -94,6 +103,8 @@ export function EditorDock({
   sectionId,
   clipActions,
   audioActions,
+  samplerActions,
+  samplerImporting,
   onShowSamples,
   renamingLoopId,
   onRenameDone,
@@ -114,6 +125,8 @@ export function EditorDock({
   sectionId: string;
   clipActions: ClipActions;
   audioActions: AudioActions;
+  samplerActions: SamplerActions;
+  samplerImporting: SamplerImporting | null;
   onShowSamples: () => void;
   renamingLoopId: string | null;
   onRenameDone: () => void;
@@ -200,14 +213,14 @@ export function EditorDock({
           <DockCloseButton onClose={onClose} />
         </div>
       )}
-      {instruments.status === "loading" && (
+      {instruments.status === "loading" && !info && (
         <div aria-hidden="true" className="flex flex-col gap-2 p-4">
           {Array.from({ length: 12 }, (_, i) => (
             <div key={i} className="h-6 rounded bg-zinc-100 motion-safe:animate-pulse dark:bg-zinc-900" />
           ))}
         </div>
       )}
-      {instruments.status === "error" && (
+      {instruments.status === "error" && !info && (
         <div className="p-4">
           <ErrorAlert message="Couldn't load instruments." onRetry={onRetryInstruments} />
         </div>
@@ -216,6 +229,10 @@ export function EditorDock({
         <div className="p-4">
           <ErrorAlert message="This track's instrument isn't available, so it can't be edited or played." />
         </div>
+      )}
+      {/* Kept without a clip so a keys sample can still be chosen; pads are assigned on the roll's labels. */}
+      {info && !showRoll && track.instrument === SAMPLER_KEYS_ID && (
+        <SamplerStrip song={song} track={track} actions={samplerActions} importing={samplerImporting} />
       )}
       {info && !showRoll && <EmptyState song={song} track={track} actions={clipActions} />}
       {showRoll && (
@@ -284,6 +301,9 @@ export function EditorDock({
               <DockCloseButton onClose={onClose} />
             </div>
           </div>
+          {track.instrument === SAMPLER_KEYS_ID && (
+            <SamplerStrip song={song} track={track} actions={samplerActions} importing={samplerImporting} />
+          )}
           <PianoRoll
             key={track.id}
             instrumentName={info.name}
@@ -311,6 +331,20 @@ export function EditorDock({
             subscribePosition={loopPosition}
             className="h-full min-h-0 scroll-pl-[var(--gutter-w)]"
             gutterClassName="w-[var(--gutter-w)]"
+            renderRowLabels={
+              track.instrument === SAMPLER_PADS_ID
+                ? ({ rows: padRows, gutterClassName }) => (
+                    <PadRowLabels
+                      rows={padRows}
+                      gutterClassName={gutterClassName}
+                      song={song}
+                      track={track}
+                      actions={samplerActions}
+                      importing={samplerImporting}
+                    />
+                  )
+                : undefined
+            }
             beatLabels
             keyHighlight={info.kind === "melodic" ? highlight : undefined}
             describedBy={linked ? contextId : undefined}

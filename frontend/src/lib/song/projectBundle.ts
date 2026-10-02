@@ -9,6 +9,7 @@ import {
   floatWavBytes,
   parseFloatWavHeader,
 } from "../audio/wavFloat";
+import { samplerSampleIds } from "./sampler";
 import { LOW_STORAGE_BYTES } from "../audio/sampleImport";
 import { addToLibrary, getLibraryEntry, removeFromLibrary } from "../audio/sampleLibrary";
 import { hasSample, putSample, readSamplePcm } from "../audio/sampleStore";
@@ -56,7 +57,7 @@ const fail = (message: string): ProjectParse => ({ error: message, kind: "bundle
 // Unused samples are left out of a bundle, so one whose audio this browser has lost cannot block saving a song that
 // no longer plays it.
 export function usedSamples(song: Song): Sample[] {
-  const used = new Set(song.tracks.flatMap((t) => t.audio_clips?.map((c) => c.sample_id) ?? []));
+  const used = new Set(song.tracks.flatMap((t) => [...(t.audio_clips?.map((c) => c.sample_id) ?? []), ...samplerSampleIds(t)]));
   return (song.samples ?? []).filter((s) => used.has(s.id));
 }
 
@@ -287,9 +288,20 @@ function remapSamples(song: Song, remap: Map<string, string>): Song {
   return {
     ...song,
     samples: dedupe(song.samples?.map((s) => ({ ...s, id: id(s.id) }))),
-    tracks: song.tracks.map((t) =>
-      t.audio_clips ? { ...t, audio_clips: t.audio_clips.map((c) => ({ ...c, sample_id: id(c.sample_id) })) } : t,
-    ),
+    tracks: song.tracks.map((t) => {
+      const audio = t.audio_clips ? { audio_clips: t.audio_clips.map((c) => ({ ...c, sample_id: id(c.sample_id) })) } : {};
+      const { keys, pads } = t.sampler ?? {};
+      // A sampler names its audio like a clip does, so a remapped id must reach it or the pad would point at nothing.
+      const sampler = t.sampler
+        ? {
+            sampler: {
+              ...(keys && { keys: { ...keys, sample_id: keys.sample_id === null ? null : id(keys.sample_id) } }),
+              ...(pads && { pads: pads.map((p) => ({ ...p, sample_id: id(p.sample_id) })) }),
+            },
+          }
+        : {};
+      return { ...t, ...audio, ...sampler };
+    }),
   };
 }
 

@@ -18309,6 +18309,5083 @@
         ]
       },
       "error": "sample_count"
+    },
+    {
+      "name": "Keys sampler with no settings accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": []
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Keys sampler with no sample chosen accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": null,
+                "root_note": 60,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Keys sampler with a sample, root and one-shot accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "C1",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "C7",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ],
+            "sampler": {
+              "keys": {
+                "sample_id": "s1",
+                "root_note": 127,
+                "one_shot": true
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Keys sampler with defaults omitted accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": "s1"
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Keys sampler with melodic tone accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sound": {
+              "tone": {
+                "attack_s": 0.1,
+                "release_s": 0.5,
+                "filter_cutoff_hz": 800
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Pads sampler with no pads accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": []
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Pads sampler with assigned pads accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "pad-1",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "pad-16",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-16",
+                  "sample_id": "s1",
+                  "gain_db": 12,
+                  "pitch_semitones": -24
+                },
+                {
+                  "row_id": "pad-3",
+                  "sample_id": "s1",
+                  "gain_db": -24,
+                  "pitch_semitones": 24
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Pads sampler with defaults omitted accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-2",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Pads sampler with all sixteen pads accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-2",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-3",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-4",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-5",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-6",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-7",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-8",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-9",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-10",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-11",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-12",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-13",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-14",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-15",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-16",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Pads sampler with drum tone accepted",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sound": {
+              "tone": {
+                "pitch_semitones": 3,
+                "filter_cutoff_hz": 900
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Keys settings on a pads track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": "s1",
+                "root_note": 60,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_content"
+    },
+    {
+      "name": "Pad settings on a keys track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_content"
+    },
+    {
+      "name": "Sampler settings on an instrument track",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": null,
+                "root_note": 60,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_content"
+    },
+    {
+      "name": "Keys sample not in the song",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": "missing",
+                "root_note": 60,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_sample"
+    },
+    {
+      "name": "Pad sample not in the song",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-3",
+                  "sample_id": "missing"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_sample"
+    },
+    {
+      "name": "Pad assigned with no samples in the song",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "error": "sampler_sample"
+    },
+    {
+      "name": "Keys root note below 0",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": null,
+                "root_note": -1,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Keys root note above 127",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": null,
+                "root_note": 128,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Pad gain below -24 dB",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1",
+                  "gain_db": -24.5
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Pad gain above 12 dB",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1",
+                  "gain_db": 12.5
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Pad pitch below -24 semitones",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1",
+                  "pitch_semitones": -25
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Pad pitch above 24 semitones",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1",
+                  "pitch_semitones": 25
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Pad row that does not exist",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-17",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_pad_row"
+    },
+    {
+      "name": "Pad row named like a pitch",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "C4",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_pad_row"
+    },
+    {
+      "name": "Pad row assigned twice",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_pad_row"
+    },
+    {
+      "name": "More than sixteen pads",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-2",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-3",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-4",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-5",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-6",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-7",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-8",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-9",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-10",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-11",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-12",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-13",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-14",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-15",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-16",
+                  "sample_id": "s1"
+                },
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1"
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_pad_count"
+    },
+    {
+      "name": "Keys note below the keys range",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "C0",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "loop_note_row"
+    },
+    {
+      "name": "Keys note above the keys range",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "C#7",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "loop_note_row"
+    },
+    {
+      "name": "Pads note on a pitch row",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "loop_note_row"
+    },
+    {
+      "name": "Pads note on a pad beyond sixteen",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "pad-17",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ]
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "loop_note_row"
+    },
+    {
+      "name": "Pads track with an attack knob",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sound": {
+              "tone": {
+                "attack_s": 0.1
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sound"
+    },
+    {
+      "name": "Keys track with a pitch knob",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sound": {
+              "tone": {
+                "pitch_semitones": 2
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sound"
+    },
+    {
+      "name": "Keys track with an out-of-range attack",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sound": {
+              "tone": {
+                "attack_s": 5
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sound"
+    },
+    {
+      "name": "Pad pitch of the minimum 32-bit integer",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "pad-1",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "pad-16",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ],
+            "sampler": {
+              "pads": [
+                {
+                  "row_id": "pad-1",
+                  "sample_id": "s1",
+                  "pitch_semitones": -2147483648
+                },
+                {
+                  "row_id": "pad-16",
+                  "sample_id": "s1",
+                  "gain_db": 12,
+                  "pitch_semitones": -24
+                },
+                {
+                  "row_id": "pad-3",
+                  "sample_id": "s1",
+                  "gain_db": -24,
+                  "pitch_semitones": 24
+                }
+              ]
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "sampler_range"
+    },
+    {
+      "name": "Unknown instrument with sampler settings",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "kazoo",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": {
+                "sample_id": "s1",
+                "root_note": 60,
+                "one_shot": false
+              }
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "unknown_instrument"
+    },
+    {
+      "name": "Sampler settings null",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": null
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
+      "name": "Pads list null",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-pads",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l9",
+                "name": "Loop l9",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "pad-1",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "pad-16",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c9",
+                "loop_id": "l9",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ],
+            "sampler": {
+              "pads": null
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "malformed"
+    },
+    {
+      "name": "Keys settings null",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t9",
+            "name": "Sampler",
+            "instrument": "sampler-keys",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [],
+            "clips": [],
+            "sampler": {
+              "keys": null
+            }
+          }
+        ],
+        "samples": [
+          {
+            "id": "s1",
+            "name": "Hit",
+            "sample_rate": 48000,
+            "channels": 1,
+            "length_samples": 48000,
+            "origin": "import"
+          }
+        ]
+      },
+      "error": "malformed"
     }
   ]
 }

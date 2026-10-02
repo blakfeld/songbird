@@ -1460,6 +1460,73 @@ describe("live notes", () => {
 // The type only allows lengths a user can pick, but a one-bar run keeps these timelines short.
 const ONE_MEASURE = 1 as Pattern["measures"];
 
+describe("sampler assignments", () => {
+  const given: { source: string; settings: unknown; cache: unknown }[] = [];
+  let seq = 0;
+  registerSoundSource("samp-test", () => {
+    const source = `source-${seq++}`;
+    return {
+      load: async () => {},
+      trigger: () => {},
+      noteOn: () => ({}),
+      noteOff: () => {},
+      stopAll: () => {},
+      setSamples: (settings, cache) => given.push({ source, settings, cache }),
+    };
+  });
+  const cache = { load: async () => {}, get: () => undefined, acquire() {}, release() {} };
+  let sampler = { pads: [{ row_id: "kick", sample_id: "a", gain_db: 0, pitch_semitones: 0 }] };
+  const voice = (): Voice => ({
+    key: "samp",
+    kind: "instrument",
+    instrument: "samp-test",
+    rows: ROWS,
+    notes: [],
+    sampler,
+    volumeDb: 0,
+    pan: 0,
+    audible: true,
+  });
+  const engineFor = () =>
+    createPlaybackEngine(
+      { getTiming: () => ({ tempo: 120, swing: 0, stepsPerMeasure: 16, measures: 1 }), getVoices: () => [voice()] },
+      { requestFrame: () => 0, cancelFrame: () => {}, sampleBuffers: cache },
+    );
+
+  beforeEach(() => {
+    given.length = 0;
+    seq = 0;
+    sampler = { pads: [{ row_id: "kick", sample_id: "a", gain_db: 0, pitch_semitones: 0 }] };
+  });
+
+  it("gives a track's source its assignments and the buffer cache", async () => {
+    const engine = engineFor();
+    await engine.prepareLive("samp");
+    expect(given[0]).toEqual({ source: "source-0", settings: sampler, cache });
+  });
+
+  it("gives the live-play preview source the same assignments", async () => {
+    const engine = engineFor();
+    await engine.prepareLive("samp");
+    engine.liveNoteOn(ROWS[0], { voiceKey: "samp" });
+    expect(given.map((g) => g.source)).toEqual(["source-0", "source-1"]);
+  });
+
+  it("passes an edited assignment to both sources and nothing when it is unchanged", async () => {
+    const engine = engineFor();
+    await engine.prepareLive("samp");
+    engine.liveNoteOn(ROWS[0], { voiceKey: "samp" });
+    engine.syncSound();
+    expect(given).toHaveLength(2);
+    sampler = { pads: [{ row_id: "kick", sample_id: "b", gain_db: -3, pitch_semitones: 0 }] };
+    engine.syncSound();
+    expect(given.slice(2).map((g) => [g.source, g.settings])).toEqual([
+      ["source-0", sampler],
+      ["source-1", sampler],
+    ]);
+  });
+});
+
 describe("stepAt", () => {
   const NOW_MS = 1000;
   beforeEach(() => {

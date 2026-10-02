@@ -374,3 +374,44 @@ async fn a_clip_naming_an_unknown_sample_names_the_track() {
     assert_eq!(error["code"], "invalid_song");
     assert!(error["message"].as_str().unwrap().contains("\"Vocals\""));
 }
+
+#[tokio::test]
+async fn pads_export_on_a_melodic_channel_with_no_program_change() {
+    let sample = json!({
+        "id": "s1", "name": "Kick", "sample_rate": 48000, "channels": 1,
+        "length_samples": 48000, "origin": "import",
+    });
+    let mut pads = track(
+        "t2",
+        "Pads",
+        "sampler-pads",
+        json!([{"id": "l1", "name": "Hits", "measures": 1, "notes": [note("pad-1", 0), note("pad-3", 4)]}]),
+        json!([{"id": "c1", "loop_id": "l1", "start_measure": 1, "measures": 1}]),
+    );
+    pads["sampler"] = json!({"pads": [
+        {"row_id": "pad-1", "sample_id": "s1"},
+        {"row_id": "pad-3", "sample_id": "s1"},
+    ]});
+    let mut s = song(
+        1,
+        vec![track("t1", "Drums", "drums", json!([]), json!([])), pads],
+    );
+    s["samples"] = json!([sample]);
+    let (status, _, bytes) = export(&s).await;
+    assert_eq!(status, StatusCode::OK);
+    let smf = Smf::parse(&bytes).unwrap();
+    assert_eq!(smf.tracks.len(), 3);
+
+    let mut notes = Vec::new();
+    for event in &smf.tracks[2] {
+        if let midly::TrackEventKind::Midi { channel, message } = event.kind {
+            assert_eq!(channel.as_int(), 0, "first melodic channel");
+            match message {
+                midly::MidiMessage::NoteOn { key, .. } => notes.push(key.as_int()),
+                midly::MidiMessage::ProgramChange { .. } => panic!("unexpected program change"),
+                _ => {}
+            }
+        }
+    }
+    assert_eq!(notes, vec![36, 38]);
+}

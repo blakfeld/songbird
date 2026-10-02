@@ -4,6 +4,8 @@ import { slugify } from "../midiFilename";
 import { audioProblem, type AudioErrorKind } from "./audioValidation";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
 import { migrateSong, validateClips } from "./migrate";
+import { withBuiltIns } from "./sampler";
+import { samplerProblem, type SamplerErrorKind } from "./samplerValidation";
 import { soundProblem } from "./trackSound";
 import {
   MAX_TRACKS,
@@ -60,7 +62,8 @@ export type ProjectErrorKind =
   | "clip_outside_song"
   // A bundle's zip or audio is at fault, as opposed to the song inside it.
   | "bundle"
-  | AudioErrorKind;
+  | AudioErrorKind
+  | SamplerErrorKind;
 
 export type ProjectParse = { ok: Song } | { error: string; kind: ProjectErrorKind };
 
@@ -281,7 +284,9 @@ function checkNotesAndClips(
 
 const SIZE_MESSAGE = "That file is too large to be a Songbird project (limit 5 MB).";
 
-export function parseProjectFile(text: string, instruments: InstrumentInfo[]): ProjectParse {
+export function parseProjectFile(text: string, registry: InstrumentInfo[]): ProjectParse {
+  // The server never lists the sampler ids, but every document check accepts them.
+  const instruments = withBuiltIns(registry);
   if (text.length > MAX_PROJECT_BYTES) return { error: SIZE_MESSAGE, kind: "size" };
   let doc: unknown;
   try {
@@ -303,7 +308,7 @@ export function parseProjectFile(text: string, instruments: InstrumentInfo[]): P
 
   const early =
     checkHeader(raw) ?? checkTracks(raw, instruments) ??
-    (raw.version === 2 ? (audioProblem(raw) ?? clipProblem(raw)) : null);
+    (raw.version === 2 ? (audioProblem(raw) ?? samplerProblem(raw) ?? clipProblem(raw)) : null);
   if (early) return { error: `That project can't be opened: ${early.message}.`, kind: early.kind };
 
   const song = migrateSong(raw);

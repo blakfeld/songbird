@@ -1,9 +1,15 @@
+import { samplerSampleIds } from "@/lib/song/sampler";
 import type { Song } from "@/lib/song/types";
 import { deleteStoredSample, listStoredSampleIds, runExclusive } from "./sampleStore";
 
 export const GC_DEBOUNCE_MS = 2000;
 
-export const songSampleIds = (song: Song): string[] => (song.samples ?? []).map((s) => s.id);
+// Sampler references are counted beside the song's own list because history can hold a song whose `samples` was
+// since edited, while an assignment still names the audio.
+export const songSampleIds = (song: Song): string[] => [
+  ...(song.samples ?? []).map((s) => s.id),
+  ...song.tracks.flatMap(samplerSampleIds),
+];
 
 export interface GcSources {
   libraryIds: () => Promise<string[]>;
