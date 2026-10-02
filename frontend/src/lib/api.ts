@@ -30,6 +30,7 @@ const USER_MESSAGES: Record<string, string> = {
   invalid_instrument: "That instrument is not supported.",
   generation_failed: "The AI could not generate a pattern. Please try again.",
   generation_timeout: "Generation took too long. Please try again.",
+  generation_busy: "The generator is busy right now. Please try again in a moment.",
   invalid_range: "That measure range can't be generated. Choose a range of up to 32 measures inside the song.",
   invalid_track: "That track is no longer in the song.",
 };

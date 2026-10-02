@@ -3,9 +3,12 @@ use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::{header, HeaderValue};
+use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+
+use crate::limit::{shed_when_busy, GenerationLimiter};
 use music::generate::{generate_pattern, GenerationError};
 use music::midi::{pattern_to_midi, MidiError};
 use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
@@ -13,9 +16,12 @@ use music::{GenerateRequestBody, GenerationLimits, InstrumentInfo, Pattern};
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
-pub fn router() -> Router<AppState> {
-    Router::new()
+pub fn router(limiter: GenerationLimiter) -> Router<AppState> {
+    let generation = Router::new()
         .route("/api/v1/patterns/generate", post(generate))
+        .route_layer(from_fn_with_state(limiter, shed_when_busy));
+    Router::new()
+        .merge(generation)
         .route("/api/v1/patterns/limits", get(limits))
         .route("/api/v1/patterns/export/midi", post(export_midi))
         .route("/api/v1/instruments", get(instruments))

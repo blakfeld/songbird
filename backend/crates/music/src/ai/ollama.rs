@@ -1,8 +1,17 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::time::Duration;
 
-use super::{ProviderError, StructuredProvider, StructuredRequest};
+use super::{
+    http_client, read_json_capped, ProviderError, StructuredProvider, StructuredRequest,
+    DEFAULT_REQUEST_TIMEOUT,
+};
+
+/// Matches the Claude provider's output cap.
+const NUM_PREDICT: u32 = 4096;
+/// The startup probe only lists models, so a hung server should fail startup quickly.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct OllamaProvider {
     client: Client,
@@ -13,10 +22,15 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     pub fn new(base_url: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: http_client(DEFAULT_REQUEST_TIMEOUT),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
         }
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.client = http_client(timeout);
+        self
     }
 
     fn unreachable(&self) -> ProviderError {
@@ -44,6 +58,8 @@ impl StructuredProvider for OllamaProvider {
                 {"role": "user", "content": request.user},
             ],
             "format": request.schema,
+            // A model that never emits a stop token would otherwise generate until the timeout.
+            "options": {"num_predict": NUM_PREDICT},
         });
         let response = self
             .client
@@ -51,17 +67,24 @@ impl StructuredProvider for OllamaProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|_| ProviderError::Request(self.unreachable().to_string()))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ProviderError::Request(format!(
+                        "Ollama at {} did not respond in time. A cold model load can be slow; \
+                         raise SONGBIRD_GENERATION_TIMEOUT_SECS.",
+                        self.base_url
+                    ))
+                } else {
+                    ProviderError::Request(self.unreachable().to_string())
+                }
+            })?;
         let status = response.status();
         if !status.is_success() {
             return Err(ProviderError::Request(format!(
                 "Ollama returned HTTP {status}"
             )));
         }
-        let payload: Value = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::InvalidOutput(format!("response is not JSON: {e}")))?;
+        let payload = read_json_capped(response).await?;
         let content = payload["message"]["content"].as_str().ok_or_else(|| {
             ProviderError::InvalidOutput("response had no message content".into())
         })?;
@@ -73,13 +96,16 @@ impl StructuredProvider for OllamaProvider {
         let response = self
             .client
             .get(format!("{}/api/tags", self.base_url))
+            .timeout(CHECK_TIMEOUT)
             .send()
             .await
             .map_err(|_| self.unreachable())?;
         if !response.status().is_success() {
             return Err(self.unreachable());
         }
-        let tags: Value = response.json().await.map_err(|_| self.unreachable())?;
+        let tags = read_json_capped(response)
+            .await
+            .map_err(|_| self.unreachable())?;
         // Ollama lists untagged pulls as `name:latest`.
         let latest = format!("{}:latest", self.model);
         let installed = tags["models"].as_array().is_some_and(|models| {
@@ -114,6 +140,37 @@ mod tests {
             tool_name: "emit_pattern".into(),
             tool_description: "d".into(),
         }
+    }
+
+    #[tokio::test]
+    async fn oversize_response_is_rejected() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b' '; 5 * 1024 * 1024]))
+            .mount(&server)
+            .await;
+        let err = OllamaProvider::new(server.uri(), "m")
+            .generate(&request())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Request(m) if m.contains("limit")));
+    }
+
+    #[tokio::test]
+    async fn slow_server_hits_the_request_timeout() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(5)))
+            .mount(&server)
+            .await;
+        let err = OllamaProvider::new(server.uri(), "m")
+            .with_timeout(Duration::from_millis(100))
+            .generate(&request())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Request(_)));
     }
 
     #[tokio::test]
@@ -193,14 +250,20 @@ mod tests {
 
     #[tokio::test]
     async fn server_down_names_the_url_and_suggests_starting_it() {
-        let server = MockServer::start().await;
-        let url = server.uri();
-        drop(server);
+        // A closed port can be reassigned to a parallel test's mock server, so hold the port
+        // and hang up on every connection instead.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                drop(socket);
+            }
+        });
         let provider = OllamaProvider::new(url.clone(), "m");
         let err = provider.check().await.unwrap_err();
         assert!(err.to_string().contains(&url));
         assert!(err.to_string().contains("ollama serve"));
         let err = provider.generate(&request()).await.unwrap_err();
-        assert!(matches!(err, ProviderError::Request(_)));
+        assert!(matches!(err, ProviderError::Request(_)), "{err:?}");
     }
 }

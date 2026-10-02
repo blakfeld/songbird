@@ -52,6 +52,8 @@ pub enum ApiError {
     NotReady,
     #[error("Generation took too long and was cancelled. Please try again.")]
     GenerationTimeout,
+    #[error("Too many generations are already running. Please try again shortly.")]
+    GenerationBusy,
 }
 
 impl ApiError {
@@ -70,6 +72,7 @@ impl ApiError {
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
             Self::GenerationTimeout => StatusCode::GATEWAY_TIMEOUT,
+            Self::GenerationBusy => StatusCode::SERVICE_UNAVAILABLE,
             Self::NotReady => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
@@ -90,6 +93,7 @@ impl ApiError {
             Self::Validation(e) => e.code(),
             Self::GenerationFailed => "generation_failed",
             Self::GenerationTimeout => "generation_timeout",
+            Self::GenerationBusy => "generation_busy",
             Self::NotReady => "not_ready",
         }
     }

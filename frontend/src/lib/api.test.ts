@@ -88,6 +88,7 @@ describe("api client", () => {
     ["prompt_too_long", 422, "too long"],
     ["invalid_range", 422, "measure range"],
     ["invalid_track", 422, "no longer in the song"],
+    ["generation_busy", 503, "busy"],
   ])("generateTrack maps %s to a friendly message", async (code, status, fragment) => {
     mockFetch(json(errorBody(code), status));
     const err = await generateTrack({
@@ -139,6 +140,7 @@ describe("api client", () => {
   it.each([
     [502, "generation_failed", "could not generate"],
     [504, "generation_timeout", "too long"],
+    [503, "generation_busy", "busy"],
     [400, "invalid_request", "Something went wrong"],
     [400, "prompt_too_long", "too long"],
     [400, "invalid_instrument", "not supported"],
@@ -183,6 +185,7 @@ describe("api client", () => {
     ["invalid_instrument", 422, /instrument/i],
     ["generation_failed", 502, /could not generate/i],
     ["generation_timeout", 504, /too long|took/i],
+    ["generation_busy", 503, /busy.*try again in a moment/i],
     ["payload_too_large", 413, /too large/i],
     ["invalid_json", 400, /understood/i],
     ["not_found", 404, /not found/i],

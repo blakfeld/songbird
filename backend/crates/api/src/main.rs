@@ -43,6 +43,17 @@ async fn run() -> Result<(), String> {
         "songbird api listening"
     );
 
+    if !bind_addr.ip().is_loopback() {
+        // Containers must bind 0.0.0.0 inside, so this fires under compose even when the
+        // published port is loopback-only; what matters is how the port is exposed.
+        tracing::warn!(
+            addr = %bind_addr,
+            "listening on a non-loopback address; the API has no authentication, so \
+             anyone who can reach this port can spend provider quota. Publish the port \
+             on loopback or put an authenticating proxy in front of it"
+        );
+    }
+
     axum::serve(listener, api::app(state))
         .await
         .map_err(|e| e.to_string())

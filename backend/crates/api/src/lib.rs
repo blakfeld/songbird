@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod limit;
 pub mod patterns;
 pub mod provider;
 pub mod routes;
