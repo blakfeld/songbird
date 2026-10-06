@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use std::ops::ControlFlow;
@@ -69,6 +70,7 @@ pub struct ClaudeProvider {
     api_key: SecretString,
     model: String,
     max_tokens: u32,
+    forcing_unsupported: AtomicBool,
 }
 
 impl ClaudeProvider {
@@ -79,6 +81,7 @@ impl ClaudeProvider {
             api_key,
             model: model.into(),
             max_tokens: DEFAULT_MAX_TOKENS,
+            forcing_unsupported: AtomicBool::new(false),
         }
     }
 
@@ -105,25 +108,74 @@ impl ClaudeProvider {
     }
 }
 
+/// Kept apart from `ProviderError` so `send` can tell a 400 it may retry without
+/// forcing the tool from every other failure.
+struct PostFailure {
+    error: ProviderError,
+    invalid_request: bool,
+}
+
 impl ClaudeProvider {
     /// Shared by both paths so status handling cannot drift between them.
+    ///
+    /// Forcing the tool call is what makes the model return schema-shaped JSON, but
+    /// some models (Sonnet 5.5) answer 400 to a forced `tool_choice`. The 400's
+    /// message is never read, so any `invalid_request_error` on a forced request
+    /// is retried once with `auto`, and the model is remembered as unable to be
+    /// forced only after that retry succeeds.
     async fn send(
         &self,
         request: &StructuredRequest,
         stream: bool,
     ) -> Result<reqwest::Response, ProviderError> {
-        // Forcing the tool call is what makes the model return schema-shaped JSON.
+        let forced = !self.forcing_unsupported.load(Ordering::Relaxed);
+        match self.post(request, stream, forced).await {
+            Ok(response) => Ok(response),
+            Err(failure) if forced && failure.invalid_request => {
+                let response = self
+                    .post(request, stream, false)
+                    .await
+                    .map_err(|retry| retry.error)?;
+                self.forcing_unsupported.store(true, Ordering::Relaxed);
+                Ok(response)
+            }
+            Err(failure) => Err(failure.error),
+        }
+    }
+
+    async fn post(
+        &self,
+        request: &StructuredRequest,
+        stream: bool,
+        forced: bool,
+    ) -> Result<reqwest::Response, PostFailure> {
+        let (system, tool_choice) = if forced {
+            (
+                request.system.clone(),
+                json!({"type": "tool", "name": request.tool_name}),
+            )
+        } else {
+            // Without a forced call the model could answer in prose, so the
+            // instruction moves into the prompt.
+            (
+                format!(
+                    "{}\nRespond by calling the `{}` tool exactly once, with no other text.",
+                    request.system, request.tool_name
+                ),
+                json!({"type": "auto"}),
+            )
+        };
         let mut body = json!({
             "model": self.model,
             "max_tokens": self.max_tokens,
-            "system": request.system,
+            "system": system,
             "messages": [{"role": "user", "content": request.user}],
             "tools": [{
                 "name": request.tool_name,
                 "description": request.tool_description,
                 "input_schema": request.schema,
             }],
-            "tool_choice": {"type": "tool", "name": request.tool_name},
+            "tool_choice": tool_choice,
         });
         if stream {
             body["stream"] = json!(true);
@@ -136,7 +188,10 @@ impl ClaudeProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| transport_error("Anthropic", &e))?;
+            .map_err(|e| PostFailure {
+                error: transport_error("Anthropic", &e),
+                invalid_request: false,
+            })?;
 
         let status = response.status();
         if status.is_success() {
@@ -144,12 +199,24 @@ impl ClaudeProvider {
         }
         let retry_after = retry_after_secs(response.headers());
         let fields = read_error_fields(response).await;
-        // The body text is dropped: it may echo request content.
-        Err(
-            classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
-                ProviderError::Request(format!("the Anthropic API returned HTTP {status}"))
-            }),
-        )
+        // Only the machine-readable type and code are logged: the message text may echo
+        // request content.
+        tracing::warn!(
+            %status,
+            kind = fields.kind.as_deref().unwrap_or("unknown"),
+            code = fields.code.as_deref().unwrap_or("none"),
+            forced,
+            "the Anthropic API rejected a request"
+        );
+        let invalid_request =
+            status.as_u16() == 400 && fields.is_any_of(&["invalid_request_error"]);
+        let error = classify_error(status.as_u16(), &fields, retry_after).unwrap_or_else(|| {
+            ProviderError::Request(format!("the Anthropic API returned HTTP {status}"))
+        });
+        Err(PostFailure {
+            error,
+            invalid_request,
+        })
     }
 }
 
@@ -403,6 +470,69 @@ mod tests {
             .await;
         let err = provider(&server).generate(&request()).await.unwrap_err();
         assert!(matches!(err, ProviderError::InvalidOutput(_)));
+    }
+
+    #[tokio::test]
+    async fn a_model_that_rejects_a_forced_tool_is_retried_with_auto_and_remembered() {
+        use wiremock::matchers::body_partial_json;
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(
+                json!({"tool_choice": {"type": "tool", "name": "emit_pattern"}}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(anthropic_error("invalid_request_error")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"tool_choice": {"type": "auto"}})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "content": [
+                    {"type": "thinking", "thinking": ""},
+                    {"type": "tool_use", "name": "emit_pattern", "input": {"ok": true}},
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let provider = provider(&server);
+
+        let first = provider.generate(&request()).await.unwrap();
+        let second = provider.generate(&request()).await.unwrap();
+
+        assert_eq!(first, json!({"ok": true}));
+        assert_eq!(second, first);
+        let requests = server.received_requests().await.unwrap();
+        // Forced then auto for the first call; the second goes straight to auto.
+        assert_eq!(requests.len(), 3);
+        let body: Value = serde_json::from_slice(&requests[1].body).unwrap();
+        assert!(body["system"]
+            .as_str()
+            .unwrap()
+            .contains("calling the `emit_pattern` tool"));
+    }
+
+    #[tokio::test]
+    async fn a_400_that_auto_also_rejects_is_not_remembered_as_unforceable() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(anthropic_error("invalid_request_error")),
+            )
+            .mount(&server)
+            .await;
+        let provider = provider(&server);
+        assert!(provider.generate(&request()).await.is_err());
+        assert!(provider.generate(&request()).await.is_err());
+        let requests = server.received_requests().await.unwrap();
+        let forced = requests
+            .iter()
+            .filter(|r| {
+                let body: Value = serde_json::from_slice(&r.body).unwrap();
+                body["tool_choice"]["type"] == "tool"
+            })
+            .count();
+        assert_eq!(forced, 2);
     }
 
     #[tokio::test]
