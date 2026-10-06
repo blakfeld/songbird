@@ -92,34 +92,42 @@ pub fn validate_for_export(pattern: &Pattern) -> Result<(), MidiError> {
 }
 
 /// Note Offs sort before Note Ons at the same tick so a retriggered pitch is
-/// released first and never has its new note cut short by the stale Off.
+/// released first and never has its new note cut short by the stale Off. A
+/// lyric sorts between them so karaoke readers show the syllable as its note
+/// sounds.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Phase {
     Off,
+    Lyric,
     On,
 }
 
 /// Shared by pattern and song export so both settle overlaps and convert steps
 /// to ticks identically. Deltas start at tick 0 and the track ends at the
 /// final step, so callers may prepend their own tick-0 events.
-pub(crate) fn note_events(
+///
+/// Lyric events are opt-in because the single-pattern download ignores lyrics.
+pub(crate) fn note_events<'a>(
     rows: &[Row],
-    notes: &[Note],
+    notes: &'a [Note],
     total_steps: u32,
     swing: f64,
     channel: u4,
-) -> Vec<TrackEvent<'static>> {
+    with_lyrics: bool,
+) -> Vec<TrackEvent<'a>> {
     let end_tick = step_to_ticks(total_steps, swing);
 
     let raw: Vec<RawNote> = notes
         .iter()
-        .filter_map(|note| {
+        .enumerate()
+        .filter_map(|(index, note)| {
             let row = rows.iter().position(|r| r.id == note.row_id)?;
             Some(RawNote {
                 row,
                 step: note.step,
                 length: note.length_steps,
                 velocity: note.velocity,
+                source: Some(index),
             })
         })
         .collect();
@@ -127,7 +135,8 @@ pub(crate) fn note_events(
     // pair up ambiguously, so they are shortened exactly as generation does.
     let settled = settle(raw, total_steps);
 
-    let mut timed: Vec<(u32, Phase, u8, u8)> = Vec::with_capacity(settled.len() * 2);
+    let mut timed: Vec<(u32, Phase, u8, u8, Option<&'a str>)> =
+        Vec::with_capacity(settled.len() * 3);
     for note in settled {
         let key = rows[note.row].midi_note;
         let start = step_to_ticks(note.step, swing);
@@ -135,28 +144,41 @@ pub(crate) fn note_events(
         if end <= start {
             continue;
         }
-        timed.push((start, Phase::On, key, note.velocity));
-        timed.push((end, Phase::Off, key, 0));
+        let lyric = note
+            .source
+            .and_then(|index| notes[index].lyric.as_deref())
+            .filter(|_| with_lyrics);
+        if let Some(text) = lyric {
+            timed.push((start, Phase::Lyric, key, 0, Some(text)));
+        }
+        timed.push((start, Phase::On, key, note.velocity, None));
+        timed.push((end, Phase::Off, key, 0, None));
     }
-    timed.sort_by_key(|&(tick, phase, key, _)| (tick, phase, key));
+    timed.sort_by_key(|&(tick, phase, key, _, _)| (tick, phase, key));
 
     let mut events = Vec::with_capacity(timed.len() + 1);
     let mut previous = 0;
-    for (tick, phase, key, velocity) in timed {
-        let message = match phase {
-            Phase::On => MidiMessage::NoteOn {
-                key: u7::new(key),
-                vel: u7::new(velocity),
+    for (tick, phase, key, velocity, lyric) in timed {
+        let delta = u28::new(tick - previous);
+        let kind = match (phase, lyric) {
+            (Phase::Lyric, Some(text)) => TrackEventKind::Meta(MetaMessage::Lyric(text.as_bytes())),
+            (Phase::On, _) => TrackEventKind::Midi {
+                channel,
+                message: MidiMessage::NoteOn {
+                    key: u7::new(key),
+                    vel: u7::new(velocity),
+                },
             },
-            Phase::Off => MidiMessage::NoteOff {
-                key: u7::new(key),
-                vel: u7::new(0),
+            (Phase::Lyric, None) => continue,
+            (Phase::Off, _) => TrackEventKind::Midi {
+                channel,
+                message: MidiMessage::NoteOff {
+                    key: u7::new(key),
+                    vel: u7::new(0),
+                },
             },
         };
-        events.push(TrackEvent {
-            delta: u28::new(tick - previous),
-            kind: TrackEventKind::Midi { channel, message },
-        });
+        events.push(TrackEvent { delta, kind });
         previous = tick;
     }
     events.push(meta(end_tick - previous, MetaMessage::EndOfTrack));
@@ -216,6 +238,7 @@ pub fn pattern_to_midi(pattern: &Pattern) -> Result<Vec<u8>, MidiError> {
         total_steps,
         pattern.swing,
         channel,
+        false,
     ));
 
     let tempo_track = conductor_track(
@@ -281,6 +304,7 @@ mod tests {
             step,
             length_steps: length,
             velocity,
+            lyric: None,
         }
     }
 

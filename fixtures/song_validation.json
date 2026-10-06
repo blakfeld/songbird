@@ -30409,6 +30409,6058 @@
         ]
       },
       "error": null
+    },
+    {
+      "name": "valid note lyric",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "hold"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid note lyric of 16 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "aaaaaaaaaaaaaaaa"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid note lyric of 16 emoji",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "note lyric of 17 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "aaaaaaaaaaaaaaaaa"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_note_lyric"
+    },
+    {
+      "name": "empty note lyric",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": ""
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_note_lyric"
+    },
+    {
+      "name": "note lyric with a line break",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "ho\nld"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_note_lyric"
+    },
+    {
+      "name": "note lyric with a carriage return",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "ho\rld"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_note_lyric"
+    },
+    {
+      "name": "valid topline source",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid topline source with notes carrying lyrics",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "hold"
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "valid vocal track with lyric notes",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "name": "Vocal",
+            "instrument": "vocal",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l3",
+                "name": "Chorus topline",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100,
+                    "lyric": "hold"
+                  },
+                  {
+                    "row_id": "G4",
+                    "step": 4,
+                    "length_steps": 4,
+                    "velocity": 80
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c4",
+                "loop_id": "l3",
+                "start_measure": 1,
+                "measures": 1
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline source with an empty section name",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "topline source with a 41-character section name",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "valid topline source with a 40-character section name",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline source with no lines",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": []
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "valid topline source with 32 lines",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline source with 33 lines",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "topline line with no syllables",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "hm",
+                      "syllables": []
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "valid topline line with 64 syllables",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline line with 65 syllables",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "valid topline source with 256 syllables in all",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline source with 257 syllables in all",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        },
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    },
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "valid topline line text of 200 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "topline line text of 201 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "syllables": [
+                        {
+                          "text": "la",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "topline syllable of 17 characters",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "aaaaaaaaaaaaaaaaa",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "topline syllable that is empty",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "tenor",
+                  "lines": [
+                    {
+                      "text": "la",
+                      "syllables": [
+                        {
+                          "text": "",
+                          "stressed": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "loop_topline"
+    },
+    {
+      "name": "topline source with an unknown voice",
+      "song": {
+        "version": 2,
+        "id": "song-1",
+        "name": "Late Train",
+        "tempo_bpm": 96,
+        "time_signature": "4/4",
+        "steps_per_measure": 16,
+        "swing": 0,
+        "measures": 4,
+        "tracks": [
+          {
+            "id": "t1",
+            "name": "Drums",
+            "instrument": "drums",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l1",
+                "name": "Loop l1",
+                "measures": 1,
+                "notes": [
+                  {
+                    "row_id": "kick",
+                    "step": 0,
+                    "length_steps": 1,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "snare",
+                    "step": 8,
+                    "length_steps": 2,
+                    "velocity": 90
+                  }
+                ]
+              }
+            ],
+            "clips": [
+              {
+                "id": "c1",
+                "loop_id": "l1",
+                "start_measure": 1,
+                "measures": 4
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "name": "Piano",
+            "instrument": "piano",
+            "volume_db": 0,
+            "pan": 0,
+            "muted": false,
+            "soloed": false,
+            "loops": [
+              {
+                "id": "l2",
+                "name": "Loop l2",
+                "measures": 2,
+                "notes": [
+                  {
+                    "row_id": "C4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  },
+                  {
+                    "row_id": "E4",
+                    "step": 0,
+                    "length_steps": 4,
+                    "velocity": 100
+                  }
+                ],
+                "topline": {
+                  "section_name": "Chorus",
+                  "voice": "bass",
+                  "lines": [
+                    {
+                      "text": "Hold me close",
+                      "syllables": [
+                        {
+                          "text": "hold",
+                          "stressed": true
+                        },
+                        {
+                          "text": "me",
+                          "stressed": false
+                        },
+                        {
+                          "text": "close",
+                          "stressed": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "clips": [
+              {
+                "id": "c2",
+                "loop_id": "l2",
+                "start_measure": 1,
+                "measures": 2
+              },
+              {
+                "id": "c3",
+                "loop_id": "l2",
+                "start_measure": 3,
+                "measures": 2
+              }
+            ]
+          }
+        ]
+      },
+      "error": "malformed"
     }
   ]
 }

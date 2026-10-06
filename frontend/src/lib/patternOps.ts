@@ -178,6 +178,22 @@ export function setLengths(
   return changed ? out : notes;
 }
 
+// An empty or null lyric removes the field so a note without one serializes exactly as it did before lyrics existed.
+export function setLyrics(notes: Note[], keys: ReadonlySet<string>, lyric: string | null): Note[] {
+  const next = lyric === "" ? null : lyric;
+  let changed = false;
+  const out = notes.map((n) => {
+    if (!keys.has(noteKey(n)) || (n.lyric ?? null) === next) return n;
+    changed = true;
+    const { lyric: _previous, ...rest } = n;
+    void _previous;
+    return next === null ? rest : { ...rest, lyric: next };
+  });
+  return changed ? out : notes;
+}
+
+export const clearLyrics = (notes: Note[], keys: ReadonlySet<string>): Note[] => setLyrics(notes, keys, null);
+
 // A relative change keeps spread between notes during a Shift-drag, which absolute `setVelocities` would flatten.
 export function shiftVelocities(
   notes: Note[],

@@ -31,6 +31,7 @@ const actions = (): SectionActions => ({
   duplicate: vi.fn(),
   remove: vi.fn(),
   openNotes: vi.fn(),
+  generateTopline: vi.fn(),
 });
 
 const show = (song: Song, selectedId: string | null = null, a = actions()) => {
@@ -114,6 +115,7 @@ describe("SectionRuler", () => {
       "Insert section after…",
       "Duplicate",
       "Notes…",
+      "Generate topline…",
       "Delete section",
     ]);
     expect(a.toggle).not.toHaveBeenCalled();

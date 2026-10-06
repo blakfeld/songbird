@@ -6,6 +6,7 @@ import {
   ApiError,
   assistLyrics,
   exportMidi,
+  generateTopline,
   generateTrack,
   generatePattern,
   getAiKeys,
@@ -109,6 +110,72 @@ describe("api client", () => {
     expect(err.code).toBe(code);
     expect(err.status).toBe(status);
     expect(err.message).toContain(fragment);
+  });
+
+  describe("generateTopline", () => {
+    const body = {
+      song: { name: "s" } as unknown as Song,
+      track_id: "t1",
+      range: { start_measure: 5, end_measure: 8 },
+      section_name: "Chorus",
+      lines: [{ text: "hold me", syllables: [{ text: "hold", stressed: true }, { text: "me", stressed: false }] }],
+      voice: "tenor" as const,
+      prompt: "",
+    };
+
+    it("posts the body as JSON and returns the notes and prosody", async () => {
+      const response = {
+        track_id: "t1",
+        range: body.range,
+        notes: [],
+        prosody: { stressed_syllables: 1, stressed_on_beat: 1 },
+      };
+      const fn = mockFetch(json(response));
+      expect(await generateTopline(body)).toEqual(response);
+      const [url, init] = fn.mock.calls[0];
+      expect(url).toBe("/api/v1/songs/topline/generate");
+      expect(init!.method).toBe("POST");
+      expect(JSON.parse(init!.body as string)).toEqual(body);
+    });
+
+    it.each([
+      ["generation_failed", 502, "could not generate"],
+      ["generation_timeout", 504, "too long"],
+      ["generation_busy", 503, "busy"],
+      ["invalid_range", 422, "measure range"],
+      ["invalid_track", 422, "no longer in the song"],
+      ["prompt_too_long", 422, "too long"],
+      ["api_key_required", 409, "key"],
+      ["unauthenticated", 401, "sign in"],
+      ["too_many_requests", 429, "Too many"],
+    ])("maps %s to a friendly message", async (code, status, fragment) => {
+      mockFetch(json(errorBody(code), status));
+      const err = await generateTopline(body).catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.code).toBe(code);
+      expect(err.status).toBe(status);
+      expect(err.message).toContain(fragment);
+    });
+
+    it.each(["invalid_lyrics", "lyrics_do_not_fit", "invalid_voice", "invalid_song"])(
+      "surfaces the server's reason for %s",
+      async (code) => {
+        mockFetch(json(errorBody(code, "specific reason"), 422));
+        const err = await generateTopline(body).catch((e) => e);
+        expect(err.message).toBe("specific reason");
+      },
+    );
+
+    it("keeps the provider's message for a key problem", async () => {
+      mockFetch(json(errorBody("api_key_quota_exhausted", "Anthropic is out of credit."), 409));
+      const err = await generateTopline(body).catch((e) => e);
+      expect(err.message).toBe("Anthropic is out of credit.");
+    });
+
+    it("reports a network failure", async () => {
+      mockFetch(new Error("offline"));
+      expect((await generateTopline(body).catch((e) => e)).code).toBe("network_error");
+    });
   });
 
   it("getAiKeys fetches the summary", async () => {

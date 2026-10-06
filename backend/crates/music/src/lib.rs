@@ -17,6 +17,7 @@ pub mod song;
 pub mod song_midi;
 pub mod timing;
 pub mod tokens;
+pub mod topline;
 pub mod track_generation;
 
 pub use chat::{
@@ -35,6 +36,9 @@ pub use pattern::{Note, Pattern, Row};
 pub use request::{GenerateRequest, GenerateRequestBody, GenerationLimits, ValidationError};
 pub use song::{Clip, Loop, Song, SongError, Track, ValidSong};
 pub use tokens::estimate_tokens;
+pub use topline::{
+    Prosody, ToplineGenerateBody, ToplineRequestError, ToplineResponse, ValidToplineRequest,
+};
 pub use track_generation::{
     MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse, TrackRequestError,
     ValidTrackRequest,

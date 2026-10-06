@@ -13,6 +13,7 @@ pub mod sampler;
 pub mod strings;
 pub mod synth_lead;
 pub mod synth_pad;
+pub mod vocal;
 
 use std::sync::LazyLock;
 
@@ -182,7 +183,7 @@ pub struct InstrumentInfo {
 }
 
 /// Lazy because the piano's rows are built at first use.
-static BUILTIN: LazyLock<[&'static Instrument; 9]> = LazyLock::new(|| {
+static BUILTIN: LazyLock<[&'static Instrument; 10]> = LazyLock::new(|| {
     [
         &drums::DRUMS,
         &piano::PIANO,
@@ -193,6 +194,7 @@ static BUILTIN: LazyLock<[&'static Instrument; 9]> = LazyLock::new(|| {
         &synth_pad::SYNTH_PAD,
         &strings::STRINGS,
         &pluck::PLUCK,
+        &vocal::VOCAL,
     ]
 });
 
@@ -251,7 +253,8 @@ mod tests {
                 "synth-lead",
                 "synth-pad",
                 "strings",
-                "pluck"
+                "pluck",
+                "vocal"
             ]
         );
     }

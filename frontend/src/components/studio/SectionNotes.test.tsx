@@ -29,6 +29,7 @@ const actions = (): SectionActions => ({
   duplicate: vi.fn(),
   remove: vi.fn(),
   openNotes: vi.fn(),
+  generateTopline: vi.fn(),
 });
 
 // Mirrors the page: the selection and the stored notes live above the panel.

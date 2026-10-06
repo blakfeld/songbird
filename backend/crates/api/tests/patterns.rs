@@ -367,7 +367,8 @@ async fn instruments_lists_the_full_catalog_in_order() {
             "synth-lead",
             "synth-pad",
             "strings",
-            "pluck"
+            "pluck",
+            "vocal"
         ]
     );
     assert_eq!(list[0]["kind"], "drums");
@@ -644,6 +645,7 @@ async fn every_new_instrument_generates_a_pattern_matching_its_listing() {
         "synth-pad",
         "strings",
         "pluck",
+        "vocal",
     ] {
         let listing = instruments.iter().find(|i| i["id"] == id).unwrap();
         let (status, pattern) = generate(

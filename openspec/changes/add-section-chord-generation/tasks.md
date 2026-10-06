@@ -59,4 +59,5 @@
   6. Reload and check that the chords persist.
   
   Verify it with `pnpm test:e2e`.
-- [ ] 5.2 Run `just lint`, `just test`, and `openspec validate add-section-chord-generation --strict`, and verify that all of them pass.
+- [ ] 5.2 If `add-topline-melody` has already landed, wire its `sounding_chord(song, abs_step)` helper (in the topline mock, D7 of that change) to `Section.chords`, and add its "Mock follows chords" and "Chords reach the provider when present" tests (`songwriting/topline`). Verify that both tests pass.
+- [ ] 5.3 Run `just lint`, `just test`, and `openspec validate add-section-chord-generation --strict`, and verify that all of them pass.

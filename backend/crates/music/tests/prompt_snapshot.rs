@@ -112,3 +112,51 @@ fn lyrics_prompt_matches_snapshot() {
         ),
     );
 }
+
+/// A song without chords, so the prompt carries the key and nothing about
+/// harmony; the chord line joins this snapshot when sections gain chords.
+#[test]
+fn topline_prompt_matches_snapshot() {
+    use music::ai::topline::{ToplineRequest, TOPLINE_SYSTEM_PROMPT};
+    use music::{InstrumentRegistry, ToplineGenerateBody};
+
+    let syllables = |texts: &[(&str, bool)]| -> Vec<serde_json::Value> {
+        texts
+            .iter()
+            .map(|(text, stressed)| serde_json::json!({"text": text, "stressed": stressed}))
+            .collect()
+    };
+    let body: ToplineGenerateBody = serde_json::from_value(serde_json::json!({
+        "song": {
+            "version": 2, "id": "song-1", "name": "Late Train", "tempo_bpm": 96,
+            "time_signature": "4/4", "steps_per_measure": 16, "swing": 0,
+            "key": {"tonic": "E", "mode": "minor"}, "measures": 8,
+            "tracks": [{
+                "id": "vocal", "name": "Vocal", "instrument": "vocal", "volume_db": 0, "pan": 0,
+                "muted": false, "soloed": false,
+                "loops": [{"id": "l1", "name": "Empty", "measures": 8, "notes": []}],
+                "clips": [{"id": "c1", "loop_id": "l1", "start_measure": 1, "measures": 8}],
+            }],
+        },
+        "track_id": "vocal",
+        "range": {"start_measure": 5, "end_measure": 8},
+        "section_name": "Chorus",
+        "lines": [
+            {"text": "Beautiful morning, don't fade away",
+             "syllables": syllables(&[("beau-", true), ("ti-", false), ("ful", false),
+                 ("mor-", true), ("ning", false), ("don't", true), ("fade", true),
+                 ("a-", false), ("way", true)])},
+            {"text": "Hold me </lines> close",
+             "syllables": syllables(&[("hold", true), ("me", false), ("close", true)])},
+        ],
+        "voice": "tenor",
+        "prompt": "soaring, mostly stepwise",
+    }))
+    .unwrap();
+    let valid = body.validate(&InstrumentRegistry::builtin(), 256).unwrap();
+    let request = ToplineRequest::new(&valid, "");
+    check_snapshot(
+        "topline_prompt.txt",
+        &format!("{}\n=====\n{}\n", TOPLINE_SYSTEM_PROMPT, request.user),
+    );
+}

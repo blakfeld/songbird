@@ -10,6 +10,8 @@ import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Pattern } from "@/generated/Pattern";
 import type { Song } from "@/generated/Song";
 import type { SongLimits } from "@/generated/SongLimits";
+import type { ToplineGenerateBody } from "@/generated/ToplineGenerateBody";
+import type { ToplineResponse } from "@/generated/ToplineResponse";
 import type { TrackGenerateBody } from "@/generated/TrackGenerateBody";
 import type { TrackGenerateResponse } from "@/generated/TrackGenerateResponse";
 import type { AiKeySummary, AiProvider } from "./aiKeys/types";
@@ -162,6 +164,12 @@ export async function getSongLimits(): Promise<SongLimits> {
 
 export async function generateTrack(body: TrackGenerateBody): Promise<TrackGenerateResponse> {
   return (await postJson("/api/v1/songs/tracks/generate", body)).json();
+}
+
+// Its 422 codes (invalid_lyrics, lyrics_do_not_fit, invalid_voice) carry readable reasons that messageFor surfaces.
+export async function generateTopline(body: ToplineGenerateBody, signal?: AbortSignal): Promise<ToplineResponse> {
+  const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  return (await request("/api/v1/songs/topline/generate", init, { signal })).json();
 }
 
 // Three missed 15 s server keepalives, so silence this long means the connection is dead.

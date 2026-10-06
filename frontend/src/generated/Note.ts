@@ -4,4 +4,10 @@
  * `step` is absolute rather than per-measure so notes survive length changes
  * and map directly to playback times and MIDI ticks.
  */
-export type Note = { row_id: string, step: number, length_steps: number, velocity: number, };
+export type Note = { row_id: string, step: number, length_steps: number, velocity: number, 
+/**
+ * The syllable this note starts. A note without one continues the
+ * previous syllable, which is how MIDI karaoke and MusicXML express a
+ * melisma, so export needs no separate mapping.
+ */
+lyric?: string, };

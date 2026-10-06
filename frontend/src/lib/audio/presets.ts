@@ -72,6 +72,18 @@ export const presets: Record<string, SynthPreset> = {
     defaults: { filterCutoffHz: 3500, filterRolloff: -12, envelope: env(0.15, 0.3, 0.9, 0.6) },
     options: { oscillator: { type: "fatsawtooth", count: 3, spread: 20 }, envelope: env(0.15, 0.3, 0.9, 0.6) },
   },
+  // Odd partials fall off like a triangle under a dominant sine, and the broad band-pass stands in
+  // for vocal formants without removing the sung fundamental.
+  vocal: {
+    voice: "Synth",
+    defaults: { envelope: env(0.06, 0.15, 0.85, 0.2) },
+    options: {
+      oscillator: { type: "custom", partials: [1, 0.08, 0.14, 0.03, 0.05] },
+      envelope: env(0.06, 0.15, 0.85, 0.2),
+    },
+    vibrato: { frequencyHz: 5, depthCents: 18, delaySeconds: 0.25, riseSeconds: 0.3 },
+    effects: (tone) => [new tone.Filter({ type: "bandpass", frequency: 1100, Q: 0.35 })],
+  },
   pluck: {
     voice: "Synth",
     defaults: { envelope: env(0.002, 0.6, 0, 0.2) },

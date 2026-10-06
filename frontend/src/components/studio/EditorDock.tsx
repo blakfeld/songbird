@@ -21,6 +21,8 @@ import { DockCloseButton } from "./DockCloseButton";
 import { InlineNameInput } from "./InlineNameInput";
 import { InstrumentIcon } from "./InstrumentIcon";
 import { LoopsDialog } from "./LoopsDialog";
+import { ToplineStrip } from "@/components/topline/ToplineStrip";
+import type { ToplineRequest } from "@/components/topline/ToplineDialog";
 import { Menu } from "./Menu";
 import type { ClipActions } from "./useClipActions";
 import type { AudioActions } from "./useAudioActions";
@@ -109,6 +111,7 @@ export function EditorDock({
   renamingLoopId,
   onRenameDone,
   onAnnounce,
+  onRegenerateTopline,
   onClose,
 }: {
   store: SongStore;
@@ -131,6 +134,7 @@ export function EditorDock({
   renamingLoopId: string | null;
   onRenameDone: () => void;
   onAnnounce: (message: string) => void;
+  onRegenerateTopline: (request: ToplineRequest) => void;
   onClose: () => void;
 }) {
   const info = instruments.data?.find((i) => i.id === track.instrument);
@@ -301,6 +305,22 @@ export function EditorDock({
               <DockCloseButton onClose={onClose} />
             </div>
           </div>
+          {loopDoc.topline && (
+            <ToplineStrip
+              // Keyed so one loop's re-flow result is not shown on the next loop.
+              key={loopDoc.id}
+              topline={loopDoc.topline}
+              lyrics={song.lyrics ?? ""}
+              onRegenerate={() =>
+                onRegenerateTopline({
+                  sectionName: loopDoc.topline!.section_name,
+                  trackId: track.id,
+                  source: loopDoc.topline,
+                })
+              }
+              onReflow={() => store.getState().reflowLyrics(track.id, loopDoc.id, info.rows)?.unplaced ?? null}
+            />
+          )}
           {track.instrument === SAMPLER_KEYS_ID && (
             <SamplerStrip song={song} track={track} actions={samplerActions} importing={samplerImporting} />
           )}

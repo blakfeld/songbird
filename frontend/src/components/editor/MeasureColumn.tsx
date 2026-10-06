@@ -118,7 +118,11 @@ function MeasureColumnImpl({
           key={`${r}:${local}`}
           type="button"
           data-cell={`${r}:${abs}`}
-          aria-label={covering?.step === abs && selected ? `${label}, selected` : label}
+          aria-label={
+            covering?.step === abs
+              ? `${label}${covering.lyric ? `, lyric ${covering.lyric}` : ""}${selected ? ", selected" : ""}`
+              : label
+          }
           aria-description={description}
           aria-pressed={covering !== undefined}
           tabIndex={isActive ? 0 : -1}

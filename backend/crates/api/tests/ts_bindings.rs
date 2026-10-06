@@ -20,8 +20,10 @@ use music::song::{
     AudioClip, ChatEntry, ChatRole, ChorusEffect, DelayEffect, DistortionEffect, Effects, EqEffect,
     KeyMode, KeysSettings, LoopRegion, LyricChatEntry, LyricChatSelection, MeasureRegion,
     PadSettings, ReverbEffect, Sample, SamplerSettings, Section, SectionKind, SongKey,
-    StoredLyricSuggestion, Tone, Tonic, TrackSound,
+    StoredLyricSuggestion, Tone, Tonic, ToplineLine, ToplineSource, ToplineSyllable, TrackSound,
+    VoicePreset,
 };
+use music::topline::{Prosody, ToplineGenerateBody, ToplineResponse};
 use music::track_generation::{MeasureRange, SongLimits, TrackGenerateBody, TrackGenerateResponse};
 use music::{
     Clip, GenerateRequestBody, GenerationLimits, InstrumentInfo, InstrumentRegistry, Loop, Pattern,
@@ -82,6 +84,13 @@ fn export_into(dir: &Path) {
     LyricSuggestion::export_all(&cfg).unwrap();
     SuggestionAction::export_all(&cfg).unwrap();
     SectionKind::export_all(&cfg).unwrap();
+    VoicePreset::export_all(&cfg).unwrap();
+    ToplineSource::export_all(&cfg).unwrap();
+    ToplineLine::export_all(&cfg).unwrap();
+    ToplineSyllable::export_all(&cfg).unwrap();
+    ToplineGenerateBody::export_all(&cfg).unwrap();
+    ToplineResponse::export_all(&cfg).unwrap();
+    Prosody::export_all(&cfg).unwrap();
     TrackSound::export_all(&cfg).unwrap();
     Tone::export_all(&cfg).unwrap();
     Effects::export_all(&cfg).unwrap();

@@ -20,6 +20,8 @@ import * as ops from "./songOps";
 import * as samplerOps from "./samplerOps";
 import type { SamplerKind } from "./sampler";
 import * as sectionOps from "../songSectionOps";
+import { reflowLyrics as reflowLoopLyrics } from "../topline/toplineOps";
+import { applyTopline as applyToplineOp, type ApplyToplineArgs } from "./toplineApply";
 import { songLoop, withLiveFields, withLiveLoop, withLoopSetting, withSongLoop } from "./songLoop";
 import type { AudioFailure, AudioOpResult } from "./audioClipOps";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
@@ -117,6 +119,12 @@ export interface SongState {
     range: { start_measure: number; end_measure: number },
     notes: Note[],
   ) => string | null;
+  // One history entry covers the optional new Vocal track, the loop with its source, and every linked clip.
+  // Returns the refusal to show, because the result has already been paid for and the user needs to know why it is lost.
+  applyTopline: (args: ApplyToplineArgs) => string | null;
+  // One undo step, so a re-flow the user dislikes reverts in one action. Null when the loop has no source or its track is locked.
+  // Rows are passed in because tracks store only an instrument id, never a copy of its rows.
+  reflowLyrics: (trackId: string, loopId: string, rows: Pick<Row, "id" | "midi_note">[]) => { unplaced: number } | null;
   // A reply with no track is recorded but is not an undo step, because it changes no arrangement and undo
   // would otherwise swallow a conversation turn.
   applyChatResult: (userMessage: string, response: ChatResponse) => string | null;
@@ -484,6 +492,38 @@ export function createSongStore(initial: Song | null = null): SongStore {
           allowLocked: true,
         });
         return reason === null ? null : GENERATE_FAILURES[reason](track?.name ?? "That track");
+      },
+      applyTopline: (args) => {
+        const current = get().song;
+        if (!current) return "There is no song open.";
+        const result = applyToplineOp(current, args);
+        if (result.song === null) {
+          if (result.reason === "track-limit")
+            return `The song already has ${MAX_TRACKS} tracks, the most it can hold. Choose an existing track instead.`;
+          const choice = args.trackChoice;
+          const name =
+            choice.kind === "track" ? current.tracks.find((t) => t.id === choice.trackId)?.name : undefined;
+          return GENERATE_FAILURES[result.reason](name ?? "That track");
+        }
+        const { song, trackId, clipId } = result;
+        edit(() => song);
+        set({ selectedTrackId: trackId, selectedClipId: clipId });
+        return null;
+      },
+      reflowLyrics: (trackId, loopId, rows) => {
+        const current = get().song;
+        if (!current || get().generatingTrackId === trackId) return null;
+        const loop = current.tracks.find((t) => t.id === trackId)?.loops.find((l) => l.id === loopId);
+        if (!loop?.topline) return null;
+        const { loop: next, unplaced } = reflowLoopLyrics(loop, rows);
+        if (next !== loop)
+          edit((s) => ({
+            ...s,
+            tracks: s.tracks.map((t) =>
+              t.id === trackId ? { ...t, loops: t.loops.map((l) => (l.id === loopId ? next : l)) } : t,
+            ),
+          }));
+        return { unplaced };
       },
       applyChatResult: (userMessage, response) => {
         const current = get().song;

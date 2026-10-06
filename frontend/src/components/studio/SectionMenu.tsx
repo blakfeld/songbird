@@ -1,5 +1,6 @@
 "use client";
 
+import { hasLinkedHeading } from "@/lib/topline/toplineTarget";
 import { MEASURE_RANGE, type Section, type Song } from "@/lib/song/types";
 import { sectionsOf } from "@/lib/songSectionOps";
 import { menuItemClass } from "./Menu";
@@ -19,6 +20,7 @@ export interface SectionActions {
   duplicate: (sectionId: string) => void;
   remove: (sectionId: string) => void;
   openNotes: (sectionId: string) => void;
+  generateTopline: (sectionId: string) => void;
 }
 
 export const sectionMenuLabel = (section: Pick<Section, "name">) => `Section actions for ${section.name}`;
@@ -48,6 +50,9 @@ export function SectionMenuItems({
   const deleteHint = only ? "A song needs at least one section" : null;
   const insertHint = full ? SONG_FULL : null;
   const id = `section-menu-${section.id}`;
+  const toplineHint = hasLinkedHeading(song, section.name)
+    ? null
+    : `Add a [${section.name.trim()}] heading to the lyrics first`;
 
   const insert = (where: "before" | "after") => (
     <button
@@ -118,6 +123,25 @@ export function SectionMenuItems({
       >
         Notes…
       </button>
+      <button
+        type="button"
+        role="menuitem"
+        aria-disabled={toplineHint !== null}
+        aria-describedby={toplineHint ? `${id}-topline` : undefined}
+        className={menuItemClass}
+        onClick={() => {
+          if (toplineHint) return;
+          close();
+          actions.generateTopline(section.id);
+        }}
+      >
+        Generate topline…
+      </button>
+      {toplineHint && (
+        <p id={`${id}-topline`} className={hintClass}>
+          {toplineHint}
+        </p>
+      )}
       {separator}
       <button
         type="button"

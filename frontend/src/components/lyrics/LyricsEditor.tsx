@@ -58,6 +58,53 @@ class UnlinkedBadge extends WidgetType {
   }
 }
 
+// Headings are the one place the topline action is offered from the notepad, so the action lives on the heading line.
+const toplineAction = Facet.define<(name: string) => void, ((name: string) => void) | null>({
+  combine: (values) => values.at(-1) ?? null,
+});
+
+class ToplineButton extends WidgetType {
+  constructor(readonly name: string) {
+    super();
+  }
+  eq(other: ToplineButton) {
+    return other.name === this.name;
+  }
+  toDOM(view: EditorView) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cm-lyric-topline";
+    // Drawn by CSS so the button adds no text to the line, which tests and copy-paste read as lyrics.
+    button.dataset.label = "Generate topline";
+    button.setAttribute("aria-label", `Generate topline for ${this.name}`);
+    button.setAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
+    button.addEventListener("click", () => view.state.facet(toplineAction)?.(this.name));
+    return button;
+  }
+  // Without this the editor treats a click on the button as a click in the text and steals focus from it.
+  ignoreEvent() {
+    return true;
+  }
+}
+
+// A shortcut as well as the heading button, because the button only exists for headings in the rendered viewport
+// and a keyboard user should not have to scroll a long notepad to reach it. It does not edit the document.
+function generateToplineAtCursor(view: EditorView): boolean {
+  const action = view.state.facet(toplineAction);
+  const keys = view.state.facet(sectionKeys);
+  if (!action || !keys) return false;
+  const { doc } = view.state;
+  for (let n = doc.lineAt(view.state.selection.main.head).number; n >= 1; n--) {
+    const text = doc.line(n).text;
+    if (!isHeadingLine(text)) continue;
+    const name = (headingName(text) ?? "").trim();
+    if (!keys.has(linkKey(name))) return false;
+    action(name);
+    return true;
+  }
+  return false;
+}
+
 // Null means the section names are not known, so no heading is flagged rather than every one.
 const sectionKeys = Facet.define<Set<string> | null, Set<string> | null>({
   combine: (values) => values.at(-1) ?? null,
@@ -93,6 +140,7 @@ const headingPlugin = ViewPlugin.fromClass(
     build(view: EditorView): DecorationSet {
       const builder = new RangeSetBuilder<Decoration>();
       const keys = view.state.facet(sectionKeys);
+      const offersTopline = view.state.facet(toplineAction) !== null;
       let last = -1;
       for (const { from, to } of view.visibleRanges) {
         for (let pos = from; pos <= to; ) {
@@ -103,6 +151,8 @@ const headingPlugin = ViewPlugin.fromClass(
             // The builder needs ranges in position order, so the badge at the line end comes after the line mark.
             builder.add(line.from, line.from, linked ? headingMark : unlinkedMark(name));
             if (!linked) builder.add(line.to, line.to, Decoration.widget({ widget: new UnlinkedBadge(name), side: 1 }));
+            else if (offersTopline && keys)
+              builder.add(line.to, line.to, Decoration.widget({ widget: new ToplineButton(name), side: 1 }));
           }
           last = line.from;
           pos = line.to + 1;
@@ -133,6 +183,8 @@ interface EditorProps {
   sectionKeys?: readonly string[];
   // Owned by the page because the editor remounts on a tab switch, which must not make an insert jump back to the end.
   focusedSongs?: Set<string>;
+  // Must be stable for the same reason as registerEditor; whether it is given is fixed when the editor is built.
+  onGenerateTopline?: (headingName: string) => void;
 }
 
 function Editor({
@@ -143,12 +195,15 @@ function Editor({
   registerEditor,
   sectionKeys: keys,
   focusedSongs: focusedSongsProp,
+  onGenerateTopline,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const pending = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   const lyricsRef = useRef(lyrics);
+  const toplineRef = useRef(onGenerateTopline);
+  const offersTopline = onGenerateTopline !== undefined;
   const keysRef = useRef(keys);
   const [ownFocused] = useState(() => new Set<string>());
   const focused = focusedSongsProp ?? ownFocused;
@@ -160,6 +215,7 @@ function Editor({
 
   useEffect(() => {
     onChangeRef.current = onChange;
+    toplineRef.current = onGenerateTopline;
     lyricsRef.current = lyrics;
     keysRef.current = keys;
   });
@@ -204,7 +260,8 @@ function Editor({
         extensions: [
           history(),
           // No indentWithTab: Tab has to leave the notepad so keyboard users are never trapped.
-          keymap.of([...defaultKeymap, ...historyKeymap]),
+          // Listed first so it wins over the default Mod-Enter (insert a blank line) only when the page offers the action.
+          keymap.of([{ key: "Mod-Enter", run: generateToplineAtCursor }, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of((v) => ({
             "aria-label": "Lyrics",
@@ -213,6 +270,7 @@ function Editor({
           placeholder(PLACEHOLDER),
           sectionKeyCompartment.of(keyExtension(keysRef.current)),
           headingPlugin,
+          ...(offersTopline ? [toplineAction.of((name) => toplineRef.current?.(name))] : []),
           EditorState.changeFilter.of((tr) => {
             if (!tr.docChanged || tr.annotation(fromStore)) return true;
             if (tr.newDoc.length <= LYRICS_MAX_CHARS) return true;
@@ -251,7 +309,7 @@ function Editor({
       editor.destroy();
       view.current = null;
     };
-  }, [songId, countId, registerFlush, focused]);
+  }, [songId, countId, registerFlush, focused, offersTopline]);
 
   const keySignature = keys ? JSON.stringify(keys) : null;
   useEffect(() => {

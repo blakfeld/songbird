@@ -104,3 +104,22 @@ fn lyrics_schema_section_id_enum_is_the_request_ids() {
         serde_json::json!(["verse-1", "chorus-1", null])
     );
 }
+
+#[test]
+fn vocal_draft_schema_matches_snapshot() {
+    check_snapshot(&music::instruments::vocal::VOCAL, "vocal_draft_schema.json");
+}
+
+#[test]
+fn topline_schema_matches_snapshot() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/snapshots/topline_schema.json");
+    let actual =
+        serde_json::to_string_pretty(&music::ai::topline::topline_schema()).unwrap() + "\n";
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::write(&path, &actual).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path).expect("snapshot exists; see test docs");
+    assert_eq!(actual, expected, "topline_schema.json changed");
+}

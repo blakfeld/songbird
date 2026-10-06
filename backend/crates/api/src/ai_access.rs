@@ -11,7 +11,7 @@ use axum::http::request::Parts;
 use music::ai::{
     claude, openai, ClaudeProvider, HttpClient, KeyCheckError, LyricsProvider, MockProvider,
     OpenAiProvider, PatternProvider, PlanProvider, ProviderError, StreamingMockPlanProvider,
-    StructuredProvider,
+    StructuredProvider, ToplineProvider,
 };
 use music::generate::GenerationError;
 use music::{Instrument, PatternDraft};
@@ -172,7 +172,8 @@ impl UserProviders for MockUserProviders {
         match Self::failure(&key) {
             None => Providers::new(SlowMockPatterns, StreamingMockPlanProvider::default()),
             Some(error) => Providers::new(Failing(error.clone()), Failing(error.clone()))
-                .with_lyrics(Failing(error)),
+                .with_lyrics(Failing(error.clone()))
+                .with_topline(Failing(error)),
         }
     }
 
@@ -248,6 +249,20 @@ impl LyricsProvider for Failing {
         &self,
         _: &music::ai::LyricsRequest,
     ) -> Result<music::lyrics::LyricsDraft, ProviderError> {
+        Err(self.0.clone())
+    }
+
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ToplineProvider for Failing {
+    async fn generate(
+        &self,
+        _: &music::ai::topline::ToplineRequest,
+    ) -> Result<music::ai::topline::ToplineDraft, ProviderError> {
         Err(self.0.clone())
     }
 
