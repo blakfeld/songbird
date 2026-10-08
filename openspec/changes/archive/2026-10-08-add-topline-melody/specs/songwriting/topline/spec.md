@@ -200,9 +200,9 @@ Placing stressed syllables on beats and fitting each line to whole measures are 
 
 ### Requirement: Deterministic mock topline
 When the service is configured with the mock provider, topline generation SHALL return the same notes for the same request every time, without network access. The mock's output SHALL obey these prosody rules:
-- **Phrases:** the range SHALL be divided into one slot per line, of equal length rounded down to whole beats, and each line SHALL start at the start of its slot.
-- **Stress on the beat:** every stressed syllable SHALL start on a beat whenever its line has at most two syllables per beat of its slot.
-- **Line ends:** the last syllable of each line SHALL hold until the end of its slot.
+- **Phrases:** the range SHALL be divided into one slot per line, of equal length rounded down to whole beats. Each line SHALL start at the start of its slot, except that a line MAY begin with a pickup: its unstressed syllables before the first stressed one are sung just before the slot, so that the first stressed syllable starts on the slot's first beat. A slot SHALL be shortened when the lines after it need the room, so that every line stays inside the range.
+- **Stress on the beat:** every stressed syllable SHALL start on a beat whenever its line has at most two syllables per beat of its slot. The one exception is a line that begins unstressed and has no room for a pickup, because it is the first line of the range or the previous line has no step to spare.
+- **Line ends:** the last syllable of each line SHALL hold until the end of its slot, or until the next line's pickup begins.
 - **Pitch:** every note's pitch class SHALL be in the song key's scale. Every stressed syllable SHALL be on a tone of the chord sounding at its start, or on a tone of the tonic triad when no chord is sounding. The last note SHALL be on the key's tonic.
 - **Velocity:** stressed syllables SHALL have velocity 100, and other notes velocity 80.
 

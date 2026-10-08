@@ -30,6 +30,7 @@ The service SHALL offer these melodic instruments, in this order, each as `kind`
 | `synth-pad` | Synth Pad | 89 (Pad 1, new age) | C2 (36) – C6 (84) |
 | `strings` | Strings | 49 (String Ensemble 1) | C2 (36) – C6 (84) |
 | `pluck` | Pluck | 46 (Pizzicato Strings) | C3 (48) – C6 (84) |
+| `vocal` | Vocal Guide | 54 (Voice Oohs) | E2 (40) – C6 (84) |
 
 #### Scenario: Piano definition
 - **WHEN** a client requests `GET /api/v1/instruments`
@@ -38,6 +39,10 @@ The service SHALL offer these melodic instruments, in this order, each as `kind`
 #### Scenario: Bass definition
 - **WHEN** a client requests `GET /api/v1/instruments`
 - **THEN** it contains an instrument with `id` `"bass"`, `midi_program` 34, `range` `{"low": 28, "high": 55}`, and 28 rows from `G3` down to `E1`
+
+#### Scenario: Vocal Guide definition
+- **WHEN** a client requests `GET /api/v1/instruments`
+- **THEN** the last melodic instrument has `id` `"vocal"`, `name` `"Vocal Guide"`, `midi_program` 54, `range` `{"low": 40, "high": 84}`, and 45 rows from `C6` down to `E2`
 
 #### Scenario: Every catalog instrument has an editor page
 - **WHEN** the user opens `/instruments/synth-pad`
@@ -119,8 +124,8 @@ When more notes are requested at once, the oldest sounding note SHALL be release
 - **THEN** the note is silenced
 
 ### Requirement: Monophonic generation
-Generation for the `bass` and `synth-lead` instruments SHALL produce a single melodic line:
-- When the AI output has more than one note starting at the same step, only the lowest note (for `bass`) or the highest note (for `synth-lead`) SHALL be kept.
+Generation for the `bass`, `synth-lead`, and `vocal` instruments SHALL produce a single melodic line:
+- When the AI output has more than one note starting at the same step, only the lowest note (for `bass`) or the highest note (for `synth-lead` and `vocal`) SHALL be kept.
 - A kept note SHALL be shortened so it ends no later than the start of the next kept note.
 
 This rule applies only to generated patterns. The user SHALL still be able to add simultaneous notes by hand.
@@ -132,6 +137,10 @@ This rule applies only to generated patterns. The user SHALL still be able to ad
 #### Scenario: Lead keeps the highest note
 - **WHEN** the AI output for a synth-lead pattern has `E4` and `C5` both starting at step 8
 - **THEN** the generated pattern has only the `C5` note at step 8
+
+#### Scenario: Vocal keeps the highest note
+- **WHEN** the AI output for a vocal pattern has `A3` and `E4` both starting at step 0
+- **THEN** the generated pattern has only the `E4` note at step 0
 
 #### Scenario: Line notes do not overlap
 - **WHEN** the AI output for a bass pattern has `C2` at step 0 with length 8 and `F2` at step 4
@@ -150,6 +159,7 @@ Each melodic instrument's built-in synthesizer voice SHALL match its character:
 - `synth-pad`: a slow attack and long release.
 - `strings`: a moderate attack and sustained tone.
 - `pluck`: a sharp attack that decays to silence within about one second, even when the note is longer.
+- `vocal`: a soft attack and a rounded, vowel-like tone with gentle vibrato, sustained while held.
 
 #### Scenario: Organ holds its level
 - **WHEN** an organ note 16 steps long plays at 120 BPM
@@ -162,3 +172,7 @@ Each melodic instrument's built-in synthesizer voice SHALL match its character:
 #### Scenario: Pad has a slow attack
 - **WHEN** a synth-pad note starts
 - **THEN** it reaches full level noticeably later than a piano note of the same velocity
+
+#### Scenario: Vocal sustains with vibrato
+- **WHEN** a vocal note 16 steps long plays at 120 BPM
+- **THEN** it keeps sounding until its release, and its pitch varies slightly and periodically around the note's pitch
