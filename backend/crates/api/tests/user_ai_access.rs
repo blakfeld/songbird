@@ -12,7 +12,7 @@ use api::keys::{self, AiProvider, UserApiKey};
 use api::provider::Providers;
 use async_trait::async_trait;
 use axum::http::{header, StatusCode};
-use common::app::{lyrics_body, request, song, Response, TestApp};
+use common::app::{lyrics_body, request, song, topline_body, Response, TestApp};
 use music::ai::KeyCheckError;
 use serde_json::{json, Value};
 use wiremock::matchers::{header as header_is, method, path};
@@ -40,6 +40,7 @@ fn ai_routes() -> Vec<(&'static str, Value)> {
             json!({"song": song("Late Train", 1), "messages": [{"role": "user", "content": "hello there"}]}),
         ),
         ("/api/v1/lyrics/assist", lyrics_body()),
+        ("/api/v1/songs/topline/generate", topline_body()),
     ]
 }
 

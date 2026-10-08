@@ -517,6 +517,106 @@ pub struct Loop {
     pub name: String,
     pub measures: u32,
     pub notes: Vec<Note>,
+    /// What the loop's lyrics were generated from, kept so the Studio can
+    /// notice edited lyrics and re-flow syllables onto edited notes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub topline: Option<ToplineSource>,
+}
+
+pub const MAX_LYRIC_CHARS: usize = 16;
+pub const MAX_TOPLINE_LINES: usize = 32;
+pub const MAX_TOPLINE_LINE_CHARS: usize = 200;
+pub const MAX_SYLLABLES_PER_LINE: usize = 64;
+pub const MAX_TOPLINE_SYLLABLES: usize = 256;
+
+/// Presets rather than free ranges so the dialog and the server agree on what
+/// each voice means without the client sending numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum VoicePreset {
+    Soprano,
+    Alto,
+    Tenor,
+    Baritone,
+}
+
+impl VoicePreset {
+    pub fn range(self) -> (u8, u8) {
+        match self {
+            Self::Soprano => (60, 81),
+            Self::Alto => (53, 74),
+            Self::Tenor => (48, 69),
+            Self::Baritone => (45, 65),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ToplineSyllable {
+    pub text: String,
+    pub stressed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ToplineLine {
+    pub text: String,
+    pub syllables: Vec<ToplineSyllable>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ToplineSource {
+    pub section_name: String,
+    pub voice: VoicePreset,
+    pub lines: Vec<ToplineLine>,
+}
+
+fn has_line_break(text: &str) -> bool {
+    text.contains(['\n', '\r'])
+}
+
+/// Counted in characters, not UTF-16 units, so a syllable of emoji or non-Latin
+/// script gets the same room as the lyrics notepad.
+pub fn is_valid_lyric(text: &str) -> bool {
+    let chars = text.chars().count();
+    (1..=MAX_LYRIC_CHARS).contains(&chars) && !has_line_break(text)
+}
+
+/// Shared with the topline request so a body the endpoint accepts can always
+/// be saved as a loop's source.
+pub fn validate_topline_lines(section_name: &str, lines: &[ToplineLine]) -> Result<(), String> {
+    let name = name_len(section_name);
+    if name == 0 || name > SECTION_NAME_MAX {
+        return Err(format!(
+            "section_name must be 1-{SECTION_NAME_MAX} characters"
+        ));
+    }
+    if lines.is_empty() || lines.len() > MAX_TOPLINE_LINES {
+        return Err(format!("lines must hold 1-{MAX_TOPLINE_LINES} lines"));
+    }
+    let mut total = 0;
+    for line in lines {
+        if line.text.chars().count() > MAX_TOPLINE_LINE_CHARS {
+            return Err(format!(
+                "a line holds at most {MAX_TOPLINE_LINE_CHARS} characters"
+            ));
+        }
+        if line.syllables.is_empty() || line.syllables.len() > MAX_SYLLABLES_PER_LINE {
+            return Err(format!("a line holds 1-{MAX_SYLLABLES_PER_LINE} syllables"));
+        }
+        if line.syllables.iter().any(|s| !is_valid_lyric(&s.text)) {
+            return Err(format!(
+                "a syllable is 1-{MAX_LYRIC_CHARS} characters with no line breaks"
+            ));
+        }
+        total += line.syllables.len();
+    }
+    if total > MAX_TOPLINE_SYLLABLES {
+        return Err(format!(
+            "lines hold at most {MAX_TOPLINE_SYLLABLES} syllables in all"
+        ));
+    }
+    Ok(())
 }
 
 /// Whole-measure positions keep clips aligned with the loop region and
@@ -610,6 +710,8 @@ pub enum SongErrorKind {
     LoopNoteRow,
     LoopNoteRange,
     LoopNoteOverlap,
+    LoopNoteLyric,
+    LoopTopline,
     DuplicateClipId,
     ClipLoop,
     ClipPosition,
@@ -671,6 +773,8 @@ impl SongErrorKind {
             Self::LoopNoteRow => "loop_note_row",
             Self::LoopNoteRange => "loop_note_range",
             Self::LoopNoteOverlap => "loop_note_overlap",
+            Self::LoopNoteLyric => "loop_note_lyric",
+            Self::LoopTopline => "loop_topline",
             Self::DuplicateClipId => "duplicate_clip_id",
             Self::ClipLoop => "clip_loop",
             Self::ClipPosition => "clip_position",
@@ -1455,6 +1559,14 @@ impl Song {
                 ),
             ));
         }
+        if let Some(source) = &lp.topline {
+            validate_topline_lines(&source.section_name, &source.lines).map_err(|message| {
+                invalid(
+                    SongErrorKind::LoopTopline,
+                    format!("{label}: loop `{}` topline: {message}", lp.name),
+                )
+            })?;
+        }
         let total_steps = u64::from(lp.measures) * u64::from(self.steps_per_measure);
         let mut spans_by_row: HashMap<&str, Vec<(u64, u64)>> = HashMap::new();
         for note in &lp.notes {
@@ -1464,6 +1576,15 @@ impl Song {
                     format!(
                         "{label}: loop `{}` has a note on row `{}`, which {} does not have",
                         lp.name, note.row_id, instrument.name
+                    ),
+                ));
+            }
+            if note.lyric.as_deref().is_some_and(|l| !is_valid_lyric(l)) {
+                return Err(invalid(
+                    SongErrorKind::LoopNoteLyric,
+                    format!(
+                        "{label}: loop `{}` has a lyric on step {} that is not 1-{MAX_LYRIC_CHARS} characters without line breaks",
+                        lp.name, note.step
                     ),
                 ));
             }
@@ -1824,6 +1945,7 @@ pub(crate) mod tests {
             step,
             length_steps: length,
             velocity: 100,
+            lyric: None,
         }
     }
 
@@ -1850,6 +1972,7 @@ pub(crate) mod tests {
             name: format!("Loop {id}"),
             measures,
             notes,
+            topline: None,
         }
     }
 
@@ -2830,5 +2953,92 @@ pub(crate) mod tests {
         let json = serde_json::to_value(&s).unwrap();
         assert_eq!(json["sections"][1]["kind"], "pre-chorus");
         assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
+    }
+
+    fn lyric_song() -> Song {
+        let mut s = two_track_song();
+        let piano = &mut s.tracks[1].loops[0];
+        piano.notes[0].lyric = Some("hold".into());
+        piano.topline = Some(ToplineSource {
+            section_name: "Chorus".into(),
+            voice: VoicePreset::Tenor,
+            lines: vec![ToplineLine {
+                text: "Hold me".into(),
+                syllables: vec![
+                    ToplineSyllable {
+                        text: "hold".into(),
+                        stressed: true,
+                    },
+                    ToplineSyllable {
+                        text: "me".into(),
+                        stressed: false,
+                    },
+                ],
+            }],
+        });
+        s
+    }
+
+    #[test]
+    fn a_song_without_lyrics_serializes_without_lyric_or_topline_fields() {
+        let original = serde_json::to_string(&two_track_song()).unwrap();
+        assert!(!original.contains("lyric\""));
+        assert!(!original.contains("topline"));
+        let reparsed: Song = serde_json::from_str(&original).unwrap();
+        assert_eq!(serde_json::to_string(&reparsed).unwrap(), original);
+    }
+
+    #[test]
+    fn a_song_with_lyrics_and_a_topline_round_trips() {
+        let s = lyric_song();
+        let json = serde_json::to_value(&s).unwrap();
+        let loop_json = &json["tracks"][1]["loops"][0];
+        assert_eq!(loop_json["notes"][0]["lyric"], "hold");
+        assert_eq!(loop_json["topline"]["voice"], "tenor");
+        assert_eq!(
+            loop_json["topline"]["lines"][0]["syllables"][0]["stressed"],
+            true
+        );
+        assert_eq!(serde_json::from_value::<Song>(json).unwrap(), s);
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+    }
+
+    #[test]
+    fn voice_presets_cover_the_spec_ranges() {
+        assert_eq!(VoicePreset::Soprano.range(), (60, 81));
+        assert_eq!(VoicePreset::Alto.range(), (53, 74));
+        assert_eq!(VoicePreset::Tenor.range(), (48, 69));
+        assert_eq!(VoicePreset::Baritone.range(), (45, 65));
+    }
+
+    #[test]
+    fn a_seventeen_character_lyric_is_invalid() {
+        let err = rejected(|s| s.tracks[1].loops[0].notes[0].lyric = Some("a".repeat(17)));
+        assert_eq!(err.kind().as_str(), "loop_note_lyric");
+    }
+
+    #[test]
+    fn lyrics_are_counted_in_characters_and_may_not_break_lines() {
+        let mut s = two_track_song();
+        s.tracks[1].loops[0].notes[0].lyric = Some("\u{1F600}".repeat(16));
+        assert!(s.validate(&InstrumentRegistry::builtin()).is_ok());
+        for bad in ["", "a\nb", "a\rb"] {
+            let err = rejected(|s| s.tracks[1].loops[0].notes[0].lyric = Some(bad.into()));
+            assert_eq!(err.kind().as_str(), "loop_note_lyric", "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn an_over_long_topline_source_is_invalid() {
+        let mut s = lyric_song();
+        s.tracks[1].loops[0].topline.as_mut().unwrap().section_name = "x".repeat(41);
+        assert_eq!(error_kind(&s), "loop_topline");
+    }
+
+    #[test]
+    fn unknown_voice_is_malformed() {
+        let mut json = serde_json::to_value(lyric_song()).unwrap();
+        json["tracks"][1]["loops"][0]["topline"]["voice"] = json!("bass");
+        assert!(serde_json::from_value::<Song>(json).is_err());
     }
 }

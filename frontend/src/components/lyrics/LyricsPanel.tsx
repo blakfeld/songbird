@@ -38,6 +38,7 @@ export function LyricsPanel({
   focusedSongs,
   onChange,
   registerFlush,
+  onGenerateTopline,
   heading = false,
 }: {
   song: Song | null;
@@ -49,6 +50,7 @@ export function LyricsPanel({
   focusedSongs: Set<string>;
   onChange: (text: string, songId: string) => void;
   registerFlush?: (flush: () => void) => () => void;
+  onGenerateTopline?: (headingName: string) => void;
   // The drawer has no tab to name the panel, so it shows its own header.
   heading?: boolean;
 }) {
@@ -162,6 +164,7 @@ export function LyricsPanel({
               registerEditor={registerEditor}
               focusedSongs={focusedSongs}
               sectionKeys={keys}
+              onGenerateTopline={onGenerateTopline}
             />
           )}
         </div>

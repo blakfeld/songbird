@@ -41,6 +41,12 @@ pub struct Note {
     pub step: u32,
     pub length_steps: u32,
     pub velocity: u8,
+    /// The syllable this note starts. A note without one continues the
+    /// previous syllable, which is how MIDI karaoke and MusicXML express a
+    /// melisma, so export needs no separate mapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lyric: Option<String>,
 }
 
 impl Pattern {
@@ -193,6 +199,7 @@ mod tests {
             step: 0,
             length_steps: 4,
             velocity: 110,
+            lyric: None,
         });
         let json = serde_json::to_value(&p).unwrap();
         assert_eq!(json["time_signature"], "4/4");
@@ -200,5 +207,30 @@ mod tests {
         assert_eq!(json["notes"][0]["length_steps"], 4);
         let back: Pattern = serde_json::from_value(json).unwrap();
         assert_eq!(back, p);
+    }
+
+    #[test]
+    fn notes_without_a_lyric_serialize_without_the_field() {
+        let mut p = Pattern::empty(
+            &DRUMS,
+            "x",
+            120,
+            TimeSignature::FourFour,
+            MeasureCount::default(),
+            0.0,
+        );
+        p.notes.push(Note {
+            row_id: "kick".into(),
+            step: 0,
+            length_steps: 4,
+            velocity: 110,
+            lyric: None,
+        });
+        let plain = serde_json::to_string(&p).unwrap();
+        assert!(!plain.contains("lyric"));
+        p.notes[0].lyric = Some("la".into());
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["notes"][0]["lyric"], "la");
+        assert_eq!(serde_json::from_value::<Pattern>(json).unwrap(), p);
     }
 }

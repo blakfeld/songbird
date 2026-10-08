@@ -244,6 +244,62 @@ describe("LyricsEditor handle", () => {
     expect(text()).toBe("[Hook]\nla");
   });
 
+  it("offers Generate topline on linked headings only, without touching the lyrics", async () => {
+    const onGenerateTopline = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <LyricsEditor
+        songId="a"
+        lyrics={"[Chorus]\nla\n[Hook]\nla"}
+        onChange={onChange}
+        sectionKeys={["chorus"]}
+        onGenerateTopline={onGenerateTopline}
+      />,
+    );
+    const buttons = screen.getAllByRole("button", { name: /Generate topline/ });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName("Generate topline for Chorus");
+    await userEvent.click(buttons[0]);
+    expect(onGenerateTopline).toHaveBeenCalledWith("Chorus");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("generates for the section under the cursor with Mod-Enter, without editing the lyrics", () => {
+    const onGenerateTopline = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <LyricsEditor
+        songId="a"
+        lyrics={"[Verse]\nla\n[Chorus]\nhold me\nclose"}
+        onChange={onChange}
+        sectionKeys={["chorus", "verse"]}
+        onGenerateTopline={onGenerateTopline}
+      />,
+    );
+    const view = EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+    act(() => view.dispatch({ selection: { anchor: view.state.doc.length } }));
+    fireEvent.keyDown(view.contentDOM, { key: "Enter", ctrlKey: true });
+    expect(onGenerateTopline).toHaveBeenCalledWith("Chorus");
+    expect(view.state.doc.toString()).toBe("[Verse]\nla\n[Chorus]\nhold me\nclose");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves Mod-Enter to the editor when no handler is given", () => {
+    render(<LyricsEditor songId="a" lyrics="[Chorus]\nla" onChange={vi.fn()} sectionKeys={["chorus"]} />);
+    const view = EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+    act(() => view.dispatch({ selection: { anchor: view.state.doc.length } }));
+    fireEvent.keyDown(view.contentDOM, { key: "Enter", ctrlKey: true });
+    expect(view.state.doc.toString().length).toBeGreaterThan("[Chorus]\nla".length);
+  });
+
+  it("offers no topline action when the page gives no handler or section names", () => {
+    const { unmount } = render(<LyricsEditor songId="a" lyrics="[Chorus]\nla" onChange={vi.fn()} sectionKeys={["chorus"]} />);
+    expect(screen.queryByRole("button", { name: /Generate topline/ })).toBeNull();
+    unmount();
+    render(<LyricsEditor songId="a" lyrics="[Chorus]\nla" onChange={vi.fn()} onGenerateTopline={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Generate topline/ })).toBeNull();
+  });
+
   it("flags nothing while the section names are unknown", () => {
     withHandle("[Hook]");
     expect(document.querySelector(".cm-lyric-heading-unlinked")).toBeNull();

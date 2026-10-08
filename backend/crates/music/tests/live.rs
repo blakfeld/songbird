@@ -114,3 +114,82 @@ async fn live_ollama_assists_with_lyrics() {
     let model = env_or("SONGBIRD_OLLAMA_MODEL", "qwen2.5:7b-instruct");
     assert_assists_with_lyrics(&SchemaLyricsProvider::new(OllamaProvider::new(url, model))).await;
 }
+
+async fn assert_writes_a_topline(provider: &dyn music::ai::ToplineProvider) {
+    use music::generate::generate_topline;
+    use music::{InstrumentRegistry, ToplineGenerateBody};
+    use serde_json::json;
+
+    provider.check().await.expect("provider check");
+    let syllables = |texts: &[(&str, bool)]| -> Vec<serde_json::Value> {
+        texts
+            .iter()
+            .map(|(text, stressed)| json!({"text": text, "stressed": stressed}))
+            .collect()
+    };
+    let body: ToplineGenerateBody = serde_json::from_value(json!({
+        "song": {
+            "version": 2, "id": "song-1", "name": "Late Train", "tempo_bpm": 96,
+            "time_signature": "4/4", "steps_per_measure": 16, "swing": 0,
+            "measures": 8,
+            "tracks": [{
+                "id": "vocal", "name": "Vocal", "instrument": "vocal", "volume_db": 0, "pan": 0,
+                "muted": false, "soloed": false,
+                "loops": [{"id": "l1", "name": "Empty", "measures": 8, "notes": []}],
+                "clips": [{"id": "c1", "loop_id": "l1", "start_measure": 1, "measures": 8}],
+            }],
+        },
+        "track_id": "vocal",
+        "range": {"start_measure": 5, "end_measure": 8},
+        "section_name": "Chorus",
+        "lines": [
+            {"text": "Hold me close tonight", "syllables": syllables(&[
+                ("hold", true), ("me", false), ("close", true), ("to-", false), ("night", true)])},
+            {"text": "Never let me go away", "syllables": syllables(&[
+                ("nev-", true), ("er", false), ("let", false), ("me", false), ("go", true),
+                ("a-", false), ("way", true)])},
+        ],
+        "voice": "tenor",
+        "prompt": "warm and mostly stepwise",
+    }))
+    .unwrap();
+    let request = body.validate(&InstrumentRegistry::builtin(), 256).unwrap();
+    let response = generate_topline(provider, &request, 2000)
+        .await
+        .expect("generation");
+
+    let placed = response.notes.iter().filter(|n| n.lyric.is_some()).count();
+    assert_eq!(placed, 12, "every syllable is placed");
+    let prosody = response.prosody;
+    let score = f64::from(prosody.stressed_on_beat) / f64::from(prosody.stressed_syllables);
+    println!(
+        "prosody: {} of {} stressed syllables on the beat ({:.0}%)",
+        prosody.stressed_on_beat,
+        prosody.stressed_syllables,
+        score * 100.0
+    );
+    assert!(score >= 0.7, "prosody {score:.2} is below 70%");
+}
+
+#[tokio::test]
+#[ignore = "needs a running Ollama with the model pulled"]
+async fn live_ollama_writes_a_topline() {
+    let url = env_or("SONGBIRD_OLLAMA_URL", "http://localhost:11434");
+    let model = env_or("SONGBIRD_OLLAMA_MODEL", "qwen2.5:7b-instruct");
+    assert_writes_a_topline(&music::ai::SchemaToplineProvider::new(OllamaProvider::new(
+        url, model,
+    )))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs ANTHROPIC_API_KEY"]
+async fn live_claude_writes_a_topline() {
+    let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
+    let model = env_or("SONGBIRD_AI_MODEL", "claude-sonnet-5-5");
+    assert_writes_a_topline(&music::ai::SchemaToplineProvider::new(ClaudeProvider::new(
+        SecretString::from(key),
+        model,
+    )))
+    .await;
+}

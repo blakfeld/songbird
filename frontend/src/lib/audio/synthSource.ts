@@ -19,6 +19,15 @@ export interface SynthPreset {
   defaults: { filterCutoffHz?: number; filterRolloff?: FilterRolloff; envelope: ToneEnvelope };
   // Fixed voice character (reverb, chorus) that user settings must not replace. Built from the injected Tone module so importing presets never touches Tone.
   effects?: (tone: ToneModule) => Array<InstanceType<ToneModule["ToneAudioNode"]>>;
+  vibrato?: VoiceVibrato;
+}
+
+// Singers let the note settle before adding vibrato; running it from the first instant sounds like a synth.
+export interface VoiceVibrato {
+  frequencyHz: number;
+  depthCents: number;
+  delaySeconds: number;
+  riseSeconds: number;
 }
 
 export const MAX_POLYPHONY = 32;
@@ -37,6 +46,8 @@ interface PooledVoice {
   startedAt: number;
   // The live note currently holding this voice open, so a stale noteOff cannot release a successor.
   held: NoteHandle | null;
+  // Per voice because the delayed onset restarts with every note.
+  vibrato?: { lfo: InstanceType<ToneModule["LFO"]>; depth: InstanceType<ToneModule["Gain"]> };
 }
 
 // Voices are driven directly rather than through Tone.PolySynth: its voices
@@ -100,7 +111,15 @@ export function createSynthSource(preset: SynthPreset) {
           envelope: { ...(preset.options.envelope as object | undefined), ...envelope },
         } as never) as Voice;
         synth.connect(pool.bus);
-        const created = { synth, freeAt: 0, startedAt: -Infinity, held: null };
+        const created: PooledVoice = { synth, freeAt: 0, startedAt: -Infinity, held: null };
+        if (preset.vibrato) {
+          const lfo = new tone.LFO({ frequency: preset.vibrato.frequencyHz, min: -1, max: 1 });
+          const depth = new tone.Gain(0);
+          lfo.connect(depth);
+          depth.connect(synth.detune);
+          lfo.start();
+          created.vibrato = { lfo, depth };
+        }
         pool.voices.push(created);
         return created;
       }
@@ -121,12 +140,26 @@ export function createSynthSource(preset: SynthPreset) {
       return oldest;
     };
 
+    const restartVibrato = (voice: PooledVoice, startSeconds: number) => {
+      if (!voice.vibrato || !preset.vibrato) return;
+      const { depthCents, delaySeconds, riseSeconds } = preset.vibrato;
+      const { gain } = voice.vibrato.depth;
+      gain.cancelScheduledValues(startSeconds);
+      gain.setValueAtTime(0, startSeconds);
+      gain.setValueAtTime(0, startSeconds + delaySeconds);
+      gain.linearRampToValueAtTime(depthCents, startSeconds + delaySeconds + riseSeconds);
+    };
+
     const stopAll = () => {
       const old = pool;
       pool = makePool();
       old.bus.gain.rampTo(0, FADE_SECONDS);
       setTimeout(() => {
-        old.voices.forEach((v) => v.synth.dispose());
+        old.voices.forEach((v) => {
+          v.vibrato?.lfo.dispose();
+          v.vibrato?.depth.dispose();
+          v.synth.dispose();
+        });
         old.bus.dispose();
       }, DISPOSE_DELAY_MS);
     };
@@ -152,6 +185,7 @@ export function createSynthSource(preset: SynthPreset) {
           startSeconds,
           velocityToGain(velocity),
         );
+        restartVibrato(voice, startSeconds);
         voice.synth.triggerRelease(endSeconds);
         voice.startedAt = startSeconds;
         voice.held = null;
@@ -168,6 +202,7 @@ export function createSynthSource(preset: SynthPreset) {
           startSeconds,
           velocityToGain(velocity),
         );
+        restartVibrato(voice, startSeconds);
         voice.startedAt = startSeconds;
         voice.held = handle;
         // Unknown until noteOff, so nothing may reuse the voice in the meantime.

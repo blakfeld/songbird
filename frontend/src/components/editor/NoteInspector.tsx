@@ -74,19 +74,71 @@ function NumberField({
   );
 }
 
+const MAX_LYRIC_CHARS = 16;
+const LYRIC_LIMIT_MESSAGE = `A lyric is at most ${MAX_LYRIC_CHARS} characters with no line breaks.`;
+
+const lyricProblem = (text: string) => [...text].length > MAX_LYRIC_CHARS || /[\n\r]/.test(text);
+
+// Same commit-on-Enter-or-blur rule as the number fields, so typing a syllable is one undo step. An invalid draft
+// is kept on screen with the reason rather than silently trimmed, because the limit is the server's.
+function LyricField({ id, value, onCommit }: { id: string; value: string; onCommit: (lyric: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const errorId = useId();
+  const shown = draft ?? value;
+  // Surrounding spaces are never meant as part of a syllable, and a lyric of only spaces means none.
+  const trimmed = draft?.trim() ?? null;
+  const invalid = trimmed !== null && lyricProblem(trimmed);
+
+  function commit() {
+    // An invalid draft stays on screen with its reason, so a blur never silently throws the typing away.
+    if (invalid) return;
+    if (trimmed !== null && trimmed !== value) onCommit(trimmed);
+    setDraft(null);
+  }
+
+  return (
+    <>
+      <input
+        id={id}
+        type="text"
+        value={shown}
+        aria-invalid={invalid}
+        aria-describedby={invalid ? errorId : undefined}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setDraft(null);
+        }}
+        className={`${inputClass} w-32`}
+      />
+      {invalid && (
+        <span id={errorId} role="alert" className="text-sm text-red-700 dark:text-red-400">
+          {LYRIC_LIMIT_MESSAGE}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function NoteInspector({
   notes,
   oneShot,
   compact,
   onSetVelocity,
   onSetLength,
+  onSetLyric,
+  onClearLyrics,
 }: {
   notes: Note[];
   oneShot: boolean;
   compact: boolean;
   onSetVelocity: (velocity: number) => void;
   onSetLength: (length: number) => void;
+  onSetLyric: (lyric: string) => void;
+  onClearLyrics: () => void;
 }) {
+  const lyricId = useId();
   const velId = useId();
   const lenId = useId();
   const velMixedId = useId();
@@ -109,6 +161,7 @@ export function NoteInspector({
   const lengths = notes.map((n) => n.length_steps);
   const velocity = sameValue(velocities) ? velocities[0] : null;
   const length = sameValue(lengths) ? lengths[0] : null;
+  const lyricCount = notes.filter((n) => n.lyric).length;
   const meanVelocity = Math.round(velocities.reduce((a, b) => a + b, 0) / velocities.length);
   const sliderValue = sliderDraft ?? velocity ?? meanVelocity;
   const height = compact ? "!h-8" : "";
@@ -186,6 +239,24 @@ export function NoteInspector({
           steps
         </span>
       </div>
+      {notes.length === 1 && (
+        <div className="flex items-center gap-2">
+          <label htmlFor={lyricId} className={labelClass}>
+            Lyric
+          </label>
+          {/* Keyed so a different note starts from its own lyric rather than the previous note's draft. */}
+          <LyricField key={`${notes[0].row_id}:${notes[0].step}`} id={lyricId} value={notes[0].lyric ?? ""} onCommit={onSetLyric} />
+        </div>
+      )}
+      {notes.length > 1 && lyricCount > 0 && (
+        <button
+          type="button"
+          onClick={onClearLyrics}
+          className={`rounded border border-zinc-300 px-2 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800 ${focusRing}`}
+        >
+          Clear lyrics
+        </button>
+      )}
     </div>
   );
 }

@@ -3,7 +3,10 @@ use axum::extract::{FromRequest, Request};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use music::{ChatRequestError, LyricsRequestError, SongError, TrackRequestError, ValidationError};
+use music::{
+    ChatRequestError, LyricsRequestError, SongError, ToplineRequestError, TrackRequestError,
+    ValidationError,
+};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
@@ -40,6 +43,10 @@ pub enum ApiError {
     /// existing handling of a 422 shows the server's message with no mapping.
     #[error("{message}")]
     LyricsRejected { code: &'static str, message: String },
+    /// 422 for the same reason as `LyricsRejected`: every one of these is fixed by changing
+    /// the lyrics, voice or track the client chose.
+    #[error("{message}")]
+    ToplineRejected { code: &'static str, message: String },
     #[error("The song has no track with that id.")]
     InvalidTrack,
     /// 400 rather than 422 because no document change fixes it: the request
@@ -128,6 +135,7 @@ impl ApiError {
             | Self::InvalidTrack
             | Self::InvalidRange
             | Self::LyricsRejected { .. }
+            | Self::ToplineRejected { .. }
             | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
@@ -164,7 +172,9 @@ impl ApiError {
             Self::InvalidPattern(_) => "invalid_pattern",
             Self::InvalidSong(_) => "invalid_song",
             Self::InvalidSongInstrument(_) => "invalid_instrument",
-            Self::ChatRejected { code, .. } | Self::LyricsRejected { code, .. } => code,
+            Self::ChatRejected { code, .. }
+            | Self::LyricsRejected { code, .. }
+            | Self::ToplineRejected { code, .. } => code,
             Self::InvalidTrack => "invalid_track",
             Self::AudioTrackTarget => "audio_track_target",
             Self::SamplerTrackTarget => "invalid_target",
@@ -220,6 +230,26 @@ impl From<TrackRequestError> for ApiError {
             TrackRequestError::SamplerTrack => Self::SamplerTrackTarget,
             TrackRequestError::Prompt(e) => Self::Validation(e),
             TrackRequestError::InvalidRange => Self::InvalidRange,
+        }
+    }
+}
+
+impl From<ToplineRequestError> for ApiError {
+    fn from(error: ToplineRequestError) -> Self {
+        match error {
+            ToplineRequestError::Song(SongError::UnknownInstrument { message }) => {
+                Self::InvalidSongInstrument(message)
+            }
+            ToplineRequestError::Song(SongError::Invalid { message, .. }) => {
+                Self::InvalidSong(message)
+            }
+            ToplineRequestError::UnknownTrack => Self::InvalidTrack,
+            ToplineRequestError::InvalidRange => Self::InvalidRange,
+            ToplineRequestError::Prompt(e) => Self::Validation(e),
+            other => Self::ToplineRejected {
+                code: other.code(),
+                message: other.to_string(),
+            },
         }
     }
 }

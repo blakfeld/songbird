@@ -36,6 +36,8 @@ import {
   pasteNotes,
   setLengths,
   setVelocities,
+  setLyrics,
+  clearLyrics,
   shiftVelocities,
   type NoteGrid,
 } from "@/lib/patternOps";
@@ -968,6 +970,8 @@ export function PianoRoll({
         createPortal(
           <NoteInspector
             notes={selectedNotes}
+            onSetLyric={(lyric) => onEditNotes((g) => setLyrics(g.notes, selectionRef.current, lyric))}
+            onClearLyrics={() => onEditNotes((g) => clearLyrics(g.notes, selectionRef.current))}
             oneShot={!sustained}
             compact={inspectorCompact}
             onSetVelocity={(v) => onEditNotes((g) => setVelocities(g.notes, selectionRef.current, v))}

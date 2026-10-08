@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToplineDraft",
+  "description": "Positions are per line because models track a short numbered list far more\nreliably than a running count across the whole section.",
+  "type": "object",
+  "properties": {
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DraftLine"
+      }
+    }
+  },
+  "required": [
+    "lines"
+  ],
+  "$defs": {
+    "DraftLine": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "description": "The line's number in the request, starting at 0.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "syllables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DraftSyllable"
+          }
+        }
+      },
+      "required": [
+        "line",
+        "syllables"
+      ],
+      "additionalProperties": false
+    },
+    "DraftSyllable": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "description": "The syllable's index within its line, starting at 0.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "pitch": {
+          "description": "A pitch such as C4, F#3 or Bb2, or a MIDI number.",
+          "type": "string"
+        },
+        "start_beat": {
+          "description": "Beats from the start of the section, in quarter-beat steps.",
+          "type": "number"
+        },
+        "beats": {
+          "type": "number"
+        },
+        "melisma": {
+          "description": "Extra notes sung on the same syllable, in order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DraftMelisma"
+          }
+        }
+      },
+      "required": [
+        "index",
+        "pitch",
+        "start_beat",
+        "beats",
+        "melisma"
+      ],
+      "additionalProperties": false
+    },
+    "DraftMelisma": {
+      "type": "object",
+      "properties": {
+        "pitch": {
+          "type": "string"
+        },
+        "beats": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "pitch",
+        "beats"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

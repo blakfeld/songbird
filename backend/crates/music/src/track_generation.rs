@@ -136,7 +136,7 @@ impl TrackGenerateBody {
     }
 }
 
-fn resolve_range(
+pub(crate) fn resolve_range(
     requested: Option<MeasureRange>,
     song_measures: u32,
 ) -> Result<MeasureRange, TrackRequestError> {

@@ -100,7 +100,7 @@ function NoteBarImpl({ actions, note, rowIndex, measureStartStep, selected, movi
       data-length={length}
       data-velocity={note.velocity}
       data-selected={selected ? "true" : undefined}
-      title={`${rowName} · velocity ${note.velocity} · ${length} ${length === 1 ? "step" : "steps"}\nDrag to move · Shift-drag for velocity\nDouble-click or Delete to remove`}
+      title={`${note.lyric ? `"${note.lyric}" · ` : ""}${rowName} · velocity ${note.velocity} · ${length} ${length === 1 ? "step" : "steps"}\nDrag to move · Shift-drag for velocity\nDouble-click or Delete to remove`}
       onPointerDown={(e) => {
         if (e.button === 0) actions.pressNote(note, e);
       }}
@@ -117,6 +117,16 @@ function NoteBarImpl({ actions, note, rowIndex, measureStartStep, selected, movi
         className="absolute inset-0 bg-indigo-600 dark:bg-indigo-400"
         style={{ opacity: 0.2 + 0.8 * (note.velocity / 127) }}
       />
+      {note.lyric && (
+        <span className="pointer-events-none absolute inset-0 overflow-hidden">
+          <span
+            data-testid="note-lyric"
+            className="block max-w-full truncate px-0.5 text-[9px] leading-[10px] font-medium text-zinc-950 dark:text-white [text-shadow:0_0_2px_rgb(255_255_255/0.9)] dark:[text-shadow:0_0_2px_rgb(9_9_11/0.9)]"
+          >
+            {note.lyric}
+          </span>
+        </span>
+      )}
       <span
         aria-hidden="true"
         data-testid="note-resize"

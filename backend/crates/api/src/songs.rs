@@ -22,11 +22,11 @@ use music::chat::{
     ChatProgress, ChatRange, ChatReplyDelta, ChatReplyReset, ChatStreamError, PlanEvent, RangeRule,
     LOOP_RANGE_REPLY, TRACK_LIMIT_REPLY,
 };
-use music::generate::generate_track;
+use music::generate::{generate_topline, generate_track};
 use music::song_midi::song_to_midi;
 use music::{
-    ChatBody, ChatResponse, ChatTrack, Song, SongError, SongLimits, TrackGenerateBody,
-    TrackGenerateResponse, ValidTrackRequest,
+    ChatBody, ChatResponse, ChatTrack, Song, SongError, SongLimits, ToplineGenerateBody,
+    ToplineResponse, TrackGenerateBody, TrackGenerateResponse, ValidTrackRequest,
 };
 
 use crate::ai_access::RequestProviders;
@@ -46,6 +46,10 @@ pub fn router() -> Router<AppState> {
 pub fn ai_router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/songs/tracks/generate", post(generate_track_part))
+        .route(
+            "/api/v1/songs/topline/generate",
+            post(generate_topline_part),
+        )
         .route("/api/v1/songs/chat", post(chat))
 }
 
@@ -323,6 +327,25 @@ async fn generate_track_part(
         ai.provider_name,
         generate_track(
             ai.providers.patterns.as_ref(),
+            &request,
+            state.config.max_context_tokens,
+        ),
+    )
+    .await?;
+    Ok(Json(response))
+}
+
+async fn generate_topline_part(
+    State(state): State<AppState>,
+    ai: RequestProviders,
+    ApiJson(body): ApiJson<ToplineGenerateBody>,
+) -> Result<Json<ToplineResponse>, ApiError> {
+    let request = body.validate(&state.instruments, state.config.max_input_tokens)?;
+    let response = with_timeout(
+        state.config.generation_timeout,
+        ai.provider_name,
+        generate_topline(
+            ai.providers.topline.as_ref(),
             &request,
             state.config.max_context_tokens,
         ),

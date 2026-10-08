@@ -7,7 +7,7 @@ use api::config::{AI_REQUESTS_PER_DAY, AI_REQUESTS_PER_MINUTE, MAX_CONCURRENT_GE
 use api::provider::Providers;
 use async_trait::async_trait;
 use axum::http::{header, StatusCode};
-use common::app::{lyrics_body, request, song, TestApp};
+use common::app::{lyrics_body, request, song, topline_body, TestApp};
 use music::ai::{PatternProvider, ProviderError};
 use music::{GenerateRequest, Instrument, PatternDraft};
 use serde_json::{json, Value};
@@ -29,6 +29,7 @@ fn ai_routes() -> Vec<(&'static str, Value)> {
             json!({"song": song("Late Train", 1), "messages": [{"role": "user", "content": "hello there"}]}),
         ),
         ("/api/v1/lyrics/assist", lyrics_body()),
+        ("/api/v1/songs/topline/generate", topline_body()),
     ]
 }
 

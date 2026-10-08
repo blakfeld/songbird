@@ -17,10 +17,12 @@ use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use music::ai::plan::{PlanDraft, PlanRequest};
+use music::ai::topline::{ToplineDraft, ToplineRequest};
 use music::ai::{
     LyricsProvider, LyricsRequest, MockLyricsProvider, MockPlanProvider, MockProvider,
     PatternProvider, PlanProvider, ProviderError,
 };
+use music::ai::{MockToplineProvider, ToplineProvider};
 use music::lyrics::LyricsDraft;
 use music::{GenerateRequest, Instrument, InstrumentRegistry, PatternDraft};
 use serde_json::{json, Value};
@@ -68,6 +70,19 @@ impl LyricsProvider for CountingLyrics {
     async fn assist(&self, request: &LyricsRequest) -> Result<LyricsDraft, ProviderError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         MockLyricsProvider.assist(request).await
+    }
+    async fn check(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+}
+
+struct CountingTopline(Arc<AtomicUsize>);
+
+#[async_trait]
+impl ToplineProvider for CountingTopline {
+    async fn generate(&self, request: &ToplineRequest) -> Result<ToplineDraft, ProviderError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        MockToplineProvider.generate(request).await
     }
     async fn check(&self) -> Result<(), ProviderError> {
         Ok(())
@@ -129,7 +144,8 @@ impl TestApp {
             CountingPatterns(provider_calls.clone()),
             CountingPlans(provider_calls.clone()),
         )
-        .with_lyrics(CountingLyrics(provider_calls.clone()));
+        .with_lyrics(CountingLyrics(provider_calls.clone()))
+        .with_topline(CountingTopline(provider_calls.clone()));
         let mut state = AppState::new(
             providers,
             InstrumentRegistry::builtin(),
@@ -254,6 +270,44 @@ pub fn song(name: &str, track_count: usize) -> Value {
         "version": 2, "id": "client-chosen-id", "name": name, "tempo_bpm": 96,
         "time_signature": "4/4", "steps_per_measure": 16, "swing": 0,
         "measures": 4, "tracks": tracks,
+    })
+}
+
+/// A valid topline body: an 8-measure song with a Vocal Guide track and a
+/// 4-measure chorus of two lines (14 syllables) over measures 5-8.
+pub fn topline_body() -> Value {
+    let syllables = |texts: &[&str]| -> Vec<Value> {
+        texts
+            .iter()
+            .enumerate()
+            .map(|(i, text)| json!({"text": text, "stressed": i % 2 == 0}))
+            .collect()
+    };
+    json!({
+        "song": {
+            "version": 2, "id": "song-1", "name": "Late Train", "tempo_bpm": 96,
+            "time_signature": "4/4", "steps_per_measure": 16, "swing": 0,
+            "measures": 8,
+            "tracks": [
+                {"id": "vocal", "name": "Vocal", "instrument": "vocal", "volume_db": 0, "pan": 0,
+                 "muted": false, "soloed": false,
+                 "loops": [{"id": "l1", "name": "Empty", "measures": 8, "notes": []}],
+                 "clips": [{"id": "c1", "loop_id": "l1", "start_measure": 1, "measures": 8}]},
+                {"id": "drums", "name": "Drums", "instrument": "drums", "volume_db": 0, "pan": 0,
+                 "muted": false, "soloed": false, "loops": [], "clips": []},
+            ],
+        },
+        "track_id": "vocal",
+        "range": {"start_measure": 5, "end_measure": 8},
+        "section_name": "Chorus",
+        "lines": [
+            {"text": "Hold me close tonight oh yeah",
+             "syllables": syllables(&["hold", "me", "close", "to-", "night", "oh", "yeah"])},
+            {"text": "Never let me go away",
+             "syllables": syllables(&["nev-", "er", "let", "me", "go", "a-", "way"])},
+        ],
+        "voice": "tenor",
+        "prompt": "soaring, mostly stepwise",
     })
 }
 

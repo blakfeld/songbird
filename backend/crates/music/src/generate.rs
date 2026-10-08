@@ -1,9 +1,13 @@
+use std::future::Future;
+
+use crate::ai::topline::{ToplineDraftError, ToplineProvider, ToplineRequest};
 use crate::ai::{PatternProvider, ProviderError};
 use crate::context::render_context;
 use crate::draft::{DraftError, NormalizedDraft};
 use crate::expand::{build_notes, build_pattern, GenerationSpan};
 use crate::pattern::Pattern;
 use crate::request::GenerateRequest;
+use crate::topline::{ToplineResponse, ValidToplineRequest};
 use crate::track_generation::{TrackGenerateResponse, ValidTrackRequest};
 
 pub(crate) const ATTEMPTS: u32 = 2;
@@ -14,20 +18,24 @@ pub enum GenerationError {
     Provider(#[from] ProviderError),
     #[error("draft was unusable after {ATTEMPTS} attempts: {0}")]
     InvalidDraft(#[from] DraftError),
+    #[error("topline draft was unusable after {ATTEMPTS} attempts: {0}")]
+    InvalidTopline(#[from] ToplineDraftError),
 }
 
-/// The one place a provider's draft becomes returned notes, so validation is
-/// identical whichever provider or instrument produced it. Only unusable
-/// drafts are retried: models often succeed on a second try, whereas transport
-/// failures are unlikely to and would double the wait.
-async fn normalized_draft(
-    provider: &dyn PatternProvider,
-    request: &GenerateRequest,
-) -> Result<NormalizedDraft, GenerationError> {
-    let steps_per_measure = request.time_signature.steps_per_measure();
+/// Shared by every provider kind so the retry policy cannot drift between
+/// them. Only unusable drafts are retried: models often succeed on a second
+/// try, whereas transport failures are unlikely to and would double the wait.
+pub(crate) async fn with_one_retry<Draft, Out, Fut, E>(
+    mut produce: impl FnMut() -> Fut,
+    normalize: impl Fn(Draft) -> Result<Out, E>,
+) -> Result<Out, GenerationError>
+where
+    Fut: Future<Output = Result<Draft, ProviderError>>,
+    E: std::fmt::Display + Into<GenerationError>,
+{
     let mut last_error = None;
     for attempt in 1..=ATTEMPTS {
-        let draft = match provider.generate(request, request.instrument).await {
+        let draft = match produce().await {
             Ok(draft) => draft,
             Err(ProviderError::InvalidOutput(message)) => {
                 tracing::warn!(attempt, %message, "provider output was unparseable");
@@ -38,7 +46,7 @@ async fn normalized_draft(
             }
             Err(other) => return Err(other.into()),
         };
-        match draft.normalize(request.instrument, steps_per_measure) {
+        match normalize(draft) {
             Ok(normalized) => return Ok(normalized),
             Err(e) => {
                 tracing::warn!(attempt, error = %e, "draft failed validation");
@@ -47,6 +55,20 @@ async fn normalized_draft(
         }
     }
     Err(last_error.expect("at least one attempt ran"))
+}
+
+/// The one place a provider's draft becomes returned notes, so validation is
+/// identical whichever provider or instrument produced it.
+async fn normalized_draft(
+    provider: &dyn PatternProvider,
+    request: &GenerateRequest,
+) -> Result<NormalizedDraft, GenerationError> {
+    let steps_per_measure = request.time_signature.steps_per_measure();
+    with_one_retry(
+        || provider.generate(request, request.instrument),
+        |draft| draft.normalize(request.instrument, steps_per_measure),
+    )
+    .await
 }
 
 pub async fn generate_pattern(
@@ -97,6 +119,28 @@ pub async fn generate_track(
         range: request.range,
         notes: build_notes(&draft, span, instrument),
     })
+}
+
+/// Context is rendered here, not in the provider, so every provider sees the
+/// same prompt material and the mock can be tested against the real request.
+pub async fn generate_topline(
+    provider: &dyn ToplineProvider,
+    request: &ValidToplineRequest<'_>,
+    max_context_tokens: u32,
+) -> Result<ToplineResponse, GenerationError> {
+    let context = render_context(
+        &request.song,
+        request.target,
+        request.range,
+        max_context_tokens,
+    );
+    let provider_request = ToplineRequest::new(request, &context);
+    let notes = with_one_retry(
+        || provider.generate(&provider_request),
+        |draft| draft.normalize(&provider_request),
+    )
+    .await?;
+    Ok(request.respond(notes))
 }
 
 #[cfg(test)]
@@ -309,5 +353,114 @@ mod tests {
         let request = body.validate(&InstrumentRegistry::builtin(), 256).unwrap();
         generate_track(&provider, &request, 0).await.unwrap();
         assert_eq!(provider.seen.lock().unwrap()[0].context, None);
+    }
+}
+
+#[cfg(test)]
+mod topline_tests {
+    use super::*;
+    use crate::ai::topline::{MockToplineProvider, ToplineDraft};
+    use crate::instruments::InstrumentRegistry;
+    use crate::topline::tests::chorus_body;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    /// Returns one scripted outcome per attempt and counts the calls, so a
+    /// test controls exactly what each attempt does and whether a retry ran.
+    struct Scripted {
+        outcomes: Mutex<Vec<Result<ToplineDraft, ProviderError>>>,
+        calls: Mutex<u32>,
+    }
+
+    impl Scripted {
+        fn new(outcomes: Vec<Result<ToplineDraft, ProviderError>>) -> Self {
+            Self {
+                outcomes: Mutex::new(outcomes),
+                calls: Mutex::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ToplineProvider for Scripted {
+        async fn generate(&self, _: &ToplineRequest) -> Result<ToplineDraft, ProviderError> {
+            *self.calls.lock().unwrap() += 1;
+            self.outcomes.lock().unwrap().remove(0)
+        }
+        async fn check(&self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+    }
+
+    async fn good_draft() -> ToplineDraft {
+        let body = chorus_body();
+        let valid = body.validate(&InstrumentRegistry::builtin(), 256).unwrap();
+        MockToplineProvider
+            .generate(&ToplineRequest::new(&valid, ""))
+            .await
+            .unwrap()
+    }
+
+    async fn run(provider: &Scripted) -> Result<ToplineResponse, GenerationError> {
+        let body = chorus_body();
+        let valid = body.validate(&InstrumentRegistry::builtin(), 256).unwrap();
+        generate_topline(provider, &valid, 2000).await
+    }
+
+    async fn draft_missing_a_syllable() -> ToplineDraft {
+        let mut draft = good_draft().await;
+        draft.lines[0].syllables.pop();
+        draft
+    }
+
+    #[tokio::test]
+    async fn a_missing_syllable_is_retried_and_the_retry_succeeds() {
+        let provider = Scripted::new(vec![
+            Ok(draft_missing_a_syllable().await),
+            Ok(good_draft().await),
+        ]);
+        let response = run(&provider).await.unwrap();
+        assert_eq!(
+            response.notes.iter().filter(|n| n.lyric.is_some()).count(),
+            14
+        );
+        assert_eq!(*provider.calls.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn two_unusable_drafts_fail_generation() {
+        let provider = Scripted::new(vec![
+            Ok(draft_missing_a_syllable().await),
+            Ok(draft_missing_a_syllable().await),
+            Ok(good_draft().await),
+        ]);
+        let error = run(&provider).await.unwrap_err();
+        assert!(matches!(error, GenerationError::InvalidTopline(_)));
+        assert_eq!(*provider.calls.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn unparseable_output_is_retried_but_transport_errors_are_not() {
+        let provider = Scripted::new(vec![
+            Err(ProviderError::InvalidOutput("junk".into())),
+            Ok(good_draft().await),
+        ]);
+        assert!(run(&provider).await.is_ok());
+
+        let provider = Scripted::new(vec![
+            Err(ProviderError::Request("down".into())),
+            Ok(good_draft().await),
+        ]);
+        assert!(run(&provider).await.is_err());
+        assert_eq!(*provider.calls.lock().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_response_carries_the_track_range_and_prosody() {
+        let provider = Scripted::new(vec![Ok(good_draft().await)]);
+        let response = run(&provider).await.unwrap();
+        assert_eq!(response.track_id, "v");
+        assert_eq!(response.range.start_measure, 5);
+        assert_eq!(response.prosody.stressed_syllables, 7);
     }
 }

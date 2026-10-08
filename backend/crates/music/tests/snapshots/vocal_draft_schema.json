@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatternDraft",
+  "description": "A compact pattern: reusable one-measure sections plus an arrangement listing the section for each measure.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Short human-readable title, e.g. \"Dusty Boom Bap\".",
+      "type": "string"
+    },
+    "tempo_bpm": {
+      "description": "Tempo in BPM (40-240) suited to the description, or null to use the requested tempo.",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "swing": {
+      "description": "Swing 0-0.75 (fraction of a sixteenth that off-beat sixteenths are delayed), or null.",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "sections": {
+      "description": "One-measure building blocks, e.g. a main groove \"A\" and a \"fill\".",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DraftSection"
+      }
+    },
+    "arrangement": {
+      "description": "Section id for each measure in order; repeated cyclically to fill the requested length.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "tempo_bpm",
+    "swing",
+    "sections",
+    "arrangement"
+  ],
+  "$defs": {
+    "DraftSection": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Section identifier referenced by arrangement, e.g. \"A\" or \"fill\".",
+          "type": "string"
+        },
+        "lanes": {
+          "description": "The lanes that play in this section; omit silent lanes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DraftLane"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "lanes"
+      ]
+    },
+    "DraftLane": {
+      "type": "object",
+      "properties": {
+        "lane": {
+          "type": "string",
+          "description": "A row id of the requested instrument.",
+          "enum": [
+            "C6",
+            "B5",
+            "A#5",
+            "A5",
+            "G#5",
+            "G5",
+            "F#5",
+            "F5",
+            "E5",
+            "D#5",
+            "D5",
+            "C#5",
+            "C5",
+            "B4",
+            "A#4",
+            "A4",
+            "G#4",
+            "G4",
+            "F#4",
+            "F4",
+            "E4",
+            "D#4",
+            "D4",
+            "C#4",
+            "C4",
+            "B3",
+            "A#3",
+            "A3",
+            "G#3",
+            "G3",
+            "F#3",
+            "F3",
+            "E3",
+            "D#3",
+            "D3",
+            "C#3",
+            "C3",
+            "B2",
+            "A#2",
+            "A2",
+            "G#2",
+            "G2",
+            "F#2",
+            "F2",
+            "E2"
+          ]
+        },
+        "steps": {
+          "$ref": "#/$defs/LaneSteps"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lane",
+        "steps"
+      ]
+    },
+    "LaneSteps": {
+      "description": "Either a step string or an array of per-step velocities.",
+      "anyOf": [
+        {
+          "description": "One character per sixteenth step of one measure: '.' rest, 'g' ghost, 'x' normal, 'X' accent, '-' hold (extends the previous note by one step).",
+          "type": "string"
+        },
+        {
+          "description": "One velocity per sixteenth step of one measure, 0 for a rest, otherwise 1-127; every note has length 1.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "maximum": 255,
+            "minimum": 0
+          }
+        }
+      ]
+    }
+  }
+}

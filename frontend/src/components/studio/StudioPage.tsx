@@ -43,6 +43,7 @@ import { SectionNotes } from "./SectionNotes";
 import { implicitIndex, implicitName } from "@/lib/song/implicitSections";
 import { sectionStarts, sectionsOf } from "@/lib/songSectionOps";
 import { EditorDock } from "./EditorDock";
+import { ToplineDialog, type ToplineRequest } from "@/components/topline/ToplineDialog";
 import { NoTracksDock } from "./NoTracksDock";
 import { TrackGenerateDialog } from "./TrackGenerateDialog";
 import { useChat } from "./useChat";
@@ -129,6 +130,7 @@ export function StudioPage({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const lyricsButton = useRef<HTMLButtonElement>(null);
+  const [toplineRequest, setToplineRequest] = useState<ToplineRequest | null>(null);
   const [selectedSectionRaw, setSelectedSection] = useState<string | null>(null);
   const [sectionDialog, setSectionDialog] = useState<{ request: SectionDialogRequest; invoker: HTMLElement | null } | null>(null);
   const [sectionDrawerOpen, setSectionDrawerOpen] = useState(false);
@@ -721,6 +723,10 @@ export function StudioPage({
       focusSectionRuler();
     },
     openNotes: showNotes,
+    generateTopline: (id) => {
+      const name = song && sectionsOf(song).find((s) => s.id === id)?.name;
+      if (name) setToplineRequest({ sectionName: name });
+    },
   };
 
   function submitSection(request: SectionDialogRequest, values: SectionDialogValues): string | null {
@@ -951,6 +957,7 @@ export function StudioPage({
                   samplerImporting={samplerImporting}
                   onShowSamples={showSamples}
                   onAnnounce={setStatus}
+                  onRegenerateTopline={setToplineRequest}
                   renamingLoopId={renamingLoopId}
                   onRenameDone={() => {
                     setRenamingLoopId(null);
@@ -989,6 +996,17 @@ export function StudioPage({
         </>
       )}
 
+      {song && (
+        <ToplineDialog
+          request={toplineRequest}
+          song={song}
+          store={store}
+          instruments={instruments.data ?? undefined}
+          onAnnounce={setStatus}
+          guardEdit={guardEdit}
+          onClose={() => setToplineRequest(null)}
+        />
+      )}
       {song && track && (
         <TrackGenerateDialog
           open={generation.dialog !== null}
@@ -1094,7 +1112,7 @@ export function StudioPage({
       <RightColumnTabs
         className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`}
         assistant={<AssistantPanel song={song} chat={chat} instruments={instruments.data} heading={false} />}
-        lyrics={<LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} />}
+        lyrics={<LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} />}
         section={
           // Mounted only while the column is visible, because a hidden second editor would hold its own diverging text.
           wide && (
@@ -1128,7 +1146,7 @@ export function StudioPage({
         label="Lyrics"
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
-        <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} heading />
+        <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} heading />
       </ModalDialog>
       <ModalDialog
         open={sectionDrawerOpen}

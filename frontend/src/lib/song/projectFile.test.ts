@@ -88,6 +88,15 @@ describe("parseProjectFile", () => {
     expect("ok" in r && r.ok.sections).toEqual(withNotes.sections);
   });
 
+  it("keeps note lyrics and the topline source through download and re-upload", () => {
+    const song = valid.find((c) => c.name === "valid topline source with notes carrying lyrics")!.song;
+    const loops = song.tracks.flatMap((t) => t.loops);
+    expect(loops.some((l) => l.topline)).toBe(true);
+    expect(loops.some((l) => l.notes.some((n) => n.lyric))).toBe(true);
+    const r = parseProjectFile(serializeProject(song), instruments);
+    expect("ok" in r && r.ok.tracks).toEqual(song.tracks);
+  });
+
   it("opens a song with and without sections", () => {
     const sectioned = valid.find((c) => c.name === "valid with sections tiling the song")!.song;
     const { sections: _sections, ...plain } = sectioned;

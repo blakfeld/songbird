@@ -110,6 +110,7 @@ pub fn build_notes(
                     step: offset + step,
                     length: note.length,
                     velocity: note.velocity,
+                    source: None,
                 })
         })
         .collect();
@@ -123,6 +124,7 @@ pub fn build_notes(
             step: n.step,
             length_steps: n.length,
             velocity: n.velocity,
+            lyric: None,
         })
         .collect()
 }
@@ -179,6 +181,9 @@ pub(crate) struct RawNote {
     pub step: u32,
     pub length: u32,
     pub velocity: u8,
+    /// Index into the caller's note list, so a lyric survives `settle`'s
+    /// reordering and dedupe without making this type borrow the notes.
+    pub source: Option<usize>,
 }
 
 /// Sections are one measure long so they cannot overlap or overrun today, but
@@ -210,6 +215,7 @@ mod tests {
     use crate::instruments::drums::DRUMS;
     use crate::instruments::piano::PIANO;
     use crate::instruments::synth_lead::SYNTH_LEAD;
+    use crate::instruments::vocal::VOCAL;
     use crate::instruments::InstrumentRegistry;
     use crate::request::GenerateRequestBody;
     use serde_json::json;
@@ -431,6 +437,7 @@ mod tests {
             step,
             length,
             velocity,
+            source: None,
         }
     }
 
@@ -519,6 +526,21 @@ mod tests {
         let p = build_pattern(&draft, &line_request("synth-lead", 4));
         assert!(line(&p).contains(&("C5".into(), 8, 1)));
         assert!(p.notes.iter().all(|n| n.row_id != "E4"));
+    }
+
+    #[test]
+    fn vocal_keeps_the_highest_note_at_a_step() {
+        let draft = line_draft(
+            &VOCAL,
+            json!([{"id": "A", "lanes": [
+                {"lane": "A3", "steps": "x..............."},
+                {"lane": "E4", "steps": "x..............."},
+            ]}]),
+            &["A"],
+        );
+        let p = build_pattern(&draft, &line_request("vocal", 4));
+        assert!(line(&p).contains(&("E4".into(), 0, 1)));
+        assert!(p.notes.iter().all(|n| n.row_id != "A3"));
     }
 
     #[test]

@@ -108,6 +108,7 @@ pub fn song_to_midi(valid: &ValidSong<'_>) -> Result<Vec<u8>, MidiError> {
             total_steps,
             song.swing,
             channel,
+            true,
         ));
         tracks.push(events);
     }
@@ -401,12 +402,14 @@ mod tests {
                 step: 0,
                 length_steps: 2,
                 velocity: 111,
+                lyric: None,
             },
             Note {
                 row_id: "snare".into(),
                 step: 4,
                 length_steps: 1,
                 velocity: 64,
+                lyric: None,
             },
         ];
         s.tracks[1].loops[0].notes[0].velocity = 77;
@@ -481,5 +484,115 @@ mod tests {
         let smf = Smf::parse(&bytes).unwrap();
         assert_eq!(smf.tracks.len(), 3);
         assert_eq!(channel_events(&smf, 2)[0].1, 1);
+    }
+
+    fn lyric_events(smf: &Smf<'_>, index: usize) -> Vec<(u32, Vec<u8>)> {
+        let mut tick = 0;
+        let mut out = Vec::new();
+        for event in &smf.tracks[index] {
+            tick += event.delta.as_int();
+            if let TrackEventKind::Meta(M::Lyric(text)) = event.kind {
+                out.push((tick, text.to_vec()));
+            }
+        }
+        out
+    }
+
+    fn lyric_note(row: &str, step: u32, length: u32, text: &str) -> Note {
+        Note {
+            lyric: Some(text.into()),
+            ..note(row, step, length)
+        }
+    }
+
+    #[test]
+    fn syllables_become_lyric_events_before_their_note_on() {
+        let mut vocal = track("t1", "Vocal", "vocal");
+        vocal.loops = vec![lp(
+            "l1",
+            1,
+            vec![lyric_note("E4", 0, 4, "hold"), lyric_note("G4", 4, 4, "me")],
+        )];
+        vocal.clips = vec![clip("c1", "l1", 1, 1)];
+        let bytes = export(&song(1, vec![vocal]));
+        let smf = Smf::parse(&bytes).unwrap();
+        assert_eq!(
+            lyric_events(&smf, 1),
+            vec![(0, b"hold".to_vec()), (480, b"me".to_vec())]
+        );
+        let order: Vec<_> = smf.tracks[1]
+            .iter()
+            .filter_map(|e| match e.kind {
+                TrackEventKind::Meta(M::Lyric(_)) => Some("lyric"),
+                TrackEventKind::Midi {
+                    message: Mm::NoteOn { .. },
+                    ..
+                } => Some("on"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(order, ["lyric", "on", "lyric", "on"]);
+    }
+
+    #[test]
+    fn a_lyric_is_written_as_utf8() {
+        let mut vocal = track("t1", "Vocal", "vocal");
+        vocal.loops = vec![lp("l1", 1, vec![lyric_note("E4", 0, 4, "caf\u{e9}")])];
+        vocal.clips = vec![clip("c1", "l1", 1, 1)];
+        let bytes = export(&song(1, vec![vocal]));
+        let smf = Smf::parse(&bytes).unwrap();
+        assert_eq!(
+            lyric_events(&smf, 1),
+            vec![(0, "caf\u{e9}".as_bytes().to_vec())]
+        );
+    }
+
+    #[test]
+    fn a_repeated_clip_repeats_its_lyrics() {
+        let mut vocal = track("t1", "Vocal", "vocal");
+        vocal.loops = vec![lp("l1", 1, vec![lyric_note("E4", 0, 4, "la")])];
+        vocal.clips = vec![clip("c1", "l1", 1, 2)];
+        let bytes = export(&song(2, vec![vocal]));
+        let smf = Smf::parse(&bytes).unwrap();
+        assert_eq!(
+            lyric_events(&smf, 1),
+            vec![(0, b"la".to_vec()), (1920, b"la".to_vec())]
+        );
+    }
+
+    #[test]
+    fn a_note_that_does_not_play_gets_no_lyric_event() {
+        let mut vocal = track("t1", "Vocal", "vocal");
+        vocal.loops = vec![lp("l1", 2, vec![lyric_note("E4", 16, 4, "gone")])];
+        vocal.clips = vec![clip("c1", "l1", 1, 1)];
+        let bytes = export(&song(1, vec![vocal]));
+        let smf = Smf::parse(&bytes).unwrap();
+        assert!(lyric_events(&smf, 1).is_empty());
+    }
+
+    #[test]
+    fn a_song_without_lyrics_has_no_lyric_events() {
+        let bytes = export(&two_track_song());
+        let smf = Smf::parse(&bytes).unwrap();
+        for index in 0..smf.tracks.len() {
+            assert!(lyric_events(&smf, index).is_empty());
+        }
+    }
+
+    #[test]
+    fn lyrics_do_not_change_note_timing() {
+        let mut with = track("t1", "Vocal", "vocal");
+        with.loops = vec![lp("l1", 1, vec![lyric_note("E4", 0, 4, "hold")])];
+        with.clips = vec![clip("c1", "l1", 1, 1)];
+        let mut without = with.clone();
+        without.loops[0].notes[0].lyric = None;
+        let with_bytes = export(&song(1, vec![with]));
+        let without_bytes = export(&song(1, vec![without]));
+        let with_smf = Smf::parse(&with_bytes).unwrap();
+        let without_smf = Smf::parse(&without_bytes).unwrap();
+        assert_eq!(
+            channel_events(&with_smf, 1),
+            channel_events(&without_smf, 1)
+        );
     }
 }

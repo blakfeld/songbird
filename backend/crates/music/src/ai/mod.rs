@@ -11,6 +11,7 @@ pub mod plan;
 pub mod prompt;
 pub mod reply_stream;
 pub mod sse;
+pub mod topline;
 
 use std::ops::ControlFlow;
 use std::time::Duration;
@@ -31,6 +32,7 @@ pub use openai::OpenAiProvider;
 pub use plan::{MockPlanProvider, PlanProvider, SchemaPlanProvider, StreamingMockPlanProvider};
 /// Re-exported so callers can share one pooled client without depending on reqwest.
 pub use reqwest::Client as HttpClient;
+pub use topline::{MockToplineProvider, SchemaToplineProvider, ToplineProvider};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructuredRequest {

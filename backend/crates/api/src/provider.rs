@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use music::ai::{
     ClaudeProvider, CodexCliProvider, LyricsProvider, MockLyricsProvider, MockPlanProvider,
-    MockProvider, OllamaProvider, PatternProvider, PlanProvider, ProviderError,
-    SchemaLyricsProvider, SchemaPlanProvider, SchemaProvider, StructuredProvider,
+    MockProvider, MockToplineProvider, OllamaProvider, PatternProvider, PlanProvider,
+    ProviderError, SchemaLyricsProvider, SchemaPlanProvider, SchemaProvider, SchemaToplineProvider,
+    StructuredProvider, ToplineProvider,
 };
 
 use crate::ai_access::{AiAccess, MockUserProviders, RealUserProviders};
@@ -17,6 +18,7 @@ pub struct Providers {
     pub patterns: Arc<dyn PatternProvider>,
     pub plans: Arc<dyn PlanProvider>,
     pub lyrics: Arc<dyn LyricsProvider>,
+    pub topline: Arc<dyn ToplineProvider>,
 }
 
 impl Providers {
@@ -38,6 +40,7 @@ impl Providers {
             patterns: Arc::new(patterns),
             plans: Arc::new(plans),
             lyrics: Arc::new(MockLyricsProvider),
+            topline: Arc::new(MockToplineProvider),
         }
     }
 
@@ -46,6 +49,12 @@ impl Providers {
     /// swaps in its own.
     pub fn with_lyrics(mut self, lyrics: impl LyricsProvider + 'static) -> Self {
         self.lyrics = Arc::new(lyrics);
+        self
+    }
+
+    /// Defaulted in `new` for the same reason as `with_lyrics`.
+    pub fn with_topline(mut self, topline: impl ToplineProvider + 'static) -> Self {
+        self.topline = Arc::new(topline);
         self
     }
 }
@@ -59,7 +68,8 @@ impl Providers {
             SchemaProvider::new(transport.clone()),
             SchemaPlanProvider::new(transport.clone()),
         )
-        .with_lyrics(SchemaLyricsProvider::new(transport))
+        .with_lyrics(SchemaLyricsProvider::new(transport.clone()))
+        .with_topline(SchemaToplineProvider::new(transport))
     }
 }
 

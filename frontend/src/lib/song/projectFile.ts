@@ -3,6 +3,7 @@ import { STEPS_PER_MEASURE, SWING_RANGE, TEMPO_RANGE } from "../patternOps";
 import { slugify } from "../midiFilename";
 import { audioProblem, type AudioErrorKind } from "./audioValidation";
 import { AUDIO_INSTRUMENT_ID } from "./audioTiming";
+import { isValidLyric, MAX_LYRIC_CHARS, toplineLimitProblem } from "./toplineLimits";
 import { migrateSong, validateClips } from "./migrate";
 import { withBuiltIns } from "./sampler";
 import { sectionProblem, type SectionErrorKind } from "./sectionValidation";
@@ -56,6 +57,8 @@ export type ProjectErrorKind =
   | "duplicate_loop_id"
   | "loop_name"
   | "loop_length"
+  | "loop_topline"
+  | "loop_note_lyric"
   | "loop_note_row"
   | "loop_note_range"
   | "loop_note_overlap"
@@ -333,6 +336,27 @@ function clipProblem(raw: Raw): Problem | null {
   return problem(kind, reason);
 }
 
+const VOICES: readonly unknown[] = ["soprano", "alto", "tenor", "baritone"];
+
+// Wrong shapes and unknown voices are "malformed" because the server rejects them
+// while parsing, before any limit is checked.
+function toplineProblem(topline: unknown): { kind: ProjectErrorKind; reason: string } | null {
+  const malformed = { kind: "malformed" as const, reason: "its topline source is not valid" };
+  const limit = (reason: string) => ({ kind: "loop_topline" as const, reason });
+  if (!isObject(topline) || typeof topline.section_name !== "string" || !Array.isArray(topline.lines))
+    return malformed;
+  if (!VOICES.includes(topline.voice)) return malformed;
+  const lines = topline.lines as unknown[];
+  for (const line of lines) {
+    if (!isObject(line) || typeof line.text !== "string" || !Array.isArray(line.syllables)) return malformed;
+    for (const syl of line.syllables)
+      if (!isObject(syl) || typeof syl.text !== "string" || typeof syl.stressed !== "boolean") return malformed;
+  }
+  const reason = toplineLimitProblem(topline.section_name, lines as { text: string; syllables: { text: string }[] }[]);
+  if (reason) return limit(reason);
+  return null;
+}
+
 function checkNotesAndClips(
   song: Song,
   declaredMeasures: number,
@@ -341,11 +365,20 @@ function checkNotesAndClips(
   for (const [i, t] of song.tracks.entries()) {
     const rows = new Set(instruments.find((inst) => inst.id === t.instrument)?.rows.map((r) => r.id));
     for (const loop of t.loops) {
+      if (loop.topline !== undefined) {
+        const found = toplineProblem(loop.topline);
+        if (found) return problem(found.kind, `${label(t, i)}: loop "${loop.name}": ${found.reason}`);
+      }
       for (const n of loop.notes) {
         if (!rows.has(n.row_id))
           return problem(
             "loop_note_row",
             `${label(t, i)}: loop "${loop.name}" has a note on "${n.row_id}", which ${t.instrument} does not have`,
+          );
+        if (n.lyric !== undefined && !isValidLyric(n.lyric))
+          return problem(
+            "loop_note_lyric",
+            `${label(t, i)}: loop "${loop.name}" has a lyric on step ${n.step} that is not 1 to ${MAX_LYRIC_CHARS} characters without line breaks`,
           );
         if (!isInt(n.velocity) || n.velocity < 1 || n.velocity > 127)
           return problem(
