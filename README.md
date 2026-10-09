@@ -125,14 +125,29 @@ and usage records. Database backups made by your provider keep that data until
 they age out of the provider's retention window, so deleting an account does
 not erase it from backups.
 
-Login attempts are throttled per client address. Set `SONGBIRD_TRUST_PROXY=true`
-only when the outermost proxy in front of the backend **replaces** any incoming
-`X-Forwarded-For` header with the real peer address (Caddy does this by
-default). Behind a proxy that appends to the header instead, every client could
-choose its own address and sidestep the throttle. Left at `false`, the backend
-uses the socket address, which behind a proxy is the proxy itself. Everything
-runs as a single backend instance: the login throttle and the per-minute AI
-limit are in memory and start fresh on restart.
+Login attempts are throttled per client address, taken from the source named
+by `SONGBIRD_TRUST_PROXY`:
+
+- `false` (default): the socket address, which behind a proxy is the proxy
+  itself.
+- `x-forwarded-for`: the first `X-Forwarded-For` entry. Safe only when the
+  outermost proxy in front of the backend **replaces** any incoming header with
+  the real peer address (Caddy does this by default). Behind a proxy that
+  appends instead, every client could choose its own address and sidestep the
+  throttle. `true` is a legacy alias.
+- `fly-client-ip`: the `Fly-Client-IP` header. Safe only when the backend is
+  reachable solely through Fly.io's proxy, which sets that header itself.
+
+Values are case-insensitive, and anything else stops startup. If the chosen
+header is missing or not a valid IP address, the socket address is used.
+Everything runs as a single backend instance: the login throttle and the
+per-minute AI limit are in memory and start fresh on restart.
+
+On SIGTERM or SIGINT the backend stops accepting connections and lets open
+requests, including chat streams, finish for up to 190 seconds before exiting.
+A chat stream's deadline is twice `SONGBIRD_GENERATION_TIMEOUT_SECS` plus 30
+seconds, so raising that setting above about 80 seconds means a deploy may cut
+streams off.
 
 ## Per-user AI keys
 

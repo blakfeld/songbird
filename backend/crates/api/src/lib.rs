@@ -16,6 +16,7 @@ pub mod project_store;
 pub mod projects;
 pub mod provider;
 pub mod routes;
+pub mod shutdown;
 pub mod songs;
 pub mod startup;
 pub mod state;
