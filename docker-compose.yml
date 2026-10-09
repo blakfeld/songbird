@@ -29,6 +29,8 @@ services:
       - "127.0.0.1:8080:8080"
     # The ollama provider fails startup while Ollama is still booting.
     restart: on-failure
+    # Docker's default 10 s SIGKILL would cut off the 190 s stream drain; 200 s mirrors Fly's kill_timeout.
+    stop_grace_period: 200s
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +43,8 @@ services:
         SONGBIRD_API_URL: http://backend:8080
     ports:
       - "127.0.0.1:3000:3000"
+    # Docker's default 10 s SIGKILL would cut off the 190 s stream drain; 200 s mirrors Fly's kill_timeout.
+    stop_grace_period: 200s
     depends_on:
       - backend
 

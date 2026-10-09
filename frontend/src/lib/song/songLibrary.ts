@@ -196,9 +196,14 @@ export function createServerSongLibrary(
       try {
         const revision = revisions.get(song.id);
         if (revision === undefined) throw new Error(`No known revision for song ${song.id}`);
-        if (blocking) {
-          const gap = untilSaveAllowed(song.id);
-          if (gap > 0) await sleep(gap);
+        // A write queued behind another save starts the moment that one returns, which is inside the server's
+        // interval and would draw a logged 429 even though its timer was scheduled in time.
+        const gap = untilSaveAllowed(song.id);
+        if (gap > 0) {
+          if (!blocking && newer()) return "deferred";
+          await sleep(gap);
+          // The wait can be long enough for another edit to supersede this snapshot.
+          if (!blocking && newer()) return "deferred";
         }
         const saved = await api.save(song.id, song, revision);
         revisions.set(song.id, saved.revision);

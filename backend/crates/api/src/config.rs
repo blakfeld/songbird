@@ -118,6 +118,17 @@ pub enum ConfigError {
     Invalid { var: &'static str, problem: String },
 }
 
+/// Each forwarded source is only safe behind a proxy that guarantees its header, so none is
+/// a default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientAddressSource {
+    Peer,
+    /// The rightmost entry, because that is the one the trusted proxy appended; entries
+    /// to its left are whatever the client sent.
+    XForwardedFor,
+    FlyClientIp,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
     Claude,
@@ -303,17 +314,8 @@ fn has_https_origin(origins: &[String]) -> bool {
     origins.iter().any(|o| o.starts_with("https://"))
 }
 
-/// Where the per-address throttles read the caller's address from. Only a proxy that
-/// overwrites or appends the chosen header makes it safe, so the default ignores headers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClientAddressSource {
-    Peer,
-    /// The rightmost entry, because that is the one the trusted proxy appended; entries
-    /// to its left are whatever the client sent.
-    XForwardedFor,
-    FlyClientIp,
-}
-
+/// `true` and `false` stay accepted so existing deployments keep working after the setting
+/// grew beyond a boolean.
 fn parse_client_address_source(value: Option<String>) -> Result<ClientAddressSource, ConfigError> {
     match value.as_deref().map(str::to_ascii_lowercase).as_deref() {
         None | Some("false") => Ok(ClientAddressSource::Peer),
@@ -598,7 +600,7 @@ impl Config {
             && has_https_origin(&self.cors_origins)
         {
             warnings.push(format!(
-                "{TRUST_PROXY} is false while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
+                "{TRUST_PROXY} is false (peer address) while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
             ));
         }
         if self.env == Env::Production && self.client_address_source == ClientAddressSource::Peer {
@@ -1078,6 +1080,33 @@ mod tests {
     }
 
     #[test]
+    fn client_address_source_parses_every_spelling_case_insensitively() {
+        for (value, expected) in [
+            ("false", ClientAddressSource::Peer),
+            ("FALSE", ClientAddressSource::Peer),
+            ("true", ClientAddressSource::XForwardedFor),
+            ("x-forwarded-for", ClientAddressSource::XForwardedFor),
+            ("X-Forwarded-For", ClientAddressSource::XForwardedFor),
+            ("fly-client-ip", ClientAddressSource::FlyClientIp),
+            ("Fly-Client-IP", ClientAddressSource::FlyClientIp),
+        ] {
+            assert_eq!(
+                mock(&[(TRUST_PROXY, value)]).unwrap().client_address_source,
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_client_address_source_fails_naming_the_variable() {
+        for bad in ["cf-connecting-ip", "yes", "1"] {
+            let err = mock(&[(TRUST_PROXY, bad)]).unwrap_err();
+            assert!(err.to_string().contains(TRUST_PROXY), "{bad}: {err}");
+        }
+    }
+
+    #[test]
     fn untrusted_proxy_with_an_https_origin_warns() {
         let proxy_warnings = |c: Config| {
             c.startup_warnings()
@@ -1094,6 +1123,11 @@ mod tests {
             mock(&[
                 (CORS_ORIGINS, "https://songbird.example"),
                 (TRUST_PROXY, "true"),
+            ])
+            .unwrap(),
+            mock(&[
+                (CORS_ORIGINS, "https://songbird.example"),
+                (TRUST_PROXY, "fly-client-ip"),
             ])
             .unwrap(),
             mock(&[]).unwrap(),

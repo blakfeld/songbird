@@ -20,6 +20,7 @@ pub mod routes;
 pub mod share_store;
 pub mod share_throttle;
 pub mod shares;
+pub mod shutdown;
 pub mod songs;
 pub mod startup;
 pub mod state;

@@ -51,7 +51,7 @@ pub async fn throttle(
     next: Next,
 ) -> Result<Response, ApiError> {
     let address = client_key(client_address(
-        &state,
+        state.config.client_address_source,
         request.headers(),
         peer.ok().map(|ConnectInfo(addr)| addr),
     ));

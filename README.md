@@ -125,19 +125,30 @@ and usage records. Database backups made by your provider keep that data until
 they age out of the provider's retention window, so deleting an account does
 not erase it from backups.
 
-Login attempts and share-link listeners are throttled per client address,
-chosen by `SONGBIRD_TRUST_PROXY`. `false` (the default) uses the socket
-address, which behind a proxy is the proxy itself. `x-forwarded-for` (or its
-older alias `true`) uses the **last** `X-Forwarded-For` entry; earlier entries
-are client-controlled and ignored. That is safe only when the outermost proxy
-appends to or replaces `X-Forwarded-For`. Songbird's Next server passes the
-header through unchanged and does not count as that proxy, so exposing Next
-directly with this mode is spoofable. `fly-client-ip` uses the `Fly-Client-IP`
-header and is safe only when the backend is reachable solely through Fly.io's
-proxy. A missing or malformed header falls back to the socket address.
-Everything
-runs as a single backend instance: the login throttle and the per-minute AI
-limit are in memory and start fresh on restart.
+Login attempts and share-link listeners are throttled per client address, taken from the source named
+by `SONGBIRD_TRUST_PROXY`:
+
+- `false` (default): the socket address, which behind a proxy is the proxy
+  itself.
+- `x-forwarded-for`: the **last** `X-Forwarded-For` entry of the last header
+  line; earlier entries are client-controlled and ignored. Safe only when the
+  outermost proxy appends to or replaces `X-Forwarded-For` and no later hop
+  appends its own entry. Songbird's Next server passes the header through
+  unchanged and is not that proxy, so exposing Next directly with this mode is
+  spoofable. `true` is a legacy alias.
+- `fly-client-ip`: the `Fly-Client-IP` header. Safe only when the backend is
+  reachable solely through Fly.io's proxy, which sets that header itself.
+
+Values are case-insensitive, and anything else stops startup. If the chosen
+header is missing or not a valid IP address, the socket address is used.
+Everything runs as a single backend instance: the login throttle and the
+per-minute AI limit are in memory and start fresh on restart.
+
+On SIGTERM or SIGINT the backend stops accepting connections and lets open
+requests, including chat streams, finish for up to 190 seconds before exiting.
+A chat stream's deadline is twice `SONGBIRD_GENERATION_TIMEOUT_SECS` plus 30
+seconds, so raising that setting above about 80 seconds means a deploy may cut
+streams off.
 
 ## Per-user AI keys
 

@@ -1,6 +1,6 @@
 // A baseline CSP with inline scripts allowed rather than a nonce-based one: nonces would force every
 // page to render dynamically. It still blocks framing, plugins, foreign scripts and connections,
-// and base-tag tricks. HSTS is left to the proxy that terminates TLS.
+// and base-tag tricks.
 export function contentSecurityPolicy(dev: boolean): string {
   return [
     "default-src 'self'",
@@ -19,12 +19,16 @@ export function contentSecurityPolicy(dev: boolean): string {
 }
 
 export function securityHeaders(dev: boolean): { key: string; value: string }[] {
-  return [
+  const headers = [
     { key: "Content-Security-Policy", value: contentSecurityPolicy(dev) },
     { key: "X-Frame-Options", value: "DENY" },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "same-origin" },
   ];
+  // Dev runs over plain http on localhost, where a pinned HSTS entry would break other local apps.
+  // No includeSubDomains or preload: the first deployment is on *.fly.dev, which we don't own.
+  if (!dev) headers.push({ key: "Strict-Transport-Security", value: "max-age=31536000" });
+  return headers;
 }
 
 // A share link is a capability: indexing it would publish what the owner meant to hand to a few people.

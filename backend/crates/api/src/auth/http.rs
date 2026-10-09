@@ -133,26 +133,33 @@ struct LoginBody {
 }
 
 pub(crate) fn client_address(
-    state: &AppState,
+    source: ClientAddressSource,
     headers: &HeaderMap,
     peer: Option<SocketAddr>,
 ) -> IpAddr {
     let peer_ip = peer.map_or(IpAddr::from([0, 0, 0, 0]), |p| p.ip());
-    // The last line and its last entry are what a trusted proxy appended; everything
-    // to their left is client-controlled.
-    let last_entry = |name: &str| {
-        headers
-            .get_all(name)
+    match source {
+        ClientAddressSource::Peer => peer_ip,
+        // The last line and its last entry are what the trusted proxy appended; everything
+        // to their left is client-controlled.
+        ClientAddressSource::XForwardedFor => headers
+            .get_all("x-forwarded-for")
             .iter()
             .next_back()
             .and_then(|value| value.to_str().ok())
             .and_then(|line| line.rsplit(',').next())
             .and_then(|entry| entry.trim().parse::<IpAddr>().ok())
-    };
-    match state.config.client_address_source {
-        ClientAddressSource::Peer => peer_ip,
-        ClientAddressSource::XForwardedFor => last_entry("x-forwarded-for").unwrap_or(peer_ip),
-        ClientAddressSource::FlyClientIp => last_entry("fly-client-ip").unwrap_or(peer_ip),
+            .unwrap_or(peer_ip),
+        ClientAddressSource::FlyClientIp => headers
+            .get("fly-client-ip")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<IpAddr>().ok())
+            .unwrap_or_else(|| {
+                // Health checks and operators inside the private network carry no header, so
+                // rejecting would break them; the peer is still a correct throttle key there.
+                tracing::debug!("fly-client-ip missing or invalid; using the peer address");
+                peer_ip
+            }),
     }
 }
 
@@ -184,7 +191,7 @@ async fn login(
     ApiJson(body): ApiJson<LoginBody>,
 ) -> Result<Response, ApiError> {
     let address = client_key(client_address(
-        &state,
+        state.config.client_address_source,
         &headers,
         peer.ok().map(|ConnectInfo(addr)| addr),
     ));
@@ -317,5 +324,100 @@ mod tests {
         );
         assert_eq!(session_token(&headers, "__Host-songbird_session"), None);
         assert_eq!(session_token(&headers, "session"), None);
+    }
+
+    const PEER: &str = "192.0.2.1:4000";
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.insert(*name, HeaderValue::from_str(value).unwrap());
+        }
+        map
+    }
+
+    fn resolve(source: ClientAddressSource, pairs: &[(&'static str, &str)]) -> IpAddr {
+        client_address(source, &headers(pairs), Some(PEER.parse().unwrap()))
+    }
+
+    #[test]
+    fn fly_client_ip_identifies_the_client_over_forwarding_headers() {
+        let ip = resolve(
+            ClientAddressSource::FlyClientIp,
+            &[
+                ("fly-client-ip", "198.51.100.7"),
+                ("x-forwarded-for", "203.0.113.9"),
+            ],
+        );
+        assert_eq!(ip, "198.51.100.7".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn missing_fly_header_falls_back_to_the_peer() {
+        let ip = resolve(
+            ClientAddressSource::FlyClientIp,
+            &[("x-forwarded-for", "203.0.113.9")],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn malformed_fly_header_falls_back_to_the_peer() {
+        for bad in ["not-an-ip", "198.51.100.7, 203.0.113.9", ""] {
+            let ip = resolve(ClientAddressSource::FlyClientIp, &[("fly-client-ip", bad)]);
+            assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn peer_source_ignores_every_forwarding_header() {
+        let ip = resolve(
+            ClientAddressSource::Peer,
+            &[
+                ("x-forwarded-for", "203.0.113.9"),
+                ("fly-client-ip", "198.51.100.7"),
+            ],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_uses_the_last_entry() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "10.0.0.1, 203.0.113.9")],
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_ignores_a_forged_leading_entry() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "9.9.9.9, 203.0.113.9")],
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_uses_the_last_header_line() {
+        let mut map = HeaderMap::new();
+        map.append("x-forwarded-for", HeaderValue::from_static("9.9.9.9"));
+        map.append("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+        let ip = client_address(
+            ClientAddressSource::XForwardedFor,
+            &map,
+            Some(PEER.parse().unwrap()),
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_falls_back_to_the_peer_when_the_last_entry_is_junk() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "1.2.3.4, junk")],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
     }
 }

@@ -452,6 +452,58 @@ async fn a_spoofed_forwarding_header_is_ignored_when_the_proxy_is_not_trusted() 
 }
 
 #[tokio::test]
+async fn the_fly_client_ip_header_identifies_the_client() {
+    let app = app_with_ana(&[(TRUST_PROXY, "fly-client-ip")]).await;
+    for i in 0..20 {
+        fail_logins(
+            &app,
+            &format!("user{}@example.com", i / 4),
+            1,
+            &[("fly-client-ip", "198.51.100.7")],
+        )
+        .await;
+    }
+    let blocked = app
+        .send(login_request_with(
+            "ana@example.com",
+            PASSWORD,
+            &[
+                ("fly-client-ip", "198.51.100.7"),
+                ("x-forwarded-for", "203.0.113.9"),
+            ],
+        ))
+        .await;
+    assert_eq!(blocked.status, StatusCode::TOO_MANY_REQUESTS);
+
+    let elsewhere = app
+        .send(login_request_with(
+            "ana@example.com",
+            PASSWORD,
+            &[("fly-client-ip", "198.51.100.8")],
+        ))
+        .await;
+    assert_eq!(elsewhere.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_missing_or_malformed_fly_header_falls_back_to_the_peer() {
+    let app = app_with_ana(&[(TRUST_PROXY, "fly-client-ip")]).await;
+    for i in 0..20 {
+        fail_logins(&app, &format!("user{}@example.com", i / 4), 1, &[]).await;
+    }
+    for headers in [&[][..], &[("fly-client-ip", "not-an-ip")][..]] {
+        let response = app
+            .send(login_request_with("ana@example.com", PASSWORD, headers))
+            .await;
+        assert_eq!(
+            response.status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "{headers:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn ipv6_neighbours_share_a_limit_and_only_the_last_forwarded_entry_counts() {
     let app = app_with_ana(&[(TRUST_PROXY, "true")]).await;
     for i in 0..20 {

@@ -562,7 +562,17 @@ async fn dropped_streams_release_their_generation_slots() {
 
     drop(body);
     gated.gate.add_permits(10);
-    assert_eq!(another_request(&gated).await.status, StatusCode::OK);
+    // The generation task only notices the dropped client on its next send, on
+    // another task, so the slot frees shortly after the drop rather than at it.
+    let mut status = another_request(&gated).await.status;
+    for _ in 0..100 {
+        if status == StatusCode::OK {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        status = another_request(&gated).await.status;
+    }
+    assert_eq!(status, StatusCode::OK);
 }
 
 struct PanickingPlans;
