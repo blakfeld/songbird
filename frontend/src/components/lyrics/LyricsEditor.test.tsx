@@ -64,6 +64,22 @@ describe("LyricsEditor", () => {
     expect(onChange).toHaveBeenCalledWith("words", "a");
   });
 
+  it("flushes pending typing on pagehide, which a reload fires without a blur", () => {
+    const { onChange } = setup();
+    type("words");
+    window.dispatchEvent(new Event("pagehide"));
+    expect(onChange).toHaveBeenCalledWith("words", "a");
+  });
+
+  it("reports pending typing until it syncs", () => {
+    const onPendingChange = vi.fn();
+    render(<LyricsEditor songId="a" lyrics="" onChange={vi.fn()} onPendingChange={onPendingChange} />);
+    type("words");
+    expect(onPendingChange).toHaveBeenLastCalledWith(true);
+    fireEvent.blur(editable());
+    expect(onPendingChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("refuses a paste past the limit whole and says so", async () => {
     setup("a".repeat(19_990));
     const view = viewOf();

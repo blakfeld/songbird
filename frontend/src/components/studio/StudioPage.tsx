@@ -191,6 +191,7 @@ export function StudioPage({
     lyricFlushers.current.add(flush);
     return () => void lyricFlushers.current.delete(flush);
   }, []);
+  const [lyricsPending, setLyricsPending] = useState(false);
   const flushLyrics = useCallback(() => lyricFlushers.current.forEach((flush) => flush()), []);
   const setSectionNotes = useCallback(
     (text: string, songId: string, sectionId: string) => {
@@ -289,21 +290,28 @@ export function StudioPage({
   }, [library, show, attempt]);
 
   useEffect(() => {
-    const flush = () => void library.flush();
+    // The editor and notes hold typing back from the store, so the library alone would save a stale song.
+    const flush = () => {
+      flushLyrics();
+      void library.flush();
+    };
     const onVisibility = () => document.visibilityState === "hidden" && flush();
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
+      // Before detaching, or the flushed typing would reach the store with nothing left to save it.
+      flush();
       detachAutosave.current?.();
       detachAutosave.current = null;
-      flush();
     };
-  }, [library]);
+  }, [library, flushLyrics]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
+      // Typing still held by the notepad is invisible to the library; handing it over makes `saving` true so the prompt appears.
+      flushLyrics();
       const { saving, ok, conflict } = library.status.getState();
       if (isSigningOut() || !(saving || !ok || conflict)) return;
       // Browsers show their own text; preventDefault is what triggers the prompt.
@@ -312,7 +320,7 @@ export function StudioPage({
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [library]);
+  }, [library, flushLyrics]);
 
   useEffect(() => {
     let previous = library.status.getState().ok;
@@ -832,6 +840,7 @@ export function StudioPage({
             <SongHeader
               store={store}
               library={library}
+              unsynced={lyricsPending}
               song={song}
               instruments={instruments.data}
               titleRef={titleRef}
@@ -1112,7 +1121,7 @@ export function StudioPage({
       <RightColumnTabs
         className={`max-lg:hidden lg:col-start-2 ${dockOpen ? "lg:row-span-4" : "lg:row-span-2"} lg:row-start-1`}
         assistant={<AssistantPanel song={song} chat={chat} instruments={instruments.data} heading={false} />}
-        lyrics={<LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} />}
+        lyrics={<LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onPendingChange={setLyricsPending} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} />}
         section={
           // Mounted only while the column is visible, because a hidden second editor would hold its own diverging text.
           wide && (
@@ -1146,7 +1155,7 @@ export function StudioPage({
         label="Lyrics"
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
-        <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} heading />
+        <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onPendingChange={setLyricsPending} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} heading />
       </ModalDialog>
       <ModalDialog
         open={sectionDrawerOpen}

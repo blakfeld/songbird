@@ -57,11 +57,16 @@ test("sections, headings, lyrics, then replace a selection and a section, and fi
 
   const replaceSection = page.getByRole("button", { name: "Replace the Song section lyrics" });
   const sectionText = await cardText(page, "Replace the Song section lyrics");
+  // Earlier saves hold the old [Song] section, so only one that starts with the replaced section proves the last edit landed.
+  const lastEditSaved = page.waitForResponse((r) => {
+    if (r.request().method() !== "PUT" || !r.url().includes("/projects/")) return false;
+    const lyrics: string = r.request().postDataJSON()?.song?.lyrics ?? "";
+    return r.ok() && lyrics.startsWith(["[Song]", ...sectionText, "[Verse]"].join("\n"));
+  });
   await replaceSection.click();
   await expect(lines).toHaveText(["[Song]", ...sectionText, "[Verse]", "[Chorus]", "first line", ...selectionText]);
 
-  // Leaving the notepad syncs it at once, so "Saved" is not stale.
-  await page.getByRole("button", { name: "Add section headings" }).focus();
+  await lastEditSaved;
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
   await page.reload();

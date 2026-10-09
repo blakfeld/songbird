@@ -177,6 +177,8 @@ interface EditorProps {
   onChange: (text: string, songId: string) => void;
   // Lets the page flush typing in flight before it switches songs, when blur may not have fired yet.
   registerFlush?: (flush: () => void) => () => void;
+  // Lets the page keep "Saved" from showing while typing has not reached the store, which the library cannot see.
+  onPendingChange?: (pending: boolean) => void;
   // Must be stable: it registers in its own effect so that a new callback never rebuilds the editor and its undo history.
   registerEditor?: (handle: LyricsEditorHandle) => () => void;
   // Changing it reconfigures a compartment, so a rename relinks headings without rebuilding the editor and losing undo history.
@@ -192,6 +194,7 @@ function Editor({
   lyrics,
   onChange,
   registerFlush,
+  onPendingChange,
   registerEditor,
   sectionKeys: keys,
   focusedSongs: focusedSongsProp,
@@ -201,6 +204,7 @@ function Editor({
   const view = useRef<EditorView | null>(null);
   const pending = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
+  const onPendingRef = useRef(onPendingChange);
   const lyricsRef = useRef(lyrics);
   const toplineRef = useRef(onGenerateTopline);
   const offersTopline = onGenerateTopline !== undefined;
@@ -215,6 +219,7 @@ function Editor({
 
   useEffect(() => {
     onChangeRef.current = onChange;
+    onPendingRef.current = onPendingChange;
     toplineRef.current = onGenerateTopline;
     lyricsRef.current = lyrics;
     keysRef.current = keys;
@@ -232,6 +237,7 @@ function Editor({
       const text = pending.current;
       pending.current = null;
       onChangeRef.current(text, songId);
+      onPendingRef.current?.(false);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -290,6 +296,7 @@ function Editor({
             if (u.transactions.some((tr) => tr.annotation(fromStore))) return;
             setNotice(null);
             pending.current = u.state.doc.toString();
+            onPendingRef.current?.(true);
             clearTimeout(syncTimer);
             syncTimer = setTimeout(flush, SYNC_DELAY_MS);
           }),
@@ -298,11 +305,15 @@ function Editor({
     });
     view.current = editor;
     document.addEventListener("visibilitychange", onVisibility);
+    // Best effort only: a reload can skip blur and the page cannot finish a save while unloading, so the page's
+    // beforeunload prompt is what actually protects typing in flight.
+    window.addEventListener("pagehide", flush);
     const unregister = registerFlush?.(flush);
 
     return () => {
       unregister?.();
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
       flush();
       clearTimeout(noticeTimer);
       if (noticeFrame !== undefined) cancelAnimationFrame(noticeFrame);
