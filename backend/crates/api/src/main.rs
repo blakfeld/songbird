@@ -142,11 +142,22 @@ async fn serve() -> Result<(), String> {
         );
     }
 
-    // The peer address is what login throttling keys on when no proxy is trusted.
-    axum::serve(
+    let outcome = api::shutdown::serve_until(
         listener,
-        api::app(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        api::app(state),
+        async {
+            api::shutdown::first_termination_signal().await;
+            tracing::info!("shutdown signal received; draining open requests");
+        },
+        api::shutdown::DRAIN_CAP,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    match outcome {
+        api::shutdown::Drain::Finished => tracing::info!("drain finished; exiting"),
+        api::shutdown::Drain::CapReached => {
+            tracing::warn!("drain cap reached with requests still open; exiting anyway");
+        }
+    }
+    Ok(())
 }

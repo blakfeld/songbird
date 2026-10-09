@@ -17,6 +17,7 @@ use crate::auth::password::{PasswordError, Verification};
 use crate::auth::session::{self, cookie_name, sha256_hex};
 use crate::auth::throttle::client_key;
 use crate::clock::now_ms;
+use crate::config::ClientAddressSource;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 use crate::users;
@@ -131,17 +132,31 @@ struct LoginBody {
     password: SecretString,
 }
 
-fn client_address(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>) -> IpAddr {
+fn client_address(
+    source: ClientAddressSource,
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+) -> IpAddr {
     let peer_ip = peer.map_or(IpAddr::from([0, 0, 0, 0]), |p| p.ip());
-    if !state.config.trust_proxy {
-        return peer_ip;
+    match source {
+        ClientAddressSource::Peer => peer_ip,
+        ClientAddressSource::XForwardedFor => headers
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .and_then(|first| first.trim().parse::<IpAddr>().ok())
+            .unwrap_or(peer_ip),
+        ClientAddressSource::FlyClientIp => headers
+            .get("fly-client-ip")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<IpAddr>().ok())
+            .unwrap_or_else(|| {
+                // Health checks and operators inside the private network carry no header, so
+                // rejecting would break them; the peer is still a correct throttle key there.
+                tracing::debug!("fly-client-ip missing or invalid; using the peer address");
+                peer_ip
+            }),
     }
-    headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .and_then(|first| first.trim().parse::<IpAddr>().ok())
-        .unwrap_or(peer_ip)
 }
 
 fn password_failure(error: PasswordError) -> ApiError {
@@ -172,7 +187,7 @@ async fn login(
     ApiJson(body): ApiJson<LoginBody>,
 ) -> Result<Response, ApiError> {
     let address = client_key(client_address(
-        &state,
+        state.config.client_address_source,
         &headers,
         peer.ok().map(|ConnectInfo(addr)| addr),
     ));
@@ -305,5 +320,69 @@ mod tests {
         );
         assert_eq!(session_token(&headers, "__Host-songbird_session"), None);
         assert_eq!(session_token(&headers, "session"), None);
+    }
+
+    const PEER: &str = "192.0.2.1:4000";
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.insert(*name, HeaderValue::from_str(value).unwrap());
+        }
+        map
+    }
+
+    fn resolve(source: ClientAddressSource, pairs: &[(&'static str, &str)]) -> IpAddr {
+        client_address(source, &headers(pairs), Some(PEER.parse().unwrap()))
+    }
+
+    #[test]
+    fn fly_client_ip_identifies_the_client_over_forwarding_headers() {
+        let ip = resolve(
+            ClientAddressSource::FlyClientIp,
+            &[
+                ("fly-client-ip", "198.51.100.7"),
+                ("x-forwarded-for", "203.0.113.9"),
+            ],
+        );
+        assert_eq!(ip, "198.51.100.7".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn missing_fly_header_falls_back_to_the_peer() {
+        let ip = resolve(
+            ClientAddressSource::FlyClientIp,
+            &[("x-forwarded-for", "203.0.113.9")],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn malformed_fly_header_falls_back_to_the_peer() {
+        for bad in ["not-an-ip", "198.51.100.7, 203.0.113.9", ""] {
+            let ip = resolve(ClientAddressSource::FlyClientIp, &[("fly-client-ip", bad)]);
+            assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn peer_source_ignores_every_forwarding_header() {
+        let ip = resolve(
+            ClientAddressSource::Peer,
+            &[
+                ("x-forwarded-for", "203.0.113.9"),
+                ("fly-client-ip", "198.51.100.7"),
+            ],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_uses_the_first_entry() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "203.0.113.9, 10.0.0.1")],
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
     }
 }

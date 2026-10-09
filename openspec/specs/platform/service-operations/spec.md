@@ -51,7 +51,7 @@ The service SHALL read its configuration from environment variables, optionally 
 - the maximum number of database connections (`SONGBIRD_DATABASE_MAX_CONNECTIONS`, default 10, allowed 1–100);
 - whether the session cookie is `Secure` (`SONGBIRD_COOKIE_SECURE`, default `true`);
 - the session idle lifetime in hours (`SONGBIRD_SESSION_IDLE_HOURS`, default 168, allowed 1–720);
-- whether to take the client address from `X-Forwarded-For` for login throttling (`SONGBIRD_TRUST_PROXY`, default `false`), to be enabled only when the outermost proxy replaces any client-supplied `X-Forwarded-For`;
+- where to take the client address from for login throttling and other per-address limits (`SONGBIRD_TRUST_PROXY`): `false` for the connection's peer address (the default); `x-forwarded-for` for the first `X-Forwarded-For` entry, to be used only when the outermost proxy replaces any client-supplied `X-Forwarded-For`; or `fly-client-ip` for the `Fly-Client-IP` header, to be used only when the service is reachable solely through Fly.io's proxy. `true` SHALL be accepted as a synonym for `x-forwarded-for`, and any other value SHALL fail startup;
 - the per-user limit on AI generation requests per minute (`SONGBIRD_AI_REQUESTS_PER_MINUTE`, default 10, allowed 1–600);
 - the per-user limit on AI generation requests per UTC day (`SONGBIRD_AI_REQUESTS_PER_DAY`, default 200, allowed 1–100000).
 
@@ -84,6 +84,14 @@ Invalid or missing required configuration SHALL cause startup to fail with a mes
 #### Scenario: Untrusted proxy warned about
 - **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=false` and `SONGBIRD_CORS_ORIGINS=https://songbird.example`
 - **THEN** it starts, and logs a warning naming `SONGBIRD_TRUST_PROXY`
+
+#### Scenario: Unknown proxy trust value
+- **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=cloudflare`
+- **THEN** the process exits non-zero and the error names `SONGBIRD_TRUST_PROXY`
+
+#### Scenario: Legacy proxy trust value accepted
+- **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=true`
+- **THEN** it starts, and takes the client address from the first `X-Forwarded-For` entry
 
 #### Scenario: AI limit out of range
 - **WHEN** the service starts with `SONGBIRD_AI_REQUESTS_PER_MINUTE=0`
@@ -156,6 +164,8 @@ Every response from `/api/v1` SHALL carry `Cache-Control: no-store`, including e
 - `X-Content-Type-Options: nosniff`;
 - `Referrer-Policy: same-origin`.
 
+When the frontend runs in production mode, every page and asset SHALL also carry `Strict-Transport-Security: max-age=31536000`. In development mode it SHALL NOT, so that a browser never pins `http://localhost` to HTTPS.
+
 These headers SHALL be set by the application, so that they apply in every way it is run, not only behind the production proxy.
 
 #### Scenario: API responses not cached
@@ -169,6 +179,14 @@ These headers SHALL be set by the application, so that they apply in every way i
 #### Scenario: Headers present without the production proxy
 - **WHEN** a client requests `/login` from the docker-compose stack
 - **THEN** the response has `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
+
+#### Scenario: HSTS in production
+- **WHEN** a client requests `/login` from the frontend running in production mode
+- **THEN** the response has `Strict-Transport-Security: max-age=31536000`
+
+#### Scenario: No HSTS in development
+- **WHEN** a client requests `/login` from the frontend dev server
+- **THEN** the response has no `Strict-Transport-Security` header
 
 ### Requirement: Request logging protects credentials
 Request logs SHALL NOT contain request or response headers, passwords, or session tokens. After a request is authenticated, its log records SHALL carry the user's id and SHALL NOT carry the user's email. A failed login SHALL be logged with the client address and a one-way hash of the normalised email instead of the email itself.
@@ -230,3 +248,22 @@ The master keys SHALL be treated as secrets and SHALL NOT be logged. In developm
 #### Scenario: Master key not logged
 - **WHEN** the service starts with a valid keyring
 - **THEN** no log line contains any of its keys
+
+### Requirement: Graceful shutdown
+When the backend or the production frontend server receives SIGTERM or SIGINT, it SHALL stop accepting new connections and SHALL let requests already in progress finish, including streaming chat responses, before exiting. If requests are still running 190 seconds after the signal, the process SHALL exit anyway. That limit is longer than the default chat stream deadline (2 x the generation timeout + 30 s) and shorter than the time a hosting platform is configured to wait before killing the process. A second signal received while draining SHALL NOT shorten the drain. The process SHALL exit with status 0 after a drain that ends because no requests remain.
+
+#### Scenario: Stream finishes during shutdown
+- **WHEN** a chat stream is in progress and the backend receives SIGTERM
+- **THEN** the client receives the rest of the stream, including its final event, and the backend then exits with status 0
+
+#### Scenario: New connections refused while draining
+- **WHEN** the backend has received SIGTERM and is still finishing a request
+- **THEN** a new connection to its listen address is refused
+
+#### Scenario: Drain limit
+- **WHEN** a request is still running 190 seconds after the backend receives SIGTERM
+- **THEN** the backend exits without waiting for it
+
+#### Scenario: Frontend proxy keeps the stream open
+- **WHEN** a chat stream is passing through the production frontend server and that server receives SIGTERM
+- **THEN** the client receives the rest of the stream before the frontend server exits

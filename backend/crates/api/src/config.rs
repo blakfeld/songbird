@@ -102,6 +102,15 @@ pub enum ConfigError {
     Invalid { var: &'static str, problem: String },
 }
 
+/// Each forwarded source is only safe behind a proxy that guarantees its header, so none is
+/// a default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientAddressSource {
+    Peer,
+    XForwardedFor,
+    FlyClientIp,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
     Claude,
@@ -274,13 +283,27 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub cookie_secure: bool,
     pub session_idle: Duration,
-    pub trust_proxy: bool,
+    pub client_address_source: ClientAddressSource,
     pub ai_requests_per_minute: u32,
     pub ai_requests_per_day: u32,
 }
 
 fn has_https_origin(origins: &[String]) -> bool {
     origins.iter().any(|o| o.starts_with("https://"))
+}
+
+/// `true` and `false` stay accepted so existing deployments keep working after the setting
+/// grew beyond a boolean.
+fn parse_client_address_source(value: Option<String>) -> Result<ClientAddressSource, ConfigError> {
+    match value.as_deref().map(str::to_ascii_lowercase).as_deref() {
+        None | Some("false") => Ok(ClientAddressSource::Peer),
+        Some("true" | "x-forwarded-for") => Ok(ClientAddressSource::XForwardedFor),
+        Some("fly-client-ip") => Ok(ClientAddressSource::FlyClientIp),
+        Some(other) => Err(ConfigError::Invalid {
+            var: TRUST_PROXY,
+            problem: format!("\"{other}\" is not false, true, x-forwarded-for or fly-client-ip"),
+        }),
+    }
 }
 
 fn parse_bool(
@@ -471,7 +494,7 @@ impl Config {
             DEFAULT_SESSION_IDLE_HOURS,
             MAX_SESSION_IDLE_HOURS,
         )?;
-        let trust_proxy = parse_bool(TRUST_PROXY, get(TRUST_PROXY), false)?;
+        let client_address_source = parse_client_address_source(get(TRUST_PROXY))?;
         let ai_requests_per_minute = parse_ranged(
             AI_REQUESTS_PER_MINUTE,
             get(AI_REQUESTS_PER_MINUTE),
@@ -508,7 +531,7 @@ impl Config {
             database,
             cookie_secure,
             session_idle: Duration::from_secs(u64::from(session_idle_hours) * 3600),
-            trust_proxy,
+            client_address_source,
             ai_requests_per_minute,
             ai_requests_per_day,
         })
@@ -523,9 +546,11 @@ impl Config {
                 "running in development mode ({ENV}=development); operator-paid AI providers are allowed, which must never serve real users"
             ));
         }
-        if !self.trust_proxy && has_https_origin(&self.cors_origins) {
+        if self.client_address_source == ClientAddressSource::Peer
+            && has_https_origin(&self.cors_origins)
+        {
             warnings.push(format!(
-                "{TRUST_PROXY} is false while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
+                "{TRUST_PROXY} is false (peer address) while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
             ));
         }
         warnings
@@ -833,7 +858,7 @@ mod tests {
         assert_eq!(c.database.max_connections, 25);
         assert!(!c.cookie_secure);
         assert_eq!(c.session_idle, Duration::from_secs(24 * 3600));
-        assert!(c.trust_proxy);
+        assert_eq!(c.client_address_source, ClientAddressSource::XForwardedFor);
         assert_eq!(c.ai_requests_per_minute, 7);
         assert_eq!(c.ai_requests_per_day, 70);
     }
@@ -882,7 +907,7 @@ mod tests {
         let c = mock(&[]).unwrap();
         assert!(c.cookie_secure);
         assert_eq!(c.session_idle, Duration::from_secs(168 * 3600));
-        assert!(!c.trust_proxy);
+        assert_eq!(c.client_address_source, ClientAddressSource::Peer);
         assert_eq!(c.ai_requests_per_minute, 10);
         assert_eq!(c.ai_requests_per_day, 200);
     }
@@ -935,6 +960,33 @@ mod tests {
     }
 
     #[test]
+    fn client_address_source_parses_every_spelling_case_insensitively() {
+        for (value, expected) in [
+            ("false", ClientAddressSource::Peer),
+            ("FALSE", ClientAddressSource::Peer),
+            ("true", ClientAddressSource::XForwardedFor),
+            ("x-forwarded-for", ClientAddressSource::XForwardedFor),
+            ("X-Forwarded-For", ClientAddressSource::XForwardedFor),
+            ("fly-client-ip", ClientAddressSource::FlyClientIp),
+            ("Fly-Client-IP", ClientAddressSource::FlyClientIp),
+        ] {
+            assert_eq!(
+                mock(&[(TRUST_PROXY, value)]).unwrap().client_address_source,
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_client_address_source_fails_naming_the_variable() {
+        for bad in ["cf-connecting-ip", "yes", "1"] {
+            let err = mock(&[(TRUST_PROXY, bad)]).unwrap_err();
+            assert!(err.to_string().contains(TRUST_PROXY), "{bad}: {err}");
+        }
+    }
+
+    #[test]
     fn untrusted_proxy_with_an_https_origin_warns() {
         let proxy_warnings = |c: Config| {
             c.startup_warnings()
@@ -951,6 +1003,11 @@ mod tests {
             mock(&[
                 (CORS_ORIGINS, "https://songbird.example"),
                 (TRUST_PROXY, "true"),
+            ])
+            .unwrap(),
+            mock(&[
+                (CORS_ORIGINS, "https://songbird.example"),
+                (TRUST_PROXY, "fly-client-ip"),
             ])
             .unwrap(),
             mock(&[]).unwrap(),

@@ -15,6 +15,8 @@ ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+COPY --from=build /app/server-wrapper.mjs ./server-wrapper.mjs
 USER node
 EXPOSE 3000
-CMD ["node", "server.js"]
+# The wrapper, not server.js, so SIGTERM drains in-flight streams instead of exiting at once.
+CMD ["node", "server-wrapper.mjs"]

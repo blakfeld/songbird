@@ -33,7 +33,7 @@ The hourly session sweeper is a detached task, and it ends when the runtime does
 ### D2. The frontend uses a small wrapper around standalone `server.js`
 A new file, `frontend/server-wrapper.mjs`, is copied into the runner image and becomes the container's `CMD`. It sets `NEXT_MANUAL_SIG_HANDLE=1` before importing `./server.js`. On a signal it calls `close()` on the HTTP server Next created and exits when that callback fires, with the same 190 s cap.
 
-How the wrapper reaches the server instance is the one unknown. Two options: it can watch `http.Server.prototype.listen`, or the image can use Next's `startServer` from `next/dist/server/lib/start-server` directly. Task 2.1 settles this with a spike and records the answer here.
+The wrapper reaches the server by replacing `http.Server.prototype.listen` for one call before importing `./server.js`, capturing `this`, then restoring the original. Calling Next's `startServer` directly was rejected: `server.js` is generated at build time with the serialized Next config inlined, so calling it ourselves would duplicate that config and drift on upgrades, and `startServer` doesn't return the server anyway. The spike confirmed on `next build` output that SIGTERM during a slow `/api` rewrite lets the response finish, refuses new connections, and exits 0.
 
 *Alternative:* accept that frontend deploys cut streams off. This was rejected because the web app is deployed as often as the API.
 

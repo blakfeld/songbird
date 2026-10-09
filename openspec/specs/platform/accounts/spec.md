@@ -101,7 +101,7 @@ Login attempts SHALL be limited over a sliding 15-minute window:
 
 Every `429` response SHALL include a `Retry-After` header. An attempt SHALL count toward these limits from the moment it starts, so that parallel attempts cannot all pass before any has failed. A successful login SHALL clear the failure count for its email and address. Throttling SHALL apply the same way whether or not the email has an account.
 
-The client address SHALL be the connection's peer address, or, when the service is configured to trust its proxy, the first address in `X-Forwarded-For`. Trusting the proxy SHALL only be enabled when the outermost proxy replaces any client-supplied `X-Forwarded-For`, and the operator documentation SHALL say so. IPv6 addresses SHALL be grouped by their /64 prefix.
+The client address SHALL be taken from the source chosen by `SONGBIRD_TRUST_PROXY` (see `platform/service-operations`): the connection's peer address by default, the first address in `X-Forwarded-For`, or the `Fly-Client-IP` header. The `X-Forwarded-For` source SHALL only be enabled when the outermost proxy replaces any client-supplied `X-Forwarded-For`, and the `Fly-Client-IP` source SHALL only be enabled when the service is reachable solely through Fly.io's proxy. The operator documentation SHALL state both conditions. When the chosen header is missing or does not hold a valid IP address, the connection's peer address SHALL be used instead. IPv6 addresses SHALL be grouped by their /64 prefix.
 
 #### Scenario: Too many failures
 - **WHEN** a client fails to log in 5 times for `ana@example.com` from one address within 15 minutes and then posts the correct password from that address
@@ -126,6 +126,14 @@ The client address SHALL be the connection's peer address, or, when the service 
 #### Scenario: Spoofed forwarding header ignored
 - **WHEN** the service does not trust its proxy, and a client that has failed 20 times sends a login with `X-Forwarded-For: 203.0.113.9`
 - **THEN** the response is `429`, because the client is still identified by its connection address
+
+#### Scenario: Fly client address used
+- **WHEN** the service trusts `fly-client-ip`, and a client that has failed 20 times from `198.51.100.7` sends a login with `Fly-Client-IP: 198.51.100.7` and `X-Forwarded-For: 203.0.113.9`
+- **THEN** the response is `429`, because the client is identified by `Fly-Client-IP`
+
+#### Scenario: Missing Fly header falls back to the peer
+- **WHEN** the service trusts `fly-client-ip` and a login arrives with no `Fly-Client-IP` header
+- **THEN** the attempt is counted against the connection's peer address
 
 ### Requirement: Bounded password hashing
 The service SHALL hash or verify at most a small fixed number of passwords at once, between 2 and 4 depending on the server's CPUs. A login that arrives when that many are already in progress SHALL be answered at once with `503`, code `server_busy`, and a `Retry-After` header, without hashing and without waiting. Login throttling SHALL be checked before a password is hashed.
