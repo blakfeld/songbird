@@ -15,6 +15,7 @@ interface Call {
   method: string;
   path: string;
   body: { song?: Record<string, unknown>; revision?: number } | undefined;
+  at: number;
 }
 
 // Mirrors the server contract the library depends on: the server picks ids, revisions must match,
@@ -26,10 +27,11 @@ function createServer() {
   let nextId = 1;
 
   let dropPutResponses = 0;
+  const putDelays: number[] = [];
   const handle = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = String(input);
     const method = init?.method ?? "GET";
-    calls.push({ method, path, body: init?.body ? JSON.parse(init.body as string) : undefined });
+    calls.push({ method, path, body: init?.body ? JSON.parse(init.body as string) : undefined, at: Date.now() });
     const injected = scripted.shift();
     if (injected instanceof Error) throw injected;
     if (injected) return injected;
@@ -60,6 +62,8 @@ function createServer() {
       return new Response(null, { status: 204 });
     }
     if (method === "PUT") {
+      const delay = putDelays.shift();
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       if (body!.revision !== stored.revision) return failure(409, "revision_conflict");
       stored.revision += 1;
       stored.song = body!.song!;
@@ -82,6 +86,7 @@ function createServer() {
     projects,
     calls,
     puts: () => calls.filter((c) => c.method === "PUT"),
+    delayNextPut: (ms: number) => putDelays.push(ms),
     dropNextPutResponses: (n: number) => (dropPutResponses = n),
     script: (...responses: Array<Response | Error>) => scripted.push(...responses),
     seed(song: unknown) {
@@ -233,6 +238,37 @@ describe("saving", () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(server.puts()).toHaveLength(1);
     expect(lib.status.getState().ok).toBe(true);
+  });
+
+  it("waits out the interval after a slow save instead of sending the next one the moment it returns", async () => {
+    vi.useFakeTimers();
+    const song = await createSettled(newSongWithTracks());
+    server.delayNextPut(800);
+    lib.save({ ...song, name: "One" });
+    await vi.advanceTimersByTimeAsync(350);
+    lib.save({ ...song, name: "Two" });
+    await vi.advanceTimersByTimeAsync(5000);
+    const puts = server.puts();
+    expect(puts).toHaveLength(2);
+    const firstReturned = puts[0].at + 800;
+    expect(puts[1].at - firstReturned).toBeGreaterThanOrEqual(1050);
+    expect(server.projects.get(song.id)!.song.name).toBe("Two");
+    expect(lib.status.getState().ok).toBe(true);
+  });
+
+  it("drops a write that a newer edit superseded while it waited out the interval", async () => {
+    vi.useFakeTimers();
+    const song = await createSettled(newSongWithTracks());
+    server.delayNextPut(800);
+    lib.save({ ...song, name: "One" });
+    await vi.advanceTimersByTimeAsync(350);
+    lib.save({ ...song, name: "Two" });
+    // "Two" is now queued behind the slow save and sleeping; "Three" arrives before it wakes.
+    await vi.advanceTimersByTimeAsync(1550);
+    lib.save({ ...song, name: "Three" });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(server.puts().map((p) => p.body!.song!.name)).toEqual(["One", "Three"]);
+    expect(server.projects.get(song.id)!.song.name).toBe("Three");
   });
 
   it("debounces saves by 300 ms", async () => {

@@ -191,6 +191,47 @@ describe("lyrics and the song", () => {
     expect(viewOf(await notepad()).state.doc.toString()).toBe("[Chorus]\nla la");
   });
 
+  it("does not show Saved while typing has not reached the song", async () => {
+    await renderStudio("lyrics");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    type(await notepad(), "unsynced");
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    expect(screen.getByText("Saving…")).toBeInTheDocument();
+    fireEvent.blur(await notepad());
+    await library.flush();
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
+  });
+
+  it("hands typing still in the notepad to the library before the page's own flush runs", async () => {
+    await renderStudio("lyrics");
+    const savingAtFlush: boolean[] = [];
+    const flush = library.flush;
+    vi.spyOn(library, "flush").mockImplementation(() => {
+      savingAtFlush.push(library.status.getState().saving);
+      return flush();
+    });
+    type(await notepad(), "last words");
+    window.dispatchEvent(new Event("pagehide"));
+    expect(savingAtFlush[0]).toBe(true);
+  });
+
+  it("asks the browser to confirm leaving while typing is still in the notepad", async () => {
+    await renderStudio("lyrics");
+    type(await notepad(), "last words");
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("lets the page unload when nothing is unsaved", async () => {
+    await renderStudio("lyrics");
+    await library.flush();
+    await waitFor(() => expect(library.status.getState().saving).toBe(false));
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("autosaves lyrics with the song", async () => {
     const song = await renderStudio("lyrics");
     type(await notepad(), "saved words");

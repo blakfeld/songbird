@@ -23,7 +23,7 @@ import type { TimeSignature } from "@/generated/TimeSignature";
 
 const divider = "sm:border-l sm:border-zinc-200 sm:pl-6 dark:sm:border-zinc-800";
 
-function SaveStatus({ library }: { library: SongLibrary }) {
+function SaveStatus({ library, unsynced }: { library: SongLibrary; unsynced: boolean }) {
   const { ok, saving } = useStore(library.status);
   if (!ok) {
     return (
@@ -33,13 +33,14 @@ function SaveStatus({ library }: { library: SongLibrary }) {
     );
   }
   return (
-    <span className="text-xs text-zinc-600 dark:text-zinc-400">{saving ? "Saving…" : "Saved"}</span>
+    <span className="text-xs text-zinc-600 dark:text-zinc-400">{saving || unsynced ? "Saving…" : "Saved"}</span>
   );
 }
 
 export function SongHeader({
   store,
   library,
+  unsynced = false,
   song,
   instruments,
   titleRef,
@@ -59,6 +60,8 @@ export function SongHeader({
 }: {
   store: SongStore;
   library: SongLibrary;
+  // The notepad syncs to the store after a delay, and until then the library is idle yet the song on screen is unsaved.
+  unsynced?: boolean;
   song: Song;
   instruments: InstrumentInfo[] | null;
   titleRef: Ref<HTMLHeadingElement>;
@@ -163,7 +166,7 @@ export function SongHeader({
           <span aria-hidden="true">↷</span>
           <span className="max-sm:hidden">Redo</span>
         </Button>
-        <SaveStatus library={library} />
+        <SaveStatus library={library} unsynced={unsynced} />
       </div>
       <SongFileActions
         song={song}
