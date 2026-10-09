@@ -125,12 +125,17 @@ and usage records. Database backups made by your provider keep that data until
 they age out of the provider's retention window, so deleting an account does
 not erase it from backups.
 
-Login attempts are throttled per client address. Set `SONGBIRD_TRUST_PROXY=true`
-only when the outermost proxy in front of the backend **replaces** any incoming
-`X-Forwarded-For` header with the real peer address (Caddy does this by
-default). Behind a proxy that appends to the header instead, every client could
-choose its own address and sidestep the throttle. Left at `false`, the backend
-uses the socket address, which behind a proxy is the proxy itself. Everything
+Login attempts and share-link listeners are throttled per client address,
+chosen by `SONGBIRD_TRUST_PROXY`. `false` (the default) uses the socket
+address, which behind a proxy is the proxy itself. `x-forwarded-for` (or its
+older alias `true`) uses the **last** `X-Forwarded-For` entry; earlier entries
+are client-controlled and ignored. That is safe only when the outermost proxy
+appends to or replaces `X-Forwarded-For`. Songbird's Next server passes the
+header through unchanged and does not count as that proxy, so exposing Next
+directly with this mode is spoofable. `fly-client-ip` uses the `Fly-Client-IP`
+header and is safe only when the backend is reachable solely through Fly.io's
+proxy. A missing or malformed header falls back to the socket address.
+Everything
 runs as a single backend instance: the login throttle and the per-minute AI
 limit are in memory and start fresh on restart.
 
@@ -225,7 +230,9 @@ All backend settings are documented in [`backend/.env.example`](backend/.env.exa
 `SONGBIRD_MAX_INPUT_TOKENS`, `SONGBIRD_OLLAMA_URL`, `SONGBIRD_OLLAMA_MODEL`,
 `SONGBIRD_CODEX_BIN`, `SONGBIRD_CODEX_MODEL`, `SONGBIRD_COOKIE_SECURE`,
 `SONGBIRD_SESSION_IDLE_HOURS`, `SONGBIRD_TRUST_PROXY`,
-`SONGBIRD_AI_REQUESTS_PER_MINUTE`, and `SONGBIRD_AI_REQUESTS_PER_DAY`. `SONGBIRD_ENV`
+`SONGBIRD_AI_REQUESTS_PER_MINUTE`, `SONGBIRD_AI_REQUESTS_PER_DAY`,
+`SONGBIRD_SHARE_READS_PER_MINUTE`, `SONGBIRD_COMMENTS_PER_ADDRESS_10M`,
+`SONGBIRD_COMMENTS_PER_ADDRESS_DAY`, and `SONGBIRD_COMMENTS_PER_SHARE_DAY`. `SONGBIRD_ENV`
 is `production` when unset, and production refuses to start with any provider other than
 `user` (each user's own key) or with an `ANTHROPIC_API_KEY` set; local development
 needs `SONGBIRD_ENV=development`, which `just dev`, `docker-compose.yml`, and `.env.example`

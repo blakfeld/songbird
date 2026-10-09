@@ -162,3 +162,18 @@ describe("SectionRuler", () => {
     );
   });
 });
+
+describe("SectionRuler read-only", () => {
+  it("offers no menus or toggle state, and seeks to a section start from the keyboard", async () => {
+    const onSeek = vi.fn();
+    render(<SectionRuler song={songWith(SECTIONS)} selectedId={null} onSeek={onSeek} />);
+    expect(screen.queryByRole("button", { name: /Section actions/ })).toBeNull();
+    const verse = screen.getByRole("button", { name: "Verse, measures 5 to 12" });
+    expect(verse).not.toHaveAttribute("aria-pressed");
+    verse.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onSeek).toHaveBeenCalledWith(64);
+    await userEvent.keyboard("{F2}{ContextMenu}");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});

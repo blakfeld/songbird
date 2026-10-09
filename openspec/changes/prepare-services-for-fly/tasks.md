@@ -12,6 +12,8 @@
 
 ## 3. Client address source
 
+> `add-share-links` already implemented the `ClientAddressSource` enum, `client_address` (the last `X-Forwarded-For` entry, or `Fly-Client-IP`), their tests, and the README and `.env.example` docs, because its anonymous listen routes could not ship with a spoofable client address. Once that merges, 3.1, 3.2, and 3.4 only need re-verifying against that code. 3.3 is still open.
+
 - [ ] 3.1 Replace the boolean `SONGBIRD_TRUST_PROXY` in `backend/crates/api/src/config.rs` with the `ClientAddressSource` enum (D3). Add config tests for `false`, `true`, `x-forwarded-for`, `fly-client-ip`, mixed case, and an unknown value, which must fail and name the variable. Keep the https-origin warning. Verify with `cargo test -p api config` plus fmt and clippy.
 - [ ] 3.2 Update `client_address` in `backend/crates/api/src/auth/http.rs` to use the source. Add tests for the spec scenarios: "Fly client address used", "Missing Fly header falls back to the peer", and "Spoofed forwarding header ignored", plus a malformed `Fly-Client-IP` value. Verify with `cargo test -p api auth`, fmt, and clippy.
 - [ ] 3.3 Check whether Next's `/api` rewrite forwards `Fly-Client-IP`. Send a login through `next start` with the header set and the backend trusting `fly-client-ip`, and assert in the backend's log or with a test hook that the header's address was counted. If it isn't forwarded, stop and raise a design decision before working around it.

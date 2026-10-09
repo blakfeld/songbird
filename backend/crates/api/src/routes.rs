@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, Request, State};
@@ -73,6 +74,7 @@ pub fn routes(state: AppState) -> Router {
         // overrides it for these routes only.
         .merge(crate::songs::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
         .merge(crate::projects::router().layer(DefaultBodyLimit::max(SONG_MAX_BODY_BYTES)))
+        .merge(crate::shares::router())
         .merge(crate::auth::http::me_router())
         .merge(crate::ai_keys::router())
         .merge(ai)
@@ -85,10 +87,18 @@ pub fn routes(state: AppState) -> Router {
     let public_auth = crate::auth::http::public_router()
         .route_layer(from_fn_with_state(state.clone(), check_origin));
 
+    // No session layer: the token is the credential. The origin check still
+    // runs first so another site cannot post comments from visitors' browsers,
+    // and the throttle runs before any database work.
+    let listen = crate::listen::router()
+        .route_layer(from_fn_with_state(state.clone(), crate::listen::throttle))
+        .route_layer(from_fn_with_state(state.clone(), check_origin));
+
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .merge(public_auth)
+        .merge(listen)
         .merge(protected)
         .with_state(state)
 }
@@ -106,6 +116,18 @@ async fn no_store(request: Request, next: Next) -> Response {
             .or_insert(HeaderValue::from_static("no-store"));
     }
     response
+}
+
+/// A share token in the path is a credential, so it is replaced where paths
+/// enter the logs; redacting in the one place a span is built means no listen
+/// handler can forget to.
+pub fn redacted_path(path: &str) -> Cow<'_, str> {
+    const LISTEN_PREFIX: &str = "/api/v1/listen/";
+    let Some(rest) = path.strip_prefix(LISTEN_PREFIX) else {
+        return Cow::Borrowed(path);
+    };
+    let suffix = rest.find('/').map_or("", |slash| &rest[slash..]);
+    Cow::Owned(format!("{LISTEN_PREFIX}:token{suffix}"))
 }
 
 /// Split from `routes` so tests can exercise the same layers, in the same
@@ -143,7 +165,7 @@ pub fn middleware(router: Router, config: &Config) -> Router {
                     tracing::info_span!(
                         "request",
                         method = %request.method(),
-                        path = %request.uri().path(),
+                        path = %redacted_path(request.uri().path()),
                         user_id = tracing::field::Empty,
                         ai_provider = tracing::field::Empty,
                     )
@@ -155,4 +177,38 @@ pub fn middleware(router: Router, config: &Config) -> Router {
 pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
     middleware(routes(state), &config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redacted_path;
+
+    #[test]
+    fn listen_tokens_are_replaced_and_suffixes_kept() {
+        assert_eq!(
+            redacted_path("/api/v1/listen/abc123"),
+            "/api/v1/listen/:token"
+        );
+        assert_eq!(
+            redacted_path("/api/v1/listen/abc123/comments"),
+            "/api/v1/listen/:token/comments"
+        );
+        assert_eq!(
+            redacted_path("/api/v1/listen/abc123/midi"),
+            "/api/v1/listen/:token/midi"
+        );
+        assert_eq!(redacted_path("/api/v1/listen/"), "/api/v1/listen/:token");
+    }
+
+    #[test]
+    fn other_paths_are_untouched() {
+        for path in [
+            "/api/v1/projects",
+            "/api/v1/listen",
+            "/healthz",
+            "/api/v1/listenx/a",
+        ] {
+            assert_eq!(redacted_path(path), path);
+        }
+    }
 }

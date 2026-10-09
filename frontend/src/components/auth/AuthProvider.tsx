@@ -19,12 +19,14 @@ type State = { status: "loading" } | { status: "error" } | { status: "ready"; us
 // Children render only once `me` has resolved, so nothing that keys storage by user (the pattern
 // stores, the last-opened song) can run first and read or write under the wrong user.
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const onLogin = usePathname() === "/login";
+  const pathname = usePathname();
+  // A share link page is for visitors with no account, and checking a session there would make a stale cookie sign the visitor out of a page that never needed one.
+  const skipsSession = pathname === "/login" || pathname?.startsWith("/listen/") === true;
   const [state, setState] = useState<State>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (onLogin) return;
+    if (skipsSession) return;
     let cancelled = false;
     me().then(
       (user) => {
@@ -40,14 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [onLogin, attempt]);
+  }, [skipsSession, attempt]);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
     setAttempt((a) => a + 1);
   }, []);
 
-  if (onLogin) return <AuthContext.Provider value={{ user: null }}>{children}</AuthContext.Provider>;
+  if (skipsSession) return <AuthContext.Provider value={{ user: null }}>{children}</AuthContext.Provider>;
 
   if (state.status === "loading") {
     return (

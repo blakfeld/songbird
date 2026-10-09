@@ -17,6 +17,7 @@ use crate::auth::password::{PasswordError, Verification};
 use crate::auth::session::{self, cookie_name, sha256_hex};
 use crate::auth::throttle::client_key;
 use crate::clock::now_ms;
+use crate::config::ClientAddressSource;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 use crate::users;
@@ -131,17 +132,28 @@ struct LoginBody {
     password: SecretString,
 }
 
-fn client_address(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>) -> IpAddr {
+pub(crate) fn client_address(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+) -> IpAddr {
     let peer_ip = peer.map_or(IpAddr::from([0, 0, 0, 0]), |p| p.ip());
-    if !state.config.trust_proxy {
-        return peer_ip;
+    // The last line and its last entry are what a trusted proxy appended; everything
+    // to their left is client-controlled.
+    let last_entry = |name: &str| {
+        headers
+            .get_all(name)
+            .iter()
+            .next_back()
+            .and_then(|value| value.to_str().ok())
+            .and_then(|line| line.rsplit(',').next())
+            .and_then(|entry| entry.trim().parse::<IpAddr>().ok())
+    };
+    match state.config.client_address_source {
+        ClientAddressSource::Peer => peer_ip,
+        ClientAddressSource::XForwardedFor => last_entry("x-forwarded-for").unwrap_or(peer_ip),
+        ClientAddressSource::FlyClientIp => last_entry("fly-client-ip").unwrap_or(peer_ip),
     }
-    headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .and_then(|first| first.trim().parse::<IpAddr>().ok())
-        .unwrap_or(peer_ip)
 }
 
 fn password_failure(error: PasswordError) -> ApiError {

@@ -17,7 +17,7 @@ The service SHALL read its configuration from environment variables, optionally 
 - the maximum number of database connections (`SONGBIRD_DATABASE_MAX_CONNECTIONS`, default 10, allowed 1–100);
 - whether the session cookie is `Secure` (`SONGBIRD_COOKIE_SECURE`, default `true`);
 - the session idle lifetime in hours (`SONGBIRD_SESSION_IDLE_HOURS`, default 168, allowed 1–720);
-- where to take the client address from for login throttling and other per-address limits (`SONGBIRD_TRUST_PROXY`): `false` for the connection's peer address (the default); `x-forwarded-for` for the first `X-Forwarded-For` entry, to be used only when the outermost proxy replaces any client-supplied `X-Forwarded-For`; or `fly-client-ip` for the `Fly-Client-IP` header, to be used only when the service is reachable solely through Fly.io's proxy. `true` SHALL be accepted as a synonym for `x-forwarded-for`, and any other value SHALL fail startup;
+- where to take the client address from for login throttling and other per-address limits (`SONGBIRD_TRUST_PROXY`): `false` for the connection's peer address (the default); `x-forwarded-for` for the last `X-Forwarded-For` entry, to be used only when the outermost proxy appends to or replaces any client-supplied `X-Forwarded-For` and no later hop appends its own entry; or `fly-client-ip` for the `Fly-Client-IP` header, to be used only when the service is reachable solely through Fly.io's proxy. `true` SHALL be accepted as a synonym for `x-forwarded-for`, and any other value SHALL fail startup;
 - the per-user limit on AI generation requests per minute (`SONGBIRD_AI_REQUESTS_PER_MINUTE`, default 10, allowed 1–600);
 - the per-user limit on AI generation requests per UTC day (`SONGBIRD_AI_REQUESTS_PER_DAY`, default 200, allowed 1–100000).
 
@@ -57,7 +57,7 @@ Invalid or missing required configuration SHALL cause startup to fail with a mes
 
 #### Scenario: Legacy proxy trust value accepted
 - **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=true`
-- **THEN** it starts, and takes the client address from the first `X-Forwarded-For` entry
+- **THEN** it starts, and takes the client address from the last `X-Forwarded-For` entry
 
 #### Scenario: AI limit out of range
 - **WHEN** the service starts with `SONGBIRD_AI_REQUESTS_PER_MINUTE=0`

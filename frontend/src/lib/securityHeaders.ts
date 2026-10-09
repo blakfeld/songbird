@@ -26,3 +26,8 @@ export function securityHeaders(dev: boolean): { key: string; value: string }[] 
     { key: "Referrer-Policy", value: "same-origin" },
   ];
 }
+
+// A share link is a capability: indexing it would publish what the owner meant to hand to a few people.
+export function listenHeaders(): { key: string; value: string }[] {
+  return [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
+}

@@ -107,7 +107,7 @@ fn stored_from_row(row: &AnyRow) -> Result<Stored, sqlx::Error> {
 /// Touching the owner's row first takes a row lock on Postgres and the write
 /// lock on SQLite, so two concurrent writes for one user cannot both pass a
 /// count check that only one should, without `FOR UPDATE` (which SQLite lacks).
-async fn lock_owner(
+pub(crate) async fn lock_owner(
     tx: &mut sqlx::Transaction<'_, sqlx::Any>,
     owner_id: &str,
 ) -> Result<(), sqlx::Error> {
@@ -118,18 +118,32 @@ async fn lock_owner(
     Ok(())
 }
 
-async fn count_and_bytes(
+/// Share snapshots are copies of content the owner stored, so they count
+/// against the same quota; otherwise snapshot links would be a way around it.
+pub(crate) async fn count_and_bytes(
     tx: &mut sqlx::Transaction<'_, sqlx::Any>,
     owner_id: &str,
 ) -> Result<(i64, i64), sqlx::Error> {
-    let row = sqlx::query(
+    let projects = sqlx::query(
         "SELECT COUNT(*) AS n, CAST(COALESCE(SUM(size_bytes), 0) AS BIGINT) AS bytes \
          FROM projects WHERE owner_id = $1",
     )
     .bind(owner_id)
     .fetch_one(&mut **tx)
     .await?;
-    Ok((row.try_get("n")?, row.try_get("bytes")?))
+    let snapshots = sqlx::query(
+        "SELECT CAST(COALESCE(SUM(snapshot_bytes), 0) AS BIGINT) AS bytes \
+         FROM share_links WHERE owner_id = $1",
+    )
+    .bind(owner_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let project_bytes: i64 = projects.try_get("bytes")?;
+    let snapshot_bytes: i64 = snapshots.try_get("bytes")?;
+    Ok((
+        projects.try_get("n")?,
+        project_bytes.saturating_add(snapshot_bytes),
+    ))
 }
 
 pub async fn create(

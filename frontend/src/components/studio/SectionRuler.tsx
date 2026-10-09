@@ -16,11 +16,15 @@ export function SectionRuler({
   song,
   selectedId,
   actions,
+  onSeek,
   children,
 }: {
   song: Song;
   selectedId: string | null;
-  actions: SectionActions;
+  // Left out for a listener's copy, which can only be navigated: no selecting, editing or menus.
+  actions?: SectionActions;
+  // Receives an absolute step, so a click inside a long section can land where it was made.
+  onSeek?: (step: number) => void;
   // Drawn behind the blocks, so the song's end reads the same in every ruler row.
   children?: ReactNode;
 }) {
@@ -33,6 +37,17 @@ export function SectionRuler({
   const menuIndex = menu ? sections.findIndex((s) => s.id === menu.id) : -1;
   const menuSection = menuIndex >= 0 ? sections[menuIndex] : null;
 
+  const readOnly = !actions;
+
+  // A keyboard activation has no pointer position, so it goes to the section's start.
+  function seekFrom(e: React.MouseEvent<HTMLButtonElement>, start: number, measures: number) {
+    const first = (start - 1) * spm;
+    const rect = row.current?.getBoundingClientRect();
+    if (e.detail === 0 || !rect || rect.width <= 0) return onSeek?.(first);
+    const step = Math.floor(((e.clientX - rect.left) / rect.width) * song.measures * spm);
+    onSeek?.(Math.min(first + measures * spm - 1, Math.max(first, step)));
+  }
+
   const labelOf = (id: string) =>
     row.current?.querySelector<HTMLElement>(`[data-section-id="${CSS.escape(id)}"]`) ?? null;
 
@@ -44,6 +59,16 @@ export function SectionRuler({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, id: string) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!actions) {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        focusSibling(e.currentTarget, e.key === "ArrowLeft" ? "prev" : "next");
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        focusSibling(e.currentTarget, e.key === "Home" ? "first" : "last");
+      }
+      return;
+    }
     const el = e.currentTarget;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
@@ -72,7 +97,7 @@ export function SectionRuler({
       ref={row}
       role="group"
       aria-label="Sections"
-      aria-describedby={SECTION_KEYS_HELP_ID}
+      aria-describedby={readOnly ? undefined : SECTION_KEYS_HELP_ID}
       data-section-ruler
       className="relative h-8 border-b border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950"
     >
@@ -94,15 +119,16 @@ export function SectionRuler({
             <button
               type="button"
               data-section-id={s.id}
-              aria-pressed={selected}
+              aria-pressed={readOnly ? undefined : selected}
               aria-label={name}
               title={`${s.name} · ${s.kind} · measures ${sectionRange(s, start)} · ${s.measures} ${s.measures === 1 ? "measure" : "measures"}`}
               tabIndex={s.id === stopId ? 0 : -1}
               className={`absolute inset-0 flex items-center overflow-hidden rounded-sm border-l-4 text-left text-xs font-medium text-zinc-900 hover:brightness-95 motion-safe:transition-colors dark:text-zinc-50 dark:hover:brightness-110 ${focusRing} focus-visible:-outline-offset-2 ${
                 selected ? `${colour.selected} ring-2 ring-zinc-900 ring-inset dark:ring-zinc-50` : colour.block
               }`}
-              onClick={() => actions.toggle(s.id)}
+              onClick={(e) => (actions ? actions.toggle(s.id) : seekFrom(e, start, s.measures))}
               onContextMenu={(e) => {
+                if (readOnly) return;
                 e.preventDefault();
                 setMenu({ id: s.id, anchor: { x: e.clientX, y: e.clientY } });
               }}
@@ -116,23 +142,25 @@ export function SectionRuler({
                 </span>
               </span>
             </button>
-            <button
-              type="button"
-              aria-label={sectionMenuLabel(s)}
-              aria-haspopup="menu"
-              tabIndex={-1}
-              className={`absolute inset-y-0 right-0 w-6 text-zinc-700 hover:bg-zinc-900/10 @max-[4rem]/section:hidden dark:text-zinc-300 dark:hover:bg-white/10 ${focusRing} focus-visible:-outline-offset-2`}
-              onClick={() => {
-                const rect = labelOf(s.id)?.getBoundingClientRect();
-                setMenu({ id: s.id, anchor: { x: rect?.left ?? 0, y: rect?.bottom ?? 0 } });
-              }}
-            >
-              <span aria-hidden="true">⋯</span>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label={sectionMenuLabel(s)}
+                aria-haspopup="menu"
+                tabIndex={-1}
+                className={`absolute inset-y-0 right-0 w-6 text-zinc-700 hover:bg-zinc-900/10 @max-[4rem]/section:hidden dark:text-zinc-300 dark:hover:bg-white/10 ${focusRing} focus-visible:-outline-offset-2`}
+                onClick={() => {
+                  const rect = labelOf(s.id)?.getBoundingClientRect();
+                  setMenu({ id: s.id, anchor: { x: rect?.left ?? 0, y: rect?.bottom ?? 0 } });
+                }}
+              >
+                <span aria-hidden="true">⋯</span>
+              </button>
+            )}
           </div>
         );
       })}
-      {menuSection && menu && (
+      {actions && menuSection && menu && (
         <ContextMenu
           open
           anchor={menu.anchor}

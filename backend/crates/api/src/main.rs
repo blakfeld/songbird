@@ -130,6 +130,7 @@ async fn serve() -> Result<(), String> {
     );
 
     api::auth::session::spawn_sweeper(state.db.clone());
+    state.share_throttle.clone().spawn_sweeper();
 
     if !bind_addr.ip().is_loopback() {
         // Containers must bind 0.0.0.0 inside, so this fires under compose even when the

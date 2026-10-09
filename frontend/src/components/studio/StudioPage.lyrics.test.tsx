@@ -141,6 +141,8 @@ describe("right column tabs", () => {
     await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Section" })).toHaveAttribute("aria-selected", "true");
     await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Comments" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Assistant" })).toHaveAttribute("aria-selected", "true");
   });
 
