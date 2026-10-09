@@ -81,6 +81,20 @@ pub enum ApiError {
     /// cannot be told apart.
     #[error("No such project.")]
     ProjectNotFound,
+    #[error("No such share link.")]
+    ShareNotFound,
+    #[error("No such comment.")]
+    CommentNotFound,
+    /// The message names the offending field; it only describes the caller's own request.
+    #[error("The share link settings are not valid: {0}")]
+    InvalidShare(String),
+    #[error("A project can have at most 20 active share links. Revoke one first.")]
+    ShareLimit,
+    /// The message names the offending field; it only describes the listener's own comment.
+    #[error("{0}")]
+    InvalidComment(String),
+    #[error("This link has reached its limit of comments.")]
+    CommentLimit,
     #[error("The project was changed elsewhere. Reload it before saving.")]
     RevisionConflict,
     #[error("You have reached the limit on projects or stored song data.")]
@@ -136,6 +150,8 @@ impl ApiError {
             | Self::InvalidRange
             | Self::LyricsRejected { .. }
             | Self::ToplineRejected { .. }
+            | Self::InvalidShare(_)
+            | Self::InvalidComment(_)
             | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
@@ -144,9 +160,13 @@ impl ApiError {
             Self::NotReady => StatusCode::SERVICE_UNAVAILABLE,
             Self::Unauthenticated | Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
-            Self::ProjectNotFound => StatusCode::NOT_FOUND,
+            Self::ProjectNotFound | Self::ShareNotFound | Self::CommentNotFound => {
+                StatusCode::NOT_FOUND
+            }
             Self::RevisionConflict
             | Self::ProjectLimit
+            | Self::ShareLimit
+            | Self::CommentLimit
             | Self::ApiKeyRequired
             | Self::ApiKeyInvalid { .. }
             | Self::StoredKeyUnusable { .. }
@@ -188,7 +208,11 @@ impl ApiError {
             Self::Unauthenticated => "unauthenticated",
             Self::InvalidCredentials => "invalid_credentials",
             Self::Forbidden => "forbidden",
-            Self::ProjectNotFound => "not_found",
+            Self::ProjectNotFound | Self::ShareNotFound | Self::CommentNotFound => "not_found",
+            Self::InvalidShare(_) => "invalid_share",
+            Self::ShareLimit => "share_limit",
+            Self::InvalidComment(_) => "invalid_comment",
+            Self::CommentLimit => "comment_limit",
             Self::RevisionConflict => "revision_conflict",
             Self::ProjectLimit => "project_limit",
             Self::IdMismatch => "id_mismatch",

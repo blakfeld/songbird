@@ -1,13 +1,12 @@
 use std::time::Duration;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
 use secrecy::{ExposeSecret, SecretString};
-use sha2::{Digest, Sha256};
 use sqlx::Row;
 
 use crate::clock::now_ms;
 use crate::db::Db;
+// Re-exported so existing callers keep one import path for session credentials.
+pub use crate::token::{generate_token, hash_token, sha256_hex};
 
 /// `__Host-` makes browsers refuse the cookie unless it is `Secure`, `Path=/`
 /// and domain-less, so a sibling subdomain cannot plant it.
@@ -23,34 +22,12 @@ const BUMP_INTERVAL_MS: i64 = 60_000;
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(3600);
 
-const TOKEN_BYTES: usize = 32;
-
 pub fn cookie_name(secure: bool) -> &'static str {
     if secure {
         SECURE_COOKIE_NAME
     } else {
         PLAIN_COOKIE_NAME
     }
-}
-
-pub fn generate_token() -> SecretString {
-    use argon2::password_hash::rand_core::{OsRng, RngCore};
-
-    let mut bytes = [0u8; TOKEN_BYTES];
-    OsRng.fill_bytes(&mut bytes);
-    SecretString::from(URL_SAFE_NO_PAD.encode(bytes))
-}
-
-pub fn sha256_hex(value: &str) -> String {
-    Sha256::digest(value.as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
-/// Only this digest is stored, so a leaked `sessions` table cannot be replayed as cookies.
-pub fn hash_token(token: &str) -> String {
-    sha256_hex(token)
 }
 
 /// A new session never outlives the absolute cap, even with a long idle window.

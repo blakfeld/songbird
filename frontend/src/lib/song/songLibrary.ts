@@ -392,6 +392,9 @@ export function createServerSongLibrary(
 
     hasConflict: (id: string) => conflicts.has(id),
 
+    // A revision is only known once the server has stored the song, and share links hang off that stored project.
+    isOnServer: (id: string) => revisions.has(id),
+
     // For "Save as copy": the original keeps its newer server version, and this tab moves on to the copy.
     clearConflict(id: string) {
       setConflict(id, false);

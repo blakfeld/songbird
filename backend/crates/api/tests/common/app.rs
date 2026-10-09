@@ -273,6 +273,20 @@ pub fn song(name: &str, track_count: usize) -> Value {
     })
 }
 
+/// A 4-measure song (64 steps) whose two 2-measure sections are Verse (steps
+/// 0-31) and Chorus (32-63), carrying every field the share projection removes.
+pub fn sectioned_song(name: &str) -> Value {
+    let mut value = song(name, 1);
+    value["lyrics"] = json!("[Verse]\nla la");
+    value["chat"] = json!([{"role": "user", "content": "private song chat"}]);
+    value["lyric_chat"] = json!([{"role": "user", "content": "private lyric chat"}]);
+    value["sections"] = json!([
+        {"id": "sec-verse", "name": "Verse", "kind": "verse", "measures": 2, "notes": "private verse note"},
+        {"id": "sec-chorus", "name": "Chorus", "kind": "chorus", "measures": 2, "notes": "private chorus note"},
+    ]);
+    value
+}
+
 /// A valid topline body: an 8-measure song with a Vocal Guide track and a
 /// 4-measure chorus of two lines (14 syllables) over measures 5-8.
 pub fn topline_body() -> Value {

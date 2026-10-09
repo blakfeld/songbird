@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   EXCLUDED_IDB_DATABASES,
   KEPT_PER_USER_IDB_PREFIXES,
+  LISTEN_STORAGE_PREFIX,
   LOCAL_STORAGE_PREFIX,
   PER_USER_IDB_DATABASES,
 } from "./perUserStores";
@@ -46,7 +47,9 @@ describe("per-user storage registry", () => {
       ...matches(new RegExp(String.raw`storageKey=\{?${LITERAL}`, "g")),
       ...matches(new RegExp(String.raw`persist[\s\S]{0,200}?name:${LITERAL}`, "g")),
     ];
-    const outside = literals.filter((l) => !l.literal.startsWith(LOCAL_STORAGE_PREFIX));
+    const outside = literals.filter(
+      (l) => !l.literal.startsWith(LOCAL_STORAGE_PREFIX) && !l.literal.startsWith(LISTEN_STORAGE_PREFIX),
+    );
     expect(outside).toEqual([]);
   });
 

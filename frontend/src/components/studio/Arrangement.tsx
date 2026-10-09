@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { InstrumentInfo } from "@/generated/InstrumentInfo";
 import type { Playback } from "@/lib/audio/types";
 import type { LoopSetting } from "@/lib/loopRegion";
@@ -80,6 +80,7 @@ export function Arrangement({
   sectionId,
   selectedSectionId,
   sectionActions,
+  commentMarkers,
 }: {
   song: Song;
   timeline: number;
@@ -104,6 +105,7 @@ export function Arrangement({
   sectionId: string;
   selectedSectionId: string | null;
   sectionActions: SectionActions;
+  commentMarkers?: ReactNode;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const rulerCell = useRef<HTMLDivElement>(null);
@@ -240,6 +242,7 @@ export function Arrangement({
           <div style={fit}>
             <SectionRuler song={song} selectedId={selectedSectionId} actions={sectionActions}>
               <PastEnd song={song} timeline={timeline} />
+              {commentMarkers}
             </SectionRuler>
           </div>
         </div>

@@ -56,6 +56,11 @@ export function SongHeader({
   onToggleSamples,
   samplesOpen,
   samplesButtonRef,
+  onShare,
+  shareButtonRef,
+  onToggleComments,
+  commentsButtonRef,
+  unresolvedComments,
   guardEdit = (edit) => edit(),
 }: {
   store: SongStore;
@@ -77,6 +82,13 @@ export function SongHeader({
   onToggleSamples: () => void;
   samplesOpen: boolean;
   samplesButtonRef: Ref<HTMLButtonElement>;
+  // Absent for a song that was never saved to the server, which has no project to share.
+  onShare?: () => void;
+  shareButtonRef?: Ref<HTMLButtonElement>;
+  // Absent with `onShare`, because comments only exist for a project the server stores.
+  onToggleComments?: () => void;
+  commentsButtonRef?: Ref<HTMLButtonElement>;
+  unresolvedComments: number;
   // Ends a running take before the history moves, so the take is committed and announced rather than cut off.
   guardEdit?: (edit: () => void) => void;
 }) {
@@ -185,6 +197,28 @@ export function SongHeader({
         <InstrumentIcon instrumentId="audio" kind={null} className="size-6 !bg-transparent" />
         <span className="max-sm:hidden">Samples</span>
       </Button>
+      {onShare && (
+        <Button ref={shareButtonRef} aria-haspopup="dialog" onClick={onShare}>
+          Share
+        </Button>
+      )}
+      {onToggleComments && (
+        <Button
+          ref={commentsButtonRef}
+          aria-label={`Comments, ${unresolvedComments} unresolved`}
+          onClick={onToggleComments}
+        >
+          Comments
+          {unresolvedComments > 0 && (
+            <span
+              aria-hidden="true"
+              className="rounded-full bg-indigo-600 px-1.5 text-xs text-white dark:bg-indigo-400 dark:text-black"
+            >
+              {unresolvedComments}
+            </span>
+          )}
+        </Button>
+      )}
       <Button
         ref={lyricsButtonRef}
         className="lg:hidden"

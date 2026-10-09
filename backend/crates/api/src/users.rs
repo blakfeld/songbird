@@ -213,7 +213,7 @@ fn user_from_row(row: AnyRow) -> Result<User, sqlx::Error> {
 
 /// `Any` reports a SQLite `INTEGER` 0/1 as a number, which it refuses to decode
 /// as `bool`, while Postgres `BOOLEAN` decodes as `bool` only.
-fn decode_bool(row: &AnyRow, column: &str) -> Result<bool, sqlx::Error> {
+pub(crate) fn decode_bool(row: &AnyRow, column: &str) -> Result<bool, sqlx::Error> {
     row.try_get::<bool, _>(column)
         .or_else(|_| row.try_get::<i64, _>(column).map(|n| n != 0))
 }

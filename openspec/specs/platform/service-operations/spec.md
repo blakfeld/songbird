@@ -51,7 +51,7 @@ The service SHALL read its configuration from environment variables, optionally 
 - the maximum number of database connections (`SONGBIRD_DATABASE_MAX_CONNECTIONS`, default 10, allowed 1–100);
 - whether the session cookie is `Secure` (`SONGBIRD_COOKIE_SECURE`, default `true`);
 - the session idle lifetime in hours (`SONGBIRD_SESSION_IDLE_HOURS`, default 168, allowed 1–720);
-- where to take the client address from for login throttling and other per-address limits (`SONGBIRD_TRUST_PROXY`): `false` for the connection's peer address (the default); `x-forwarded-for` for the first `X-Forwarded-For` entry, to be used only when the outermost proxy replaces any client-supplied `X-Forwarded-For`; or `fly-client-ip` for the `Fly-Client-IP` header, to be used only when the service is reachable solely through Fly.io's proxy. `true` SHALL be accepted as a synonym for `x-forwarded-for`, and any other value SHALL fail startup;
+- where to take the client address from for login throttling and other per-address limits (`SONGBIRD_TRUST_PROXY`): `false` for the connection's peer address (the default); `x-forwarded-for` for the last entry of the last `X-Forwarded-For` header line, to be used only when the outermost proxy appends to or replaces `X-Forwarded-For` and no later hop appends its own entry; or `fly-client-ip` for the `Fly-Client-IP` header, to be used only when the service is reachable solely through Fly.io's proxy. `true` SHALL be accepted as a synonym for `x-forwarded-for`, and any other value SHALL fail startup;
 - the per-user limit on AI generation requests per minute (`SONGBIRD_AI_REQUESTS_PER_MINUTE`, default 10, allowed 1–600);
 - the per-user limit on AI generation requests per UTC day (`SONGBIRD_AI_REQUESTS_PER_DAY`, default 200, allowed 1–100000).
 
@@ -91,7 +91,7 @@ Invalid or missing required configuration SHALL cause startup to fail with a mes
 
 #### Scenario: Legacy proxy trust value accepted
 - **WHEN** the service starts with `SONGBIRD_TRUST_PROXY=true`
-- **THEN** it starts, and takes the client address from the first `X-Forwarded-For` entry
+- **THEN** it starts, and takes the client address from the last `X-Forwarded-For` entry
 
 #### Scenario: AI limit out of range
 - **WHEN** the service starts with `SONGBIRD_AI_REQUESTS_PER_MINUTE=0`
@@ -189,7 +189,7 @@ These headers SHALL be set by the application, so that they apply in every way i
 - **THEN** the response has no `Strict-Transport-Security` header
 
 ### Requirement: Request logging protects credentials
-Request logs SHALL NOT contain request or response headers, passwords, or session tokens. After a request is authenticated, its log records SHALL carry the user's id and SHALL NOT carry the user's email. A failed login SHALL be logged with the client address and a one-way hash of the normalised email instead of the email itself.
+Request logs SHALL NOT contain request or response headers, passwords, session tokens, or share link tokens. A request to a share link listen path (under `/api/v1/listen/`) SHALL be logged with the token replaced by a fixed placeholder, so the log still shows which kind of listen request it was. After a request is authenticated, its log records SHALL carry the user's id and SHALL NOT carry the user's email. A failed login SHALL be logged with the client address and a one-way hash of the normalised email instead of the email itself. Listener comment names and bodies SHALL NOT be logged.
 
 #### Scenario: Authenticated request traced by user id
 - **WHEN** a signed-in user requests `GET /api/v1/projects` while logs are captured
@@ -198,6 +198,14 @@ Request logs SHALL NOT contain request or response headers, passwords, or sessio
 #### Scenario: Failed login logged without the email
 - **WHEN** a login for `ana@example.com` fails while logs are captured
 - **THEN** a log line records the failure with the client address, and no log line contains `ana@example.com` or the submitted password
+
+#### Scenario: Share token not logged
+- **WHEN** a client requests `GET /api/v1/listen/<token>` and posts a comment through it while logs are captured
+- **THEN** no log line contains the token or the comment's text, and the request lines show the path with a placeholder in place of the token
+
+#### Scenario: Created token not logged
+- **WHEN** an owner creates a share link while logs are captured
+- **THEN** no log line contains the new token
 
 ### Requirement: Deployment mode
 The service SHALL read its deployment mode from `SONGBIRD_ENV`, which is `production` or `development`. When the variable is unset, the mode SHALL be `production`, so a deployment that forgets the setting fails closed rather than falling back to an operator-paid provider. Any other value SHALL fail startup with a message naming `SONGBIRD_ENV`.

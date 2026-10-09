@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentSecurityPolicy, securityHeaders } from "./securityHeaders";
+import { contentSecurityPolicy, listenHeaders, securityHeaders } from "./securityHeaders";
 
 describe("security headers", () => {
   it("sets the four headers", () => {
@@ -36,5 +36,9 @@ describe("security headers", () => {
     ]) {
       expect(csp.split("; ")).toContain(directive);
     }
+  });
+
+  it("keeps listen pages out of search indexes", () => {
+    expect(listenHeaders()).toContainEqual({ key: "X-Robots-Tag", value: "noindex, nofollow" });
   });
 });

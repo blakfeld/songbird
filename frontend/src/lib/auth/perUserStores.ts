@@ -19,3 +19,7 @@ export const EXCLUDED_IDB_DATABASES: readonly string[] = [
 
 // Cleared wholesale rather than by an allow-list so a future key cannot be forgotten.
 export const LOCAL_STORAGE_PREFIX = "songbird.";
+
+// A listener's remembered name and own comments, keyed by share link. They belong to no account, so sign-out leaves them
+// alone, and the registry scan accepts this prefix beside the per-user one.
+export const LISTEN_STORAGE_PREFIX = "songbird-listen.";

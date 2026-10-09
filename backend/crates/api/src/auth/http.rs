@@ -132,7 +132,7 @@ struct LoginBody {
     password: SecretString,
 }
 
-fn client_address(
+pub(crate) fn client_address(
     source: ClientAddressSource,
     headers: &HeaderMap,
     peer: Option<SocketAddr>,
@@ -140,11 +140,15 @@ fn client_address(
     let peer_ip = peer.map_or(IpAddr::from([0, 0, 0, 0]), |p| p.ip());
     match source {
         ClientAddressSource::Peer => peer_ip,
+        // The last line and its last entry are what the trusted proxy appended; everything
+        // to their left is client-controlled.
         ClientAddressSource::XForwardedFor => headers
-            .get("x-forwarded-for")
+            .get_all("x-forwarded-for")
+            .iter()
+            .next_back()
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.split(',').next())
-            .and_then(|first| first.trim().parse::<IpAddr>().ok())
+            .and_then(|line| line.rsplit(',').next())
+            .and_then(|entry| entry.trim().parse::<IpAddr>().ok())
             .unwrap_or(peer_ip),
         ClientAddressSource::FlyClientIp => headers
             .get("fly-client-ip")
@@ -378,11 +382,42 @@ mod tests {
     }
 
     #[test]
-    fn x_forwarded_for_source_uses_the_first_entry() {
+    fn x_forwarded_for_source_uses_the_last_entry() {
         let ip = resolve(
             ClientAddressSource::XForwardedFor,
-            &[("x-forwarded-for", "203.0.113.9, 10.0.0.1")],
+            &[("x-forwarded-for", "10.0.0.1, 203.0.113.9")],
         );
         assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_ignores_a_forged_leading_entry() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "9.9.9.9, 203.0.113.9")],
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_uses_the_last_header_line() {
+        let mut map = HeaderMap::new();
+        map.append("x-forwarded-for", HeaderValue::from_static("9.9.9.9"));
+        map.append("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+        let ip = client_address(
+            ClientAddressSource::XForwardedFor,
+            &map,
+            Some(PEER.parse().unwrap()),
+        );
+        assert_eq!(ip, "203.0.113.9".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn x_forwarded_for_source_falls_back_to_the_peer_when_the_last_entry_is_junk() {
+        let ip = resolve(
+            ClientAddressSource::XForwardedFor,
+            &[("x-forwarded-for", "1.2.3.4, junk")],
+        );
+        assert_eq!(ip, "192.0.2.1".parse::<IpAddr>().unwrap());
     }
 }

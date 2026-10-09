@@ -64,6 +64,12 @@ import type { DropPayload } from "./samples/useSampleDrop";
 import type { SampleLibraryEntry } from "@/lib/audio/sampleLibrary";
 import { formatPosition } from "@/lib/song/audioTime";
 import { TICKS_PER_SIXTEENTH } from "@/lib/song/audioTiming";
+import { CommentMarkers } from "@/components/share/CommentMarkers";
+import { CommentsPanel, commentElementId } from "@/components/share/CommentsPanel";
+import { ShareDialog } from "@/components/share/ShareDialog";
+import { useProjectComments } from "@/components/share/useProjectComments";
+import { describePosition } from "@/lib/listen/position";
+import type { OwnerComment } from "@/lib/share/shareApi";
 
 const STORAGE_FAILURE =
   "Changes aren't being saved. The server can't be reached or refused the save. You can keep editing and Songbird keeps retrying, but closing this tab may lose your changes.";
@@ -673,6 +679,66 @@ export function StudioPage({
     );
 
   const wide = useWideColumn();
+
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareButton = useRef<HTMLButtonElement>(null);
+  const commentsButton = useRef<HTMLButtonElement>(null);
+  const [commentsDrawerOpen, setCommentsDrawerOpen] = useState(false);
+  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
+  // Re-read on every render: saving updates the library's status store, which re-renders this page, so a song
+  // that was not yet stored starts fetching and offering comments as soon as its first save lands.
+  const onServer = song !== null && library.isOnServer(song.id);
+  const projectComments = useProjectComments(onServer ? song.id : null);
+
+  const showComments = (refresh: boolean) => {
+    if (refresh) projectComments.refresh();
+    if (wide) setRightTab("comments");
+    else setCommentsDrawerOpen(true);
+  };
+
+  // Only the playhead and the transport's label move; the song document is untouched, so this is not an undo step.
+  const jumpToComment = (comment: OwnerComment) => {
+    if (!song) return;
+    const spm = song.steps_per_measure;
+    const step = Math.min(comment.at_step, Math.max(0, song.measures * spm - 1));
+    playhead.current = step;
+    setLabelStep(Math.floor(step / spm) * spm);
+    playback.seek?.(Math.floor(step / spm) + 1);
+    setSelectedCommentId(comment.id);
+    setStatus(`Moved to ${describePosition(song, step, comment.section_name)}.`);
+  };
+
+  const selectComment = (comment: OwnerComment) => {
+    jumpToComment(comment);
+    showComments(false);
+    // Two frames: the tab or drawer has to mount its list before the comment can take focus.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => document.getElementById(commentElementId(comment.id))?.focus()),
+    );
+  };
+
+  const commentsPanel = (heading: boolean) =>
+    song && (
+      <CommentsPanel
+        song={song}
+        comments={projectComments.comments}
+        loading={projectComments.loading}
+        failed={projectComments.failed}
+        unresolved={projectComments.unresolved}
+        selectedId={selectedCommentId}
+        onRefresh={projectComments.refresh}
+        onJump={jumpToComment}
+        onResolve={async (comment, resolved) => {
+          await projectComments.setResolved(comment.id, resolved);
+          setStatus(`Comment from ${comment.name} ${resolved ? "resolved" : "reopened"}.`);
+        }}
+        onDelete={async (comment) => {
+          await projectComments.remove(comment.id);
+          setStatus(`Deleted the comment from ${comment.name}.`);
+        }}
+        heading={heading}
+      />
+    );
   const showNotes = (sectionId: string) => {
     setSelectedSection(sectionId);
     if (wide) setRightTab("section");
@@ -866,6 +932,14 @@ export function StudioPage({
               onToggleSamples={() => (samplesOpen ? setSamplesOpen(false) : showSamples())}
               samplesOpen={samplesOpen}
               samplesButtonRef={samplesButton}
+              onShare={onServer ? () => setShareOpen(true) : undefined}
+              shareButtonRef={shareButton}
+              onToggleComments={onServer ? () => {
+                showComments(true);
+                if (wide) requestAnimationFrame(() => document.getElementById("rt-tab-comments")?.focus());
+              } : undefined}
+              commentsButtonRef={commentsButton}
+              unresolvedComments={projectComments.unresolved}
               guardEdit={session.guardEdit}
             />
             <p role="status" className="min-h-5 px-4 text-sm text-zinc-600 sm:px-6 dark:text-zinc-400">
@@ -934,6 +1008,14 @@ export function StudioPage({
             onSeek={seek}
             selectedSectionId={selectedSectionId}
             sectionActions={sectionActions}
+            commentMarkers={
+              <CommentMarkers
+                song={song}
+                comments={projectComments.comments}
+                selectedId={selectedCommentId}
+                onSelect={selectComment}
+              />
+            }
           />
           {dockOpen && (
             <>
@@ -1005,6 +1087,17 @@ export function StudioPage({
         </>
       )}
 
+      {song && (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => {
+            setShareOpen(false);
+            requestAnimationFrame(() => shareButton.current?.focus());
+          }}
+          projectId={song.id}
+          song={song}
+        />
+      )}
       {song && (
         <ToplineDialog
           request={toplineRequest}
@@ -1135,6 +1228,8 @@ export function StudioPage({
           />
           )
         }
+        comments={wide && onServer && commentsPanel(false)}
+        showComments={onServer}
         tab={rightTab}
         onTabChange={setRightTab}
       />
@@ -1156,6 +1251,17 @@ export function StudioPage({
         className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
       >
         <LyricsPanel song={song} store={store} chat={lyricChat} editorRef={lyricEditor} focusedSongs={lyricFocused} onChange={setLyrics} registerFlush={registerLyricsFlush} onPendingChange={setLyricsPending} onGenerateTopline={(name) => setToplineRequest({ sectionName: name })} heading />
+      </ModalDialog>
+      <ModalDialog
+        open={commentsDrawerOpen}
+        onClose={() => {
+          setCommentsDrawerOpen(false);
+          requestAnimationFrame(() => commentsButton.current?.focus());
+        }}
+        label="Comments"
+        className="my-0 mr-0 ml-auto h-dvh max-h-dvh w-80 max-w-full rounded-none p-0"
+      >
+        {commentsPanel(true)}
       </ModalDialog>
       <ModalDialog
         open={sectionDrawerOpen}

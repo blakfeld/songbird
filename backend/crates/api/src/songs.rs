@@ -26,7 +26,7 @@ use music::generate::{generate_topline, generate_track};
 use music::song_midi::song_to_midi;
 use music::{
     ChatBody, ChatResponse, ChatTrack, Song, SongError, SongLimits, ToplineGenerateBody,
-    ToplineResponse, TrackGenerateBody, TrackGenerateResponse, ValidTrackRequest,
+    ToplineResponse, TrackGenerateBody, TrackGenerateResponse, ValidSong, ValidTrackRequest,
 };
 
 use crate::ai_access::RequestProviders;
@@ -368,7 +368,14 @@ async fn export_midi(
             SongError::UnknownInstrument { message } => ApiError::InvalidSongInstrument(message),
             SongError::Invalid { message, .. } => ApiError::InvalidSong(message),
         })?;
-    let bytes = song_to_midi(&valid).map_err(|error| {
+    midi_response(&valid)
+}
+
+/// Shared with the listen route so a shared song downloads with the same bytes
+/// and file name as the Studio's own export.
+pub(crate) fn midi_response(valid: &ValidSong<'_>) -> Result<Response, ApiError> {
+    let song = valid.song;
+    let bytes = song_to_midi(valid).map_err(|error| {
         tracing::error!(%error, "song MIDI serialization failed");
         ApiError::Internal
     })?;

@@ -30,3 +30,8 @@ export function securityHeaders(dev: boolean): { key: string; value: string }[] 
   if (!dev) headers.push({ key: "Strict-Transport-Security", value: "max-age=31536000" });
   return headers;
 }
+
+// A share link is a capability: indexing it would publish what the owner meant to hand to a few people.
+export function listenHeaders(): { key: string; value: string }[] {
+  return [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
+}

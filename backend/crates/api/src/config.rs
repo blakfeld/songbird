@@ -41,9 +41,13 @@ pub const AI_REQUESTS_PER_DAY: &str = "SONGBIRD_AI_REQUESTS_PER_DAY";
 pub const ENV: &str = "SONGBIRD_ENV";
 pub const MASTER_KEYS: &str = "SONGBIRD_MASTER_KEYS";
 pub const OPENAI_MODEL: &str = "SONGBIRD_OPENAI_MODEL";
+pub const SHARE_READS_PER_MINUTE: &str = "SONGBIRD_SHARE_READS_PER_MINUTE";
+pub const COMMENTS_PER_ADDRESS_10M: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_10M";
+pub const COMMENTS_PER_ADDRESS_DAY: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_DAY";
+pub const COMMENTS_PER_SHARE_DAY: &str = "SONGBIRD_COMMENTS_PER_SHARE_DAY";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 23] = [
+pub const ALL_VARIABLES: [&str; 27] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -67,6 +71,10 @@ pub const ALL_VARIABLES: [&str; 23] = [
     ENV,
     MASTER_KEYS,
     OPENAI_MODEL,
+    SHARE_READS_PER_MINUTE,
+    COMMENTS_PER_ADDRESS_10M,
+    COMMENTS_PER_ADDRESS_DAY,
+    COMMENTS_PER_SHARE_DAY,
 ];
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
@@ -90,6 +98,14 @@ const DEFAULT_AI_REQUESTS_PER_MINUTE: u32 = 10;
 const MAX_AI_REQUESTS_PER_MINUTE: u32 = 600;
 const DEFAULT_AI_REQUESTS_PER_DAY: u32 = 200;
 const MAX_AI_REQUESTS_PER_DAY: u32 = 100_000;
+const DEFAULT_SHARE_READS_PER_MINUTE: u32 = 60;
+const MAX_SHARE_READS_PER_MINUTE: u32 = 10_000;
+const DEFAULT_COMMENTS_PER_ADDRESS_10M: u32 = 5;
+const MAX_COMMENTS_PER_ADDRESS_10M: u32 = 1_000;
+const DEFAULT_COMMENTS_PER_ADDRESS_DAY: u32 = 30;
+const MAX_COMMENTS_PER_ADDRESS_DAY: u32 = 10_000;
+const DEFAULT_COMMENTS_PER_SHARE_DAY: u32 = 200;
+const MAX_COMMENTS_PER_SHARE_DAY: u32 = 100_000;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
@@ -107,6 +123,8 @@ pub enum ConfigError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientAddressSource {
     Peer,
+    /// The rightmost entry, because that is the one the trusted proxy appended; entries
+    /// to its left are whatever the client sent.
     XForwardedFor,
     FlyClientIp,
 }
@@ -286,6 +304,10 @@ pub struct Config {
     pub client_address_source: ClientAddressSource,
     pub ai_requests_per_minute: u32,
     pub ai_requests_per_day: u32,
+    pub share_reads_per_minute: u32,
+    pub comments_per_address_10m: u32,
+    pub comments_per_address_day: u32,
+    pub comments_per_share_day: u32,
 }
 
 fn has_https_origin(origins: &[String]) -> bool {
@@ -507,6 +529,30 @@ impl Config {
             DEFAULT_AI_REQUESTS_PER_DAY,
             MAX_AI_REQUESTS_PER_DAY,
         )?;
+        let share_reads_per_minute = parse_ranged(
+            SHARE_READS_PER_MINUTE,
+            get(SHARE_READS_PER_MINUTE),
+            DEFAULT_SHARE_READS_PER_MINUTE,
+            MAX_SHARE_READS_PER_MINUTE,
+        )?;
+        let comments_per_address_10m = parse_ranged(
+            COMMENTS_PER_ADDRESS_10M,
+            get(COMMENTS_PER_ADDRESS_10M),
+            DEFAULT_COMMENTS_PER_ADDRESS_10M,
+            MAX_COMMENTS_PER_ADDRESS_10M,
+        )?;
+        let comments_per_address_day = parse_ranged(
+            COMMENTS_PER_ADDRESS_DAY,
+            get(COMMENTS_PER_ADDRESS_DAY),
+            DEFAULT_COMMENTS_PER_ADDRESS_DAY,
+            MAX_COMMENTS_PER_ADDRESS_DAY,
+        )?;
+        let comments_per_share_day = parse_ranged(
+            COMMENTS_PER_SHARE_DAY,
+            get(COMMENTS_PER_SHARE_DAY),
+            DEFAULT_COMMENTS_PER_SHARE_DAY,
+            MAX_COMMENTS_PER_SHARE_DAY,
+        )?;
 
         Ok(Self {
             env,
@@ -534,6 +580,10 @@ impl Config {
             client_address_source,
             ai_requests_per_minute,
             ai_requests_per_day,
+            share_reads_per_minute,
+            comments_per_address_10m,
+            comments_per_address_day,
+            comments_per_share_day,
         })
     }
 
@@ -551,6 +601,11 @@ impl Config {
         {
             warnings.push(format!(
                 "{TRUST_PROXY} is false (peer address) while {CORS_ORIGINS} has an https:// origin; behind a reverse proxy every client then shares the proxy's address, so one stranger can trip the login throttle for everyone"
+            ));
+        }
+        if self.env == Env::Production && self.client_address_source == ClientAddressSource::Peer {
+            warnings.push(format!(
+                "{TRUST_PROXY} is false in production; behind a reverse proxy every share-link listener then shares the proxy's address, so one stranger can exhaust the listen and comment limits for everyone"
             ));
         }
         warnings
@@ -826,6 +881,10 @@ mod tests {
             (TRUST_PROXY, "true"),
             (AI_REQUESTS_PER_MINUTE, "7"),
             (AI_REQUESTS_PER_DAY, "70"),
+            (SHARE_READS_PER_MINUTE, "11"),
+            (COMMENTS_PER_ADDRESS_10M, "2"),
+            (COMMENTS_PER_ADDRESS_DAY, "9"),
+            (COMMENTS_PER_SHARE_DAY, "33"),
         ];
         assert_eq!(all.len(), ALL_VARIABLES.len());
         let c = Config::from_lookup(lookup(&all)).unwrap();
@@ -861,6 +920,52 @@ mod tests {
         assert_eq!(c.client_address_source, ClientAddressSource::XForwardedFor);
         assert_eq!(c.ai_requests_per_minute, 7);
         assert_eq!(c.ai_requests_per_day, 70);
+        assert_eq!(c.share_reads_per_minute, 11);
+        assert_eq!(c.comments_per_address_10m, 2);
+        assert_eq!(c.comments_per_address_day, 9);
+        assert_eq!(c.comments_per_share_day, 33);
+    }
+
+    #[test]
+    fn share_limits_default_to_the_documented_values_and_are_range_checked() {
+        let c = mock(&[]).unwrap();
+        assert_eq!(
+            (
+                c.share_reads_per_minute,
+                c.comments_per_address_10m,
+                c.comments_per_address_day,
+                c.comments_per_share_day
+            ),
+            (60, 5, 30, 200)
+        );
+        for var in [
+            SHARE_READS_PER_MINUTE,
+            COMMENTS_PER_ADDRESS_10M,
+            COMMENTS_PER_ADDRESS_DAY,
+            COMMENTS_PER_SHARE_DAY,
+        ] {
+            for bad in ["0", "-1", "x", "100000000"] {
+                let err = mock(&[(var, bad)]).unwrap_err().to_string();
+                assert!(err.contains(var), "{err}");
+            }
+        }
+    }
+
+    #[test]
+    fn production_without_a_trusted_proxy_warns_about_the_share_throttle() {
+        let warns = |c: Config| {
+            c.startup_warnings()
+                .iter()
+                .any(|w| w.contains("share-link listener"))
+        };
+        assert!(warns(production(&[]).unwrap()));
+        for mode in ["true", "x-forwarded-for", "fly-client-ip"] {
+            assert!(
+                !warns(production(&[(TRUST_PROXY, mode)]).unwrap()),
+                "{mode}"
+            );
+        }
+        assert!(!warns(mock(&[]).unwrap()));
     }
 
     #[test]
@@ -960,6 +1065,21 @@ mod tests {
     }
 
     #[test]
+    fn trust_proxy_accepts_the_documented_values_in_any_case() {
+        for (value, expected) in [
+            ("false", ClientAddressSource::Peer),
+            ("true", ClientAddressSource::XForwardedFor),
+            ("X-Forwarded-For", ClientAddressSource::XForwardedFor),
+            ("Fly-Client-IP", ClientAddressSource::FlyClientIp),
+        ] {
+            let c = mock(&[(TRUST_PROXY, value)]).unwrap();
+            assert_eq!(c.client_address_source, expected, "{value}");
+        }
+        let err = mock(&[(TRUST_PROXY, "cloudflare")]).unwrap_err();
+        assert!(err.to_string().contains(TRUST_PROXY), "{err}");
+    }
+
+    #[test]
     fn client_address_source_parses_every_spelling_case_insensitively() {
         for (value, expected) in [
             ("false", ClientAddressSource::Peer),
@@ -1029,7 +1149,8 @@ mod tests {
         let c = production(&[]).unwrap();
         assert_eq!(c.env, Env::Production);
         assert_eq!(c.ai_provider, ProviderKind::User);
-        assert!(c.startup_warnings().is_empty());
+        let trusted = production(&[(TRUST_PROXY, "true")]).unwrap();
+        assert!(trusted.startup_warnings().is_empty());
     }
 
     #[test]

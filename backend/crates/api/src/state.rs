@@ -10,6 +10,7 @@ use crate::auth::throttle::LoginThrottle;
 use crate::config::Config;
 use crate::db::Db;
 use crate::provider::Providers;
+use crate::share_throttle::{ShareLimits, ShareThrottle};
 
 /// Handlers take everything from here so tests can swap in a fake provider
 /// without touching the environment.
@@ -24,6 +25,7 @@ pub struct AppState {
     pub ai_limiter: Arc<AiLimiter>,
     /// Counts every save attempt, not only failures, so the endpoint is no oracle for stolen keys.
     pub key_save_limiter: Arc<AiLimiter>,
+    pub share_throttle: Arc<ShareThrottle>,
     /// Lets keys be managed in development with an operator provider, where `ai` has no factory.
     pub shared_key_checker: Arc<dyn UserProviders>,
 }
@@ -59,6 +61,7 @@ impl AppState {
         config: Arc<Config>,
         db: Db,
     ) -> Self {
+        let share_throttle = Arc::new(ShareThrottle::new(ShareLimits::from_config(&config)));
         Self {
             shared_key_checker: Arc::new(RealUserProviders::new(&config)),
             ai,
@@ -69,6 +72,7 @@ impl AppState {
             login_throttle: Arc::new(LoginThrottle::default()),
             ai_limiter: Arc::new(AiLimiter::default()),
             key_save_limiter: Arc::new(AiLimiter::with_window(KEY_SAVE_WINDOW)),
+            share_throttle,
         }
     }
 }

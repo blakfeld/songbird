@@ -10,13 +10,14 @@ const request = (path: string, cookie?: string) =>
   new NextRequest(`http://localhost:3000${path}`, cookie ? { headers: { cookie } } : undefined);
 
 describe("proxy matcher", () => {
-  it.each(["/", "/studio", "/instruments/drums", "/drum-machine", "/loginx", "/apix"])("gates %s", (path) => {
+  it.each(["/", "/studio", "/instruments/drums", "/drum-machine", "/loginx", "/apix", "/listenx"])("gates %s", (path) => {
     expect(gated(path)).toBe(true);
   });
 
   it.each([
     "/login",
     "/login/extra",
+    "/listen/abc",
     "/healthz",
     "/readyz",
     "/api/v1/auth/me",
@@ -47,6 +48,11 @@ describe("proxy", () => {
 
   it("ignores unrelated cookies", () => {
     expect(proxy(request("/studio", "other=1")).status).toBe(307);
+  });
+
+  it("shows a listen page to a visitor with no cookie, and to one with a session, alike", () => {
+    expect(gated("/listen/abc")).toBe(false);
+    expect(gated("/listen/abc/extra")).toBe(false);
   });
 
   it("does not redirect a cookie-less /healthz", () => {

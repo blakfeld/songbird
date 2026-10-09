@@ -15,7 +15,8 @@ export function proxy(request: NextRequest) {
 
 // Next requires a literal here so it can be analysed at build time. Health probes carry no cookie
 // and the proxy runs before rewrites, so gating them would answer a redirect instead of the
-// backend's health response. Any path with a dot is treated as a static asset.
+// backend's health response. Share-link pages are for visitors without an account, so they are never redirected.
+// Any path with a dot is treated as a static asset.
 export const config = {
-  matcher: ["/((?!(?:login|healthz|readyz|api|_next)(?:/|$)|.*\\..*).*)"],
+  matcher: ["/((?!(?:login|healthz|readyz|api|listen|_next)(?:/|$)|.*\\..*).*)"],
 };

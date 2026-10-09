@@ -101,7 +101,7 @@ Login attempts SHALL be limited over a sliding 15-minute window:
 
 Every `429` response SHALL include a `Retry-After` header. An attempt SHALL count toward these limits from the moment it starts, so that parallel attempts cannot all pass before any has failed. A successful login SHALL clear the failure count for its email and address. Throttling SHALL apply the same way whether or not the email has an account.
 
-The client address SHALL be taken from the source chosen by `SONGBIRD_TRUST_PROXY` (see `platform/service-operations`): the connection's peer address by default, the first address in `X-Forwarded-For`, or the `Fly-Client-IP` header. The `X-Forwarded-For` source SHALL only be enabled when the outermost proxy replaces any client-supplied `X-Forwarded-For`, and the `Fly-Client-IP` source SHALL only be enabled when the service is reachable solely through Fly.io's proxy. The operator documentation SHALL state both conditions. When the chosen header is missing or does not hold a valid IP address, the connection's peer address SHALL be used instead. IPv6 addresses SHALL be grouped by their /64 prefix.
+The client address SHALL be taken from the source chosen by `SONGBIRD_TRUST_PROXY` (see `platform/service-operations`): the connection's peer address by default, the last address in `X-Forwarded-For`, or the `Fly-Client-IP` header. The `X-Forwarded-For` source SHALL only be enabled when the outermost proxy appends to or replaces `X-Forwarded-For` and no later hop appends its own entry, and the `Fly-Client-IP` source SHALL only be enabled when the service is reachable solely through Fly.io's proxy. The operator documentation SHALL state both conditions. When the chosen header is missing or does not hold a valid IP address, the connection's peer address SHALL be used instead. IPv6 addresses SHALL be grouped by their /64 prefix.
 
 #### Scenario: Too many failures
 - **WHEN** a client fails to log in 5 times for `ana@example.com` from one address within 15 minutes and then posts the correct password from that address
@@ -183,7 +183,7 @@ The system SHALL expose `GET /api/v1/auth/me`, returning `200` with `{"user": {"
 - **THEN** the response's `Set-Cookie` names `__Host-songbird_session` with `Path=/`, `Secure`, `HttpOnly`, and `SameSite=Lax` and an expiry in the past, and the browser no longer sends the cookie
 
 ### Requirement: Authentication required for the API
-Every endpoint under `/api/v1`, except `POST /api/v1/auth/login` and `POST /api/v1/auth/logout`, SHALL require a valid session. A request without one SHALL get `401` with code `unauthenticated` in the standard error shape, and the handler SHALL NOT run. That includes calling an AI provider. `GET /healthz` and `GET /readyz` SHALL remain public. No GET or HEAD endpoint SHALL change state. A state-changing request (any method other than GET or HEAD) to any `/api/v1` endpoint, including login and logout, SHALL be refused with `403` and code `forbidden` when its `Origin` header is present and is not one of the configured frontend origins. The service SHALL NOT treat its own `Host` as an allowed origin, because behind the frontend's proxy that host is the internal service name, not the address the browser used.
+Every endpoint under `/api/v1`, except `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and the share link listen endpoints under `/api/v1/listen/` (see `songs/share-links` and `songs/listener-comments`), SHALL require a valid session. A request without one SHALL get `401` with code `unauthenticated` in the standard error shape, and the handler SHALL NOT run. That includes calling an AI provider. The listen endpoints SHALL ignore any session the request carries, SHALL NOT call an AI provider, and SHALL give access only to the one shared song their token names. `GET /healthz` and `GET /readyz` SHALL remain public. No GET or HEAD endpoint SHALL change state. A state-changing request (any method other than GET or HEAD) to any `/api/v1` endpoint, including login, logout, and posting a listener comment, SHALL be refused with `403` and code `forbidden` when its `Origin` header is present and is not one of the configured frontend origins. The service SHALL NOT treat its own `Host` as an allowed origin, because behind the frontend's proxy that host is the internal service name, not the address the browser used.
 
 #### Scenario: Generation without a session
 - **WHEN** a client without a session posts to `/api/v1/patterns/generate`
@@ -197,8 +197,20 @@ Every endpoint under `/api/v1`, except `POST /api/v1/auth/login` and `POST /api/
 - **WHEN** a client without a session requests `GET /healthz`
 - **THEN** the response is `200`
 
+#### Scenario: Listen endpoint is public
+- **WHEN** a client without a session requests `GET /api/v1/listen/<token>` for an active share link
+- **THEN** the response is `200`
+
+#### Scenario: Listen prefix does not open other routes
+- **WHEN** a client without a session requests `GET /api/v1/projects/{id}/shares`
+- **THEN** the response is `401` with code `unauthenticated`
+
 #### Scenario: Cross-site write refused
 - **WHEN** a request carrying a valid session cookie posts to `/api/v1/projects` with `Origin: https://evil.example`
+- **THEN** the response is `403` with code `forbidden` and nothing is stored
+
+#### Scenario: Cross-site comment refused
+- **WHEN** a client posts a comment to `/api/v1/listen/<token>/comments` with `Origin: https://evil.example`
 - **THEN** the response is `403` with code `forbidden` and nothing is stored
 
 #### Scenario: Cross-site login refused
@@ -245,11 +257,19 @@ The frontend SHALL provide a `/login` page with an email field, a password field
 - **THEN** they are taken to `/studio?song=1#mixer`
 
 ### Requirement: Signed-out users are sent to login
-Every page except `/login` SHALL require a signed-in user. A visitor without a session cookie SHALL be redirected to `/login` before the page renders, with the original path kept as the return target. The health endpoints `/healthz` and `/readyz` SHALL NOT be redirected, so that monitors and deploy checks without a cookie reach the backend. While the app is open, any API response of `401 unauthenticated` SHALL sign the user out of the app: unsaved local per-user state SHALL be discarded, per-user browser storage SHALL be cleared (see "Per-user browser storage"), and the browser SHALL go to `/login` with the current path as the return target.
+Every page except `/login` and the share link listen pages under `/listen/` SHALL require a signed-in user. A visitor without a session cookie SHALL be redirected to `/login` before the page renders, with the original path kept as the return target. A listen page SHALL render the same way with or without a session cookie. The health endpoints `/healthz` and `/readyz` SHALL NOT be redirected, so that monitors and deploy checks without a cookie reach the backend. While the app is open, any API response of `401 unauthenticated` SHALL sign the user out of the app: unsaved local per-user state SHALL be discarded, per-user browser storage SHALL be cleared (see "Per-user browser storage"), and the browser SHALL go to `/login` with the current path as the return target. A listen page SHALL NOT sign anyone out, clear per-user browser storage, or navigate to `/login`, whatever its API responses are.
 
 #### Scenario: Visit without a session
 - **WHEN** a visitor with no session cookie opens `/studio`
 - **THEN** they are redirected to `/login?next=/studio`
+
+#### Scenario: Listen page without a session
+- **WHEN** a visitor with no session cookie opens `/listen/<token>`
+- **THEN** the listen page renders and there is no redirect
+
+#### Scenario: Listen page leaves a signed-in user alone
+- **WHEN** a signed-in user opens a revoked share link in a new tab
+- **THEN** the page says the link isn't available, and the user is still signed in to the Studio in their other tab
 
 #### Scenario: Health check through the frontend
 - **WHEN** a client with no cookie requests `GET /healthz` from the frontend
@@ -264,11 +284,15 @@ Every page except `/login` SHALL require a signed-in user. A visitor without a s
 - **THEN** the user's next API request leads to `/login`, and signing in fails with "Email or password is incorrect"
 
 ### Requirement: Signed-in user and log out in the app
-Every page except `/login` SHALL show the signed-in user's email and a Log out control. Logging out SHALL call the logout endpoint, clear per-user browser storage, and go to `/login`. Any unsaved project change SHALL be saved before logging out, or the user SHALL be warned that it will be lost.
+Every page except `/login` and the share link listen pages under `/listen/` SHALL show the signed-in user's email and a Log out control. A listen page SHALL NOT show any account information, even when the visitor is signed in. Logging out SHALL call the logout endpoint, clear per-user browser storage, and go to `/login`. Any unsaved project change SHALL be saved before logging out, or the user SHALL be warned that it will be lost.
 
 #### Scenario: Log out
 - **WHEN** the user activates Log out
 - **THEN** the session ends, the browser shows `/login`, and pressing Back does not show the user's projects
+
+#### Scenario: No account shown on a listen page
+- **WHEN** a signed-in user opens a share link
+- **THEN** the listen page shows neither their email nor a Log out control
 
 ### Requirement: Per-user browser storage
 Everything the app keeps in browser storage under the `songbird.` localStorage prefix, and every IndexedDB store the app creates for a user's work, SHALL be treated as belonging to the signed-in user. Signing out, by logging out or after a `401`, SHALL delete all of it, except stored sample audio. Sample audio exists only in the browser (see `songs/audio-tracks`), so deleting it would destroy the user's work. It SHALL instead be kept in a store keyed by the user's id, which only that user can open. The app SHALL keep one list of its per-user IndexedDB stores, marking any store that is kept on sign-out, and every new store SHALL be added to it. Songs and samples saved in a browser before accounts existed SHALL be left untouched (see `songs/multitrack`).

@@ -504,7 +504,7 @@ async fn a_missing_or_malformed_fly_header_falls_back_to_the_peer() {
 }
 
 #[tokio::test]
-async fn ipv6_neighbours_share_a_limit_and_only_the_first_forwarded_entry_counts() {
+async fn ipv6_neighbours_share_a_limit_and_only_the_last_forwarded_entry_counts() {
     let app = app_with_ana(&[(TRUST_PROXY, "true")]).await;
     for i in 0..20 {
         let address = format!("2001:db8:1:2::{:x}", i + 1);
@@ -520,7 +520,7 @@ async fn ipv6_neighbours_share_a_limit_and_only_the_first_forwarded_entry_counts
         .send(login_request_with(
             "ana@example.com",
             PASSWORD,
-            &[("x-forwarded-for", "2001:db8:1:2:ffff::9, 10.0.0.1")],
+            &[("x-forwarded-for", "10.0.0.1, 2001:db8:1:2:ffff::9")],
         ))
         .await;
     assert_eq!(same_prefix.status, StatusCode::TOO_MANY_REQUESTS);
@@ -533,6 +533,96 @@ async fn ipv6_neighbours_share_a_limit_and_only_the_first_forwarded_entry_counts
         ))
         .await;
     assert_eq!(other_prefix.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_forged_leftmost_forwarded_entry_cannot_change_the_bucket() {
+    let app = app_with_ana(&[(TRUST_PROXY, "true")]).await;
+    for i in 0..20 {
+        let forged = format!("203.0.113.{}, 198.51.100.50", i + 1);
+        fail_logins(
+            &app,
+            &format!("user{}@example.com", i / 4),
+            1,
+            &[("x-forwarded-for", &forged)],
+        )
+        .await;
+    }
+    let response = app
+        .send(login_request_with(
+            "ana@example.com",
+            PASSWORD,
+            &[("x-forwarded-for", "192.0.2.77, 198.51.100.50")],
+        ))
+        .await;
+    assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn fly_client_ip_mode_counts_that_header_and_ignores_forwarded_for() {
+    let app = app_with_ana(&[(TRUST_PROXY, "fly-client-ip")]).await;
+    for i in 0..20 {
+        let forged = format!("203.0.113.{}", i + 1);
+        fail_logins(
+            &app,
+            &format!("user{}@example.com", i / 4),
+            1,
+            &[
+                ("fly-client-ip", "198.51.100.50"),
+                ("x-forwarded-for", &forged),
+            ],
+        )
+        .await;
+    }
+    let same_fly_address = app
+        .send(login_request_with(
+            "ana@example.com",
+            PASSWORD,
+            &[
+                ("fly-client-ip", "198.51.100.50"),
+                ("x-forwarded-for", "192.0.2.1"),
+            ],
+        ))
+        .await;
+    assert_eq!(same_fly_address.status, StatusCode::TOO_MANY_REQUESTS);
+
+    let other_fly_address = app
+        .send(login_request_with(
+            "ana@example.com",
+            PASSWORD,
+            &[
+                ("fly-client-ip", "198.51.100.51"),
+                ("x-forwarded-for", "198.51.100.50"),
+            ],
+        ))
+        .await;
+    assert_eq!(other_fly_address.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_missing_or_malformed_address_header_falls_back_to_the_peer_bucket() {
+    for (mode, header) in [
+        ("fly-client-ip", None),
+        ("fly-client-ip", Some(("fly-client-ip", "not-an-ip"))),
+        (
+            "x-forwarded-for",
+            Some(("x-forwarded-for", "1.2.3.4, junk")),
+        ),
+    ] {
+        let app = app_with_ana(&[(TRUST_PROXY, mode)]).await;
+        for i in 0..20 {
+            fail_logins(&app, &format!("user{}@example.com", i / 4), 1, &[]).await;
+        }
+        let headers: Vec<(&str, &str)> = header.into_iter().collect();
+        let response = app
+            .send(login_request_with("ana@example.com", PASSWORD, &headers))
+            .await;
+        assert_eq!(
+            response.status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "{mode} {header:?}"
+        );
+    }
 }
 
 #[tokio::test]
