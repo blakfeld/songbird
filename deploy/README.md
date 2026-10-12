@@ -33,7 +33,7 @@ To check that the database is on the volume: `fly ssh console -C "ls -l /app/dat
 
 ## Continuous deployment
 
-Every push to `main` that passes CI runs `deploy/setup.sh` in the `deploy` job. It needs a `FLY_API_TOKEN` repository secret (`fly tokens create deploy -a songbird-op1hog`). Without a terminal the script answers no to every prompt, so CI never destroys a Machine or creates a user. A deploy blocked by a Machine without a volume has to be fixed by hand as described above.
+Every push to `main` that passes CI runs `deploy/setup.sh` in the `deploy` job. It reads `FLY_API_TOKEN` from the `production` environment's secrets (`fly tokens create deploy -a songbird-op1hog`). Without a terminal the script answers no to every prompt, so CI never destroys a Machine or creates a user. A deploy blocked by a Machine without a volume has to be fixed by hand as described above.
 
 ## Secrets
 

@@ -109,6 +109,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
+    # FLY_API_TOKEN is a secret of this environment, so the job can't read it without naming it.
+    environment: production
     # Two merges in quick succession would otherwise deploy over each other; queue them instead.
     concurrency:
       group: deploy-production
