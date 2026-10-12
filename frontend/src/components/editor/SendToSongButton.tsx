@@ -122,7 +122,7 @@ function SendForm({
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Done</Button>
           <Link
-            href={`/studio?song=${result.song.id}`}
+            href={`/?song=${result.song.id}`}
             className={`inline-flex items-center justify-center rounded-full bg-black px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 ${focusRing}`}
           >
             Open in Studio

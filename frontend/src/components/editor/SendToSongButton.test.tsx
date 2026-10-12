@@ -33,7 +33,7 @@ describe("send to song", () => {
     expect(await within(dialog).findByText(/Added "Boom Bap" to "Boom Bap" as track 1\./)).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Open in Studio" })).toHaveAttribute(
       "href",
-      expect.stringMatching(/^\/studio\?song=.+/),
+      expect.stringMatching(/^\/\?song=.+/),
     );
     const [entry] = await library.list();
     const song = (await library.peek(entry.id))!;
@@ -52,7 +52,7 @@ describe("send to song", () => {
     const link = await within(dialog).findByRole("link", { name: "Open in Studio" });
     const [entry] = await library.list();
     expect(entry.id).toMatch(/^server-/);
-    expect(link).toHaveAttribute("href", `/studio?song=${entry.id}`);
+    expect(link).toHaveAttribute("href", `/?song=${entry.id}`);
   });
 
   it("does not report success when the song was changed elsewhere, and a retry sends again", async () => {

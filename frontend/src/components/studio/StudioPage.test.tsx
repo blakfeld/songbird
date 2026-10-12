@@ -761,7 +761,7 @@ describe("opening by URL", () => {
   it("clears ?song= after reading it, and names the branch that was taken", async () => {
     const other = { ...newSongWithTracks(), name: "Other" };
     await library.create(other);
-    window.history.pushState(null, "", "/studio?song=missing");
+    window.history.pushState(null, "", "/?song=missing");
     render(<StudioPage library={library} />);
     await screen.findByRole("region", { name: "Arrangement" });
     expect(window.location.search).toBe("");
@@ -769,7 +769,7 @@ describe("opening by URL", () => {
   });
 
   it("says a new song was created when there is no last song", async () => {
-    window.history.pushState(null, "", "/studio?song=missing");
+    window.history.pushState(null, "", "/?song=missing");
     render(<StudioPage library={library} />);
     await screen.findByRole("region", { name: "Arrangement" });
     expect(screen.getByText("That song couldn't be found, so a new song was created.")).toBeInTheDocument();
@@ -786,7 +786,7 @@ describe("songs that cannot be opened", () => {
     const bad = broken();
     fake.seedRaw(bad.id, bad);
     await library.create({ ...newSongWithTracks(), name: "Fine" });
-    window.history.pushState(null, "", `/studio?song=${bad.id}`);
+    window.history.pushState(null, "", `/?song=${bad.id}`);
     render(<StudioPage library={library} />);
     await screen.findByRole("region", { name: "Arrangement" });
     expect(screen.getByText("That song couldn't be opened, so your last song was opened.")).toBeInTheDocument();

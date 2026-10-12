@@ -73,7 +73,7 @@ test("record over empty studio lane space, then undo the take", async ({ page })
   page.on("pageerror", (e) => problems.push(e.message));
 
   await installFakeMidi(page);
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "MIDI Take Song");
 
   await addTrack(page, "Piano");

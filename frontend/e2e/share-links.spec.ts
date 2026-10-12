@@ -6,7 +6,7 @@ test("share a song, listen and comment without an account, resolve the comment, 
   request,
   browser,
 }) => {
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Shared Song");
   await addTrack(page, "Drums");
 

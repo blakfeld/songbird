@@ -30,7 +30,7 @@ describe("AuthProvider on a listen page", () => {
   });
 
   it("still checks the session on other pages", () => {
-    pathname.value = "/studio";
+    pathname.value = "/";
     me.mockReturnValue(new Promise(() => {}));
     render(
       <AuthProvider>

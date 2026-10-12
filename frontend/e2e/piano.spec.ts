@@ -26,7 +26,8 @@ test("open the piano, generate, add a note, play, export and reload", async ({ p
   page.on("pageerror", (e) => problems.push(e.message));
 
   await page.goto("/");
-  await page.getByRole("link", { name: "Open the Piano" }).click();
+  await page.getByRole("button", { name: /^Account:/ }).click();
+  await page.getByRole("menuitem", { name: "Piano", exact: true }).click();
   await expect(page).toHaveURL(/\/instruments\/piano$/);
   await expect(page.getByRole("heading", { name: "Piano", exact: true, level: 1 })).toBeVisible();
 

@@ -33,7 +33,7 @@ function createDatabase(name: string): Promise<void> {
 beforeEach(() => {
   localStorage.clear();
   vi.mocked(navigateTo).mockClear();
-  window.history.replaceState(null, "", "/studio?song=a#top");
+  window.history.replaceState(null, "", "/?song=a#top");
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -60,7 +60,7 @@ describe("signOutLocally", () => {
 
   it("navigates to login with the current path, query and fragment encoded", async () => {
     await signOutLocally();
-    expect(navigateTo).toHaveBeenCalledWith(`/login?next=${encodeURIComponent("/studio?song=a#top")}`);
+    expect(navigateTo).toHaveBeenCalledWith(`/login?next=${encodeURIComponent("/?song=a#top")}`);
   });
 
   it("does not navigate when already on the login page", async () => {

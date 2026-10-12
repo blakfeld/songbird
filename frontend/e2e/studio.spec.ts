@@ -9,7 +9,7 @@ test("build a song across tracks, mix it, reload and find it unchanged", async (
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 
   await newSong(page, "E2E Song");
@@ -111,7 +111,7 @@ test("draw and toggle a song loop region, keep it across a reload, and play once
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Loop Song");
 
   await addTrack(page, "Drums");
@@ -173,7 +173,7 @@ test("edit a song's length, meter and key, then select, move, copy and undo note
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Edit Song");
   await addTrack(page, "Drums");
   await addTrack(page, "Piano");
@@ -286,7 +286,7 @@ test("generate the bass for measures 1 to 4 from the drums, then undo", async ({
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Generate Song");
 
   await addTrack(page, "Drums");
@@ -338,7 +338,7 @@ test("build piano, drums and bass through the chat, then undo the bass", async (
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Chat Song");
   const input = page.getByRole("textbox", { name: "Message the assistant" });
   const send = async (text: string, reply: string) => {
@@ -375,7 +375,7 @@ test("a named length in the chat grows a new song to that many measures", async 
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Length Song");
   await page.getByRole("textbox", { name: "Message the assistant" }).fill("16 bars of slow jazzy piano");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -394,7 +394,7 @@ test("download a project, open it as a new song, and export a multitrack MIDI fi
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await page.getByRole("button", { name: "Rename song Untitled song" }).click();
   await page.getByRole("textbox", { name: "Song name" }).fill("Late Train");
@@ -465,7 +465,7 @@ test("close the piano roll, reopen it by double-clicking a clip, and find it clo
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Dock Song");
   await addTrack(page, "Piano");
   const track = page.getByRole("group", { name: "Track 1: Piano" });
@@ -514,7 +514,7 @@ test("a sent chat message shows at once and the input stays typeable while the r
     await route.continue();
   });
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Pending Song");
   const input = page.getByRole("textbox", { name: "Message the assistant" });
   const send = page.getByRole("button", { name: "Send message" });
@@ -546,7 +546,7 @@ test("the reply text grows and the step moves from planning to writing before th
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Streaming Song");
 
   // The mock's stream lasts a fraction of a second, so the DOM is recorded as it changes rather than polled.
@@ -603,7 +603,7 @@ test("opening another song mid-request adds no track and shows no error in eithe
     await route.continue().catch(() => undefined);
   });
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "First Song");
   await page.getByRole("textbox", { name: "Message the assistant" }).fill("give me a bass line");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -637,7 +637,7 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Sound Song");
   await addTrack(page, "Piano");
   const openPanel = async () => {
@@ -686,7 +686,7 @@ test("shape a track's sound with the keyboard, undo it, and find it after a relo
 });
 
 test("drag the third track above the second, then undo it", async ({ page }) => {
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Order Song");
   await addTrack(page, "Drums");
   await addTrack(page, "Piano");
@@ -710,4 +710,9 @@ test("drag the third track above the second, then undo it", async ({ page }) => 
 
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(order).toEqual(original);
+});
+
+test("the legacy /studio URL redirects to the home page and keeps the query string", async ({ page }) => {
+  await page.goto("/studio?song=abc");
+  await expect(page).toHaveURL(/\/\?song=abc$/);
 });

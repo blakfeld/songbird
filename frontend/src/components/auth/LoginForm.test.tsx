@@ -63,19 +63,19 @@ describe("Login page", () => {
   });
 
   it("returns to the page the user asked for", async () => {
-    window.history.replaceState(null, "", "/login?next=/studio");
+    window.history.replaceState(null, "", "/login?next=/drum-machine");
     stubApi();
     render(<LoginForm />);
     await signIn();
-    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/studio"));
+    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/drum-machine"));
   });
 
   it("keeps the query and fragment of the return target", async () => {
-    window.history.replaceState(null, "", "/login?next=%2Fstudio%3Fsong%3D1%23mixer");
+    window.history.replaceState(null, "", "/login?next=%2F%3Fsong%3D1%23mixer");
     stubApi();
     render(<LoginForm />);
     await signIn();
-    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/studio?song=1#mixer"));
+    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/?song=1#mixer"));
   });
 
   it.each([

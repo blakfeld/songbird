@@ -11,7 +11,7 @@ describe("safeReturnTarget", () => {
   });
 
   it("keeps the path, query and fragment", () => {
-    expect(resolve("/studio?song=1#mixer")).toBe("/studio?song=1#mixer");
+    expect(resolve("/?song=1#mixer")).toBe("/?song=1#mixer");
   });
 
   it.each([

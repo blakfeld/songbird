@@ -40,6 +40,11 @@ const nextConfig: NextConfig = {
       { source: "/listen/:path*", headers: listenHeaders() },
     ];
   },
+  // Runs before the auth proxy, so a signed-out visitor to an old /studio link is gated at the new
+  // URL and returns there after login. Next carries the query string across on its own.
+  async redirects() {
+    return [{ source: "/studio", destination: "/", permanent: true }];
+  },
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },

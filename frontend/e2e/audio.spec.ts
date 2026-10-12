@@ -76,7 +76,7 @@ test("import a WAV through the Samples panel and place it on an audio track", as
   const problems: string[] = [];
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await page.getByRole("button", { name: "Add track" }).click();
   await page.getByRole("menuitem", { name: "Audio", exact: true }).click();
@@ -94,7 +94,7 @@ test("drag a sample to a new lane, loop-extend it and undo, reload and play, the
   page.on("pageerror", (e) => problems.push(e.message));
   await trackSourceStarts(page);
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   const { row } = await importTone(page);
 
@@ -166,7 +166,7 @@ test("drag a sample to a new lane, loop-extend it and undo, reload and play, the
 });
 
 test("measure how loud a centre-panned stereo sample is in the rendered mix", async ({ page }, testInfo) => {
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await page.getByRole("button", { name: "Add track" }).click();
   await page.getByRole("menuitem", { name: "Audio", exact: true }).click();
@@ -193,7 +193,7 @@ test("assign a sample to a pad, play a note on it, and find the sample in the do
   page.on("pageerror", (e) => problems.push(e.message));
   await trackSourceStarts(page);
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   const { row } = await importTone(page);
 
