@@ -1,0 +1,46 @@
+# Next and the Rust API share one Machine (see Dockerfile). Never scale past one Machine:
+# each would get its own empty volume and so its own separate database.
+
+app = 'songbird-op1hog'
+primary_region = 'iad'
+# Above the services' 190 s stream drain, so a deploy doesn't cut off a chat mid-reply.
+kill_signal = 'SIGTERM'
+kill_timeout = 200
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  SONGBIRD_ENV = 'production'
+  SONGBIRD_CORS_ORIGINS = 'https://songbird-op1hog.fly.dev'
+  # Fly's edge appends to X-Forwarded-For, so only Fly-Client-IP can't be forged.
+  SONGBIRD_TRUST_PROXY = 'fly-client-ip'
+
+# SONGBIRD_DATABASE_URL (set in the Dockerfile) places SQLite here; the entrypoint refuses to
+# start if this isn't mounted, so a missing volume can't lose data silently.
+[mounts]
+  source = 'songbird_data'
+  destination = '/app/data'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+  # /readyz passes through Next to the API and runs a query, so one check covers the web
+  # server, the API and the database.
+  [[http_service.checks]]
+    method = 'GET'
+    path = '/readyz'
+    # Covers migrations on boot and the cold start after an auto-stop.
+    grace_period = '30s'
+    interval = '15s'
+    timeout = '5s'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

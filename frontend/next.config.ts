@@ -41,6 +41,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
       { source: "/healthz", destination: `${apiUrl}/healthz` },
+      // When the API is only on loopback, a host's health check can reach readiness solely through here.
+      { source: "/readyz", destination: `${apiUrl}/readyz` },
     ];
   },
 };
