@@ -16,6 +16,8 @@ url="https://$app.fly.dev"
 say() { printf '\n==> %s\n' "$*"; }
 confirm() {
   local reply
+  # Without a terminal (as in CI) nobody can answer, so destructive and optional steps are declined.
+  [[ -t 0 ]] || { echo "$1 [y/N] n (no terminal)"; return 1; }
   read -r -p "$1 [y/N] " reply
   [[ $reply == [yY]* ]]
 }
@@ -24,7 +26,13 @@ for tool in jq cargo curl; do
   command -v "$tool" >/dev/null || { echo "$tool is required." >&2; exit 1; }
 done
 fly=$(command -v fly || command -v flyctl) || { echo "flyctl is required: brew install flyctl" >&2; exit 1; }
-"$fly" auth whoami >/dev/null 2>&1 || "$fly" auth login
+# An app-scoped deploy token can fail whoami, which asks about a user; the app lookup below
+# proves the token works instead.
+if [[ -z ${FLY_API_TOKEN:-} ]] && ! "$fly" auth whoami >/dev/null 2>&1; then
+  # A browser login can't finish without a terminal and would leave CI hanging.
+  [[ -t 0 ]] || { echo "Not logged in to Fly; set FLY_API_TOKEN." >&2; exit 1; }
+  "$fly" auth login
+fi
 
 # A failed listing must abort rather than read as "nothing exists": otherwise a network
 # blip would create a second volume or replace the master key.

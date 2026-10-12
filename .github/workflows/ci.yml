@@ -103,3 +103,23 @@ jobs:
         working-directory: frontend
 
       - run: just test-e2e
+
+  # Gated on every check so a merge that breaks main never ships.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend, e2e]
+    runs-on: ubuntu-latest
+    # Two merges in quick succession would otherwise deploy over each other; queue them instead.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # setup.sh provisions whatever is missing, deploys with --ha=false, and checks the result.
+      # Calling fly deploy separately would roll out a second release and skip those checks.
+      - run: deploy/setup.sh
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
