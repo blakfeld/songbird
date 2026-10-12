@@ -9,6 +9,8 @@ Run every command below from the repo root.
 
 ## First launch
 
+`deploy/setup.sh` does all of this and is safe to re-run: it creates only what is missing and asks before destroying anything. The manual steps follow.
+
 ```sh
 # The volume must be in the app's primary region (fly.toml)
 fly volumes create songbird_data --region iad --size 1 -a songbird-op1hog
@@ -16,7 +18,7 @@ fly volumes create songbird_data --region iad --size 1 -a songbird-op1hog
 # Production refuses to start without it. Generate the value locally, never on a shared machine.
 fly secrets set SONGBIRD_MASTER_KEYS="$(cd backend && cargo run -q -p api -- keys generate-master-key)" -a songbird-op1hog
 
-fly deploy
+fly deploy --ha=false  # the default adds a spare Machine, with its own empty database
 ```
 
 If the deploy fails because an existing Machine has no volume, that Machine predates the mount, and Fly can't add one to it. Destroy it and deploy again:
@@ -24,7 +26,7 @@ If the deploy fails because an existing Machine has no volume, that Machine pred
 ```sh
 fly machine list -a songbird-op1hog
 fly machine destroy <id> --force -a songbird-op1hog
-fly deploy
+fly deploy --ha=false  # the default adds a spare Machine, with its own empty database
 ```
 
 To check that the database is on the volume: `fly ssh console -C "ls -l /app/data"`. It should list `songbird.db`.
