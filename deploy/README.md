@@ -31,6 +31,10 @@ fly deploy --ha=false  # the default adds a spare Machine, with its own empty da
 
 To check that the database is on the volume: `fly ssh console -C "ls -l /app/data"`. It should list `songbird.db`.
 
+## Continuous deployment
+
+Every push to `main` that passes CI runs `deploy/setup.sh` in the `deploy` job. It needs a `FLY_API_TOKEN` repository secret (`fly tokens create deploy -a songbird-op1hog`). Without a terminal the script answers no to every prompt, so CI never destroys a Machine or creates a user. A deploy blocked by a Machine without a volume has to be fixed by hand as described above.
+
 ## Secrets
 
 - `SONGBIRD_MASTER_KEYS`: required.
