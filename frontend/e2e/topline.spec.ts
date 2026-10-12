@@ -9,7 +9,7 @@ test("generate a topline from the Chorus lyrics, keep its syllables through edit
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await newSong(page, "Topline Song");
 
   const sections = page.getByRole("group", { name: "Sections" });

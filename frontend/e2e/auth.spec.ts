@@ -22,10 +22,10 @@ async function signIn(page: Page, email: string, password = PASSWORD) {
 
 test("visiting the Studio signed out goes to login and returns after signing in", async ({ page }) => {
   const email = createUser("return");
-  await page.goto("/studio");
-  await expect(page).toHaveURL(/\/login\?next=%2Fstudio$/);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/login\?next=%2F$/);
   await signIn(page, email);
-  await expect(page).toHaveURL(/\/studio$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await expect(page.getByRole("button", { name: `Account: ${email}` })).toBeVisible();
 });
@@ -41,7 +41,7 @@ test("a wrong password shows the message and keeps the email", async ({ page }) 
 
 test("logging out and pressing Back does not show the user's projects", async ({ page }) => {
   const email = createUser("logout");
-  await page.goto("/login?next=/studio");
+  await page.goto("/login?next=/");
   await signIn(page, email);
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 
@@ -61,7 +61,7 @@ test("two users do not see each other's songs", async ({ browser }) => {
 
   const ctxA = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const pageA = await ctxA.newPage();
-  await pageA.goto("/login?next=/studio");
+  await pageA.goto("/login?next=/");
   await signIn(pageA, a);
   await expect(pageA.getByRole("button", { name: "Rename song Untitled song" })).toBeVisible();
   await pageA.getByRole("button", { name: "Rename song Untitled song" }).click();
@@ -79,7 +79,7 @@ test("two users do not see each other's songs", async ({ browser }) => {
 
   const ctxB = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const pageB = await ctxB.newPage();
-  await pageB.goto("/login?next=/studio");
+  await pageB.goto("/login?next=/");
   await signIn(pageB, b);
   await expect(pageB.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await pageB.getByRole("button", { name: "Songs" }).click();
@@ -91,7 +91,7 @@ test("two users do not see each other's songs", async ({ browser }) => {
 
 test("a session ended mid-session sends the user to login, and signing in returns to the Studio", async ({ page }) => {
   const email = createUser("expire");
-  await page.goto("/login?next=/studio");
+  await page.goto("/login?next=/");
   await signIn(page, email);
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 
@@ -103,9 +103,9 @@ test("a session ended mid-session sends the user to login, and signing in return
   await page.getByRole("textbox", { name: "Song name" }).fill("After expiry");
   await page.keyboard.press("Enter");
 
-  await expect(page).toHaveURL(/\/login\?next=%2Fstudio/);
+  await expect(page).toHaveURL(/\/login\?next=%2F/);
   await signIn(page, email, next);
-  await expect(page).toHaveURL(/\/studio$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 });
 
@@ -113,4 +113,9 @@ test("a cookie-less /healthz through the frontend is the backend's 200, not a re
   const res = await request.get("/healthz", { maxRedirects: 0 });
   expect(res.status()).toBe(200);
   expect(await res.json()).toEqual({ status: "ok" });
+});
+
+test("a signed-out visit to a legacy /studio link goes to login with the new home URL as the target", async ({ page }) => {
+  await page.goto("/studio?song=x");
+  await expect(page).toHaveURL(/\/login\?next=%2F%3Fsong%3Dx$/);
 });

@@ -173,7 +173,7 @@ These headers SHALL be set by the application, so that they apply in every way i
 - **THEN** the response has `Cache-Control: no-store`
 
 #### Scenario: Pages cannot be framed
-- **WHEN** a client requests `/studio`
+- **WHEN** a client requests `/`
 - **THEN** the response has `X-Frame-Options: DENY` and a `Content-Security-Policy` containing `frame-ancestors 'none'`
 
 #### Scenario: Headers present without the production proxy

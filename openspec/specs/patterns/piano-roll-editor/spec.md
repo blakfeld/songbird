@@ -176,7 +176,7 @@ The current pattern and prompt SHALL be persisted in the browser, separately per
 - **THEN** no pattern or prompt saved by the editor pages remains in browser storage
 
 ### Requirement: Instrument pages
-The application SHALL provide an editor page at `/instruments/<id>` for every instrument listed by `GET /api/v1/instruments`. That page SHALL be the pattern editor with that instrument, titled with the instrument's name. The Drum Machine SHALL remain at `/drum-machine`, and `/instruments/drums` SHALL redirect to it. A page for an id the service does not list SHALL show a not-found message with a link back to the landing page. The landing page (`/`) SHALL link to the editor page of every listed instrument.
+The application SHALL provide an editor page at `/instruments/<id>` for every instrument listed by `GET /api/v1/instruments`. That page SHALL be the pattern editor with that instrument, titled with the instrument's name. The Drum Machine SHALL remain at `/drum-machine`, and `/instruments/drums` SHALL redirect to it. A page for an id the service does not list SHALL show a not-found message with a link back to the home page. The account menu on the home page (the Studio at `/`) SHALL link to the editor page of every listed instrument.
 
 #### Scenario: Piano page
 - **WHEN** the user opens `/instruments/piano`
@@ -194,9 +194,9 @@ The application SHALL provide an editor page at `/instruments/<id>` for every in
 - **WHEN** the user opens `/instruments/piano` and the instrument list cannot be loaded
 - **THEN** an error with a Retry control is shown instead of the not-found message, and retrying after the service recovers shows the Piano editor
 
-#### Scenario: Landing page lists instruments
-- **WHEN** the service lists `drums` and `piano` and the user opens `/`
-- **THEN** the page links to `/drum-machine` and `/instruments/piano`
+#### Scenario: Account menu lists instruments
+- **WHEN** the service lists `drums` and `piano` and the user opens the account menu on `/`
+- **THEN** the menu links to `/drum-machine` and `/instruments/piano`
 
 #### Scenario: Work is kept per instrument
 - **WHEN** the user edits a piano pattern, opens the Drum Machine, and returns to `/instruments/piano`

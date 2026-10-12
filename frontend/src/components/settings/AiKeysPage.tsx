@@ -20,7 +20,7 @@ import { spell } from "./aiKeyMessages";
 const PROVIDERS: AiProvider[] = ["anthropic", "openai"];
 
 const BACK_LABEL: Record<string, string> = {
-  "/studio": "Studio",
+  "/": "Studio",
   "/drum-machine": "Drum Machine",
 };
 
@@ -33,7 +33,9 @@ function readBackLink(): { href: string; label: string } | null {
   const next = new URLSearchParams(window.location.search).get("next");
   if (!next) return null;
   const href = safeReturnTarget(next, window.location.origin);
-  if (href === "/") return null;
+  // The Studio drops ?song= from its URL, so a bare "/" is a real return target; "/" is also what
+  // safeReturnTarget answers for a rejected one, which must not produce a link.
+  if (href === "/" && next !== "/") return null;
   const path = href.split(/[?#]/)[0];
   const place = BACK_LABEL[path] ?? (path.startsWith("/instruments/") ? "pattern editor" : null);
   return { href, label: place ? `← Back to ${place}` : "← Back" };

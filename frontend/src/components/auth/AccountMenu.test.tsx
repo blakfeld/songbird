@@ -1,6 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InstrumentInfo } from "@/generated/InstrumentInfo";
+import * as api from "@/lib/api";
+import { drums } from "@/test/fixtures";
 import { getCurrentUserId, setCurrentUserId } from "@/lib/auth/currentUser";
 import { logout, me } from "@/lib/auth/client";
 import { signOutLocally } from "@/lib/auth/signOut";
@@ -10,6 +13,10 @@ import { createFakeProjectsApi } from "@/test/fakeProjectsApi";
 import { AccountMenu } from "./AccountMenu";
 import { AuthProvider } from "./AuthProvider";
 
+vi.mock("@/lib/api", async (orig) => ({
+  ...(await orig<typeof import("@/lib/api")>()),
+  getInstruments: vi.fn(),
+}));
 vi.mock("@/lib/auth/client", () => ({ me: vi.fn(), logout: vi.fn() }));
 vi.mock("@/lib/auth/signOut", () => ({ signOutLocally: vi.fn(), isSigningOut: () => false }));
 
@@ -32,6 +39,7 @@ const openMenu = async () => {
 const clickLogOut = () => userEvent.click(screen.getByRole("menuitem", { name: "Log out" }));
 
 beforeEach(() => {
+  vi.mocked(api.getInstruments).mockReset().mockResolvedValue([drums]);
   vi.mocked(me).mockReset().mockResolvedValue(user);
   order = [];
   vi.mocked(logout).mockReset().mockImplementation(async () => void order.push("logout"));
@@ -79,6 +87,22 @@ describe("AccountMenu", () => {
     await openMenu();
     expect(screen.getByText("Signed in as")).toBeInTheDocument();
     expect(screen.getAllByText("ana@example.com").length).toBeGreaterThan(0);
+  });
+
+  it("links every instrument, with drums at the drum machine URL", async () => {
+    const piano = { ...drums, id: "piano", name: "Piano" } as InstrumentInfo;
+    vi.mocked(api.getInstruments).mockResolvedValue([drums, piano]);
+    renderMenu();
+    await openMenu();
+    expect(await screen.findByRole("menuitem", { name: "Piano" })).toHaveAttribute("href", "/instruments/piano");
+    expect(screen.getByRole("menuitem", { name: "Drum Machine" })).toHaveAttribute("href", "/drum-machine");
+  });
+
+  it("still offers the drum machine when the instrument list fails to load", async () => {
+    vi.mocked(api.getInstruments).mockRejectedValue(new Error("down"));
+    renderMenu();
+    await openMenu();
+    expect(await screen.findByRole("menuitem", { name: "Drum Machine" })).toHaveAttribute("href", "/drum-machine");
   });
 
   it("logs out by flushing the pending save, then calling logout, then clearing local state", async () => {

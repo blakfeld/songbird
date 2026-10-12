@@ -36,7 +36,7 @@ test("record two measures onto an audio track from stopped, undo and redo, then 
   page.on("pageerror", (e) => problems.push(e.message));
   await trackSourceStarts(page);
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   // A fresh song is one measure long, and a take must still be able to run past that.
   await addTrack(page, "Audio");

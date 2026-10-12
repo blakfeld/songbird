@@ -53,6 +53,23 @@ beforeEach(() => {
 });
 afterEach(() => vi.resetAllMocks());
 
+describe("back link", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("returns to the Studio when the page was reached from the home page", async () => {
+    window.history.replaceState(null, "", "/settings/ai-keys?next=%2F");
+    renderPage(empty);
+    expect(await screen.findByRole("link", { name: "← Back to Studio" })).toHaveAttribute("href", "/");
+  });
+
+  it("shows no link when the return target was rejected", async () => {
+    window.history.replaceState(null, "", "/settings/ai-keys?next=https%3A%2F%2Fevil.example%2F");
+    renderPage(empty);
+    await screen.findByRole("heading", { name: "Anthropic" });
+    expect(screen.queryByRole("link", { name: /^← Back/ })).not.toBeInTheDocument();
+  });
+});
+
 function expectNoSecretInStorage() {
   for (const store of [localStorage, sessionStorage]) {
     for (let i = 0; i < store.length; i++) {

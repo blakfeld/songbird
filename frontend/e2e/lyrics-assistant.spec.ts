@@ -22,7 +22,7 @@ const cardText = async (page: Page, button: string | RegExp) => {
 
 test("sections, headings, lyrics, then replace a selection and a section, and find it all after a reload", async ({ page }) => {
   const problems = watchProblems(page);
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
 
   for (const kind of ["Verse", "Chorus"]) {
@@ -81,7 +81,7 @@ test("sections, headings, lyrics, then replace a selection and a section, and fi
 
 test("an unsectioned song scaffolds [Song] and a replace_section suggestion fills it", async ({ page }) => {
   const problems = watchProblems(page);
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await page.getByRole("tab", { name: "Lyrics" }).click();
 

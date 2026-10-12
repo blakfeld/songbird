@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-// /studio needs the signed-in storage state that the e2e global setup provides; /login is public.
-for (const path of ["/login", "/studio"]) {
+// / needs the signed-in storage state that the e2e global setup provides; /login is public.
+for (const path of ["/login", "/"]) {
   test(`${path} is served with the security headers and no CSP violations`, async ({ page }) => {
     const violations: string[] = [];
     page.on("console", (m) => /content security policy/i.test(m.text()) && violations.push(m.text()));

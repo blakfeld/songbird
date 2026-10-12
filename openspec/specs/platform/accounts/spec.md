@@ -225,8 +225,8 @@ Every endpoint under `/api/v1`, except `POST /api/v1/auth/login`, `POST /api/v1/
 The frontend SHALL provide a `/login` page with an email field, a password field, and a Sign in button. On success, it SHALL navigate to the page the user originally asked for, or to `/` when there is none. The return target SHALL only be a path on this site, so that the login page cannot be used to send users to another site: it SHALL be resolved as a URL against the page's own origin, SHALL be ignored (going to `/`) unless the result has the same origin, and SHALL be followed using only its path, query, and fragment. On `invalid_credentials`, it SHALL show "Email or password is incorrect" and keep the email. On `too_many_requests` or `server_busy`, it SHALL say to try again later. The Sign in button SHALL be disabled while a login request is in flight. A signed-in user who opens `/login` SHALL be sent to `/`.
 
 #### Scenario: Sign in and return
-- **WHEN** a signed-out user opens `/studio`, is sent to `/login`, and signs in successfully
-- **THEN** they are taken to `/studio`
+- **WHEN** a signed-out user opens `/`, is sent to `/login`, and signs in successfully
+- **THEN** they are taken to `/`
 
 #### Scenario: Wrong password on the page
 - **WHEN** the user submits a wrong password
@@ -253,15 +253,23 @@ The frontend SHALL provide a `/login` page with an email field, a password field
 - **THEN** no script runs and they are taken to a page on this site
 
 #### Scenario: Query and fragment kept
-- **WHEN** the user signs in from `/login?next=%2Fstudio%3Fsong%3D1%23mixer`
-- **THEN** they are taken to `/studio?song=1#mixer`
+- **WHEN** the user signs in from `/login?next=%2F%3Fsong%3D1%23mixer`
+- **THEN** they are taken to `/?song=1#mixer`
 
 ### Requirement: Signed-out users are sent to login
 Every page except `/login` and the share link listen pages under `/listen/` SHALL require a signed-in user. A visitor without a session cookie SHALL be redirected to `/login` before the page renders, with the original path kept as the return target. A listen page SHALL render the same way with or without a session cookie. The health endpoints `/healthz` and `/readyz` SHALL NOT be redirected, so that monitors and deploy checks without a cookie reach the backend. While the app is open, any API response of `401 unauthenticated` SHALL sign the user out of the app: unsaved local per-user state SHALL be discarded, per-user browser storage SHALL be cleared (see "Per-user browser storage"), and the browser SHALL go to `/login` with the current path as the return target. A listen page SHALL NOT sign anyone out, clear per-user browser storage, or navigate to `/login`, whatever its API responses are.
 
 #### Scenario: Visit without a session
-- **WHEN** a visitor with no session cookie opens `/studio`
-- **THEN** they are redirected to `/login?next=/studio`
+- **WHEN** a visitor with no session cookie opens `/drum-machine`
+- **THEN** they are redirected to `/login?next=/drum-machine`
+
+#### Scenario: Legacy Studio link redirects home
+- **WHEN** a signed-in user opens `/studio?song=abc`
+- **THEN** they are permanently redirected to `/?song=abc`
+
+#### Scenario: Legacy Studio link without a session
+- **WHEN** a visitor with no session cookie opens `/studio?song=x`
+- **THEN** they are redirected to `/login?next=%2F%3Fsong%3Dx`
 
 #### Scenario: Listen page without a session
 - **WHEN** a visitor with no session cookie opens `/listen/<token>`
@@ -289,6 +297,10 @@ Every page except `/login` and the share link listen pages under `/listen/` SHAL
 #### Scenario: Log out
 - **WHEN** the user activates Log out
 - **THEN** the session ends, the browser shows `/login`, and pressing Back does not show the user's projects
+
+#### Scenario: Instruments reachable from the account menu
+- **WHEN** the service lists `drums` and `piano` and the user opens the account menu
+- **THEN** it offers "Drum Machine" linking to `/drum-machine` and "Piano" linking to `/instruments/piano`, grouped under an "Instruments" heading, and the item for the current page is marked as current
 
 #### Scenario: No account shown on a listen page
 - **WHEN** a signed-in user opens a share link

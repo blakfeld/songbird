@@ -33,21 +33,21 @@ describe("proxy matcher", () => {
 
 describe("proxy", () => {
   it("redirects a cookie-less page request to login with the path kept", () => {
-    const res = proxy(request("/studio?song=abc"));
+    const res = proxy(request("/drum-machine?bpm=90"));
     expect(res.status).toBe(307);
     const target = new URL(res.headers.get("location")!);
     expect(target.pathname).toBe("/login");
-    expect(target.searchParams.get("next")).toBe("/studio?song=abc");
+    expect(target.searchParams.get("next")).toBe("/drum-machine?bpm=90");
   });
 
   it.each(["__Host-songbird_session=t", "songbird_session=t"])("lets a request with %s through", (cookie) => {
-    const res = proxy(request("/studio", cookie));
+    const res = proxy(request("/drum-machine", cookie));
     expect(res.headers.get("location")).toBeNull();
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("ignores unrelated cookies", () => {
-    expect(proxy(request("/studio", "other=1")).status).toBe(307);
+    expect(proxy(request("/drum-machine", "other=1")).status).toBe(307);
   });
 
   it("shows a listen page to a visitor with no cookie, and to one with a session, alike", () => {

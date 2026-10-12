@@ -6,7 +6,7 @@ test("write lyrics in the notepad, reload to find them, and carry them through a
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
   page.on("pageerror", (e) => problems.push(e.message));
 
-  await page.goto("/studio");
+  await page.goto("/");
   await expect(page.getByRole("region", { name: "Arrangement" })).toBeVisible();
   await page.getByRole("button", { name: "Rename song Untitled song" }).click();
   await page.getByRole("textbox", { name: "Song name" }).fill("Words Song");
