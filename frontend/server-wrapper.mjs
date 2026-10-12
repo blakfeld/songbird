@@ -2,7 +2,7 @@ import http from "node:http";
 import { pathToFileURL } from "node:url";
 
 // Sits between the 150 s default stream deadline and the 200 s kill_timeout, leaving
-// the last 10 s for Litestream's final sync on the API side.
+// headroom for the API's own shutdown (and any backup sync) before Fly sends SIGKILL.
 export const DRAIN_CAP_MS = 190_000;
 
 // A second signal must not shorten the drain: Fly sends one signal then SIGKILL, and a
