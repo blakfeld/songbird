@@ -68,7 +68,7 @@ describe("Share dialog", () => {
     await screen.findByText("No links yet.");
     expect(screen.getByRole("switch", { name: "Allow comments" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: "Allow downloads" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("switch", { name: "Allow remixing" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Allow remixing" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText(/save their own copy of the song, without its chat or section notes/)).toBeInTheDocument();
     expect(screen.getByText(/Listeners can still record what they hear/)).toBeInTheDocument();
 
@@ -78,7 +78,7 @@ describe("Share dialog", () => {
       expires_at: null,
       allow_comments: true,
       allow_downloads: false,
-      allow_remix: false,
+      allow_remix: true,
     });
     const url = `${window.location.origin}/listen/tok`;
     expect(await screen.findByDisplayValue(url)).toBeInTheDocument();
@@ -101,17 +101,17 @@ describe("Share dialog", () => {
       expires_at: NOW + 7 * 24 * 60 * 60 * 1000,
       allow_comments: true,
       allow_downloads: false,
-      allow_remix: false,
+      allow_remix: true,
       label: "For Sam",
     });
   });
 
-  it("creates a link with remixing on when the toggle is switched", async () => {
+  it("creates a link with remixing off when the toggle is switched off", async () => {
     show();
     await screen.findByText("No links yet.");
     await userEvent.click(screen.getByRole("switch", { name: "Allow remixing" }));
     await userEvent.click(screen.getByRole("button", { name: "Create link" }));
-    expect(api.create).toHaveBeenCalledWith("p1", expect.objectContaining({ allow_remix: true }));
+    expect(api.create).toHaveBeenCalledWith("p1", expect.objectContaining({ allow_remix: false }));
   });
 
   it("shows the remix status of each link and toggles it on an existing link", async () => {

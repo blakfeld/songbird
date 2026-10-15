@@ -40,7 +40,9 @@ async function savedProject(page: Page, name: string, tracks: number) {
 async function createLink(page: Page, options: { remix?: boolean } = {}) {
   await page.getByRole("button", { name: "Share", exact: true }).click();
   const share = page.getByRole("dialog");
-  if (options.remix) await share.getByRole("form", { name: "Create a link" }).getByRole("switch", { name: "Allow remixing" }).click();
+  // The toggle starts on, so it is set to the wanted state rather than clicked blindly.
+  const remix = share.getByRole("form", { name: "Create a link" }).getByRole("switch", { name: "Allow remixing" });
+  if ((await remix.getAttribute("aria-checked")) !== String(options.remix ?? true)) await remix.click();
   await share.getByRole("button", { name: "Create link" }).click();
   const url = await share.getByRole("region", { name: "New link" }).getByRole("textbox", { name: "Link" }).inputValue();
   expect(new URL(url).pathname).toMatch(/^\/listen\/.+/);

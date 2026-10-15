@@ -240,13 +240,13 @@ The Studio SHALL offer a "Share" action for a saved project. A project that has 
 | Expiry | never, 1 day, 7 days, or 30 days | never |
 | Comments | on or off | on |
 | Downloads | on or off | off |
-| Allow remixing | on or off | off |
+| Allow remixing | on or off | on |
 
 Next to "Allow remixing", the dialog SHALL explain that signed-in listeners will be able to save their own copy of the song, without its chat or section notes.
 
 #### Scenario: Create and copy
 - **WHEN** the owner opens "Share", keeps the defaults, and chooses "Create link"
-- **THEN** the dialog shows the new URL with a copy button and the note that it won't be shown again, and the link appears in the list as active with remixing off
+- **THEN** the dialog shows the new URL with a copy button and the note that it won't be shown again, and the link appears in the list as active with remixing on
 
 #### Scenario: Allow remixing on an existing link
 - **WHEN** the owner turns on "Allow remixing" for an active link in the dialog

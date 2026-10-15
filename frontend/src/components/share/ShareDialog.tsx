@@ -215,7 +215,7 @@ function CreateForm({
   const [expiry, setExpiry] = useState<ExpiryChoice>("never");
   const [comments, setComments] = useState(true);
   const [downloads, setDownloads] = useState(false);
-  const [remix, setRemix] = useState(false);
+  const [remix, setRemix] = useState(true);
   const [label, setLabel] = useState("");
 
   return (
