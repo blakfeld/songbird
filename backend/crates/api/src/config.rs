@@ -42,12 +42,17 @@ pub const ENV: &str = "SONGBIRD_ENV";
 pub const MASTER_KEYS: &str = "SONGBIRD_MASTER_KEYS";
 pub const OPENAI_MODEL: &str = "SONGBIRD_OPENAI_MODEL";
 pub const SHARE_READS_PER_MINUTE: &str = "SONGBIRD_SHARE_READS_PER_MINUTE";
-pub const COMMENTS_PER_ADDRESS_10M: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_10M";
-pub const COMMENTS_PER_ADDRESS_DAY: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_DAY";
+pub const COMMENTS_PER_USER_10M: &str = "SONGBIRD_COMMENTS_PER_USER_10M";
+pub const COMMENTS_PER_USER_DAY: &str = "SONGBIRD_COMMENTS_PER_USER_DAY";
+/// Read for one release after comment limits moved from addresses to users, so deployed
+/// configuration keeps its effect; the new name wins when both are set.
+const LEGACY_COMMENTS_PER_ADDRESS_10M: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_10M";
+const LEGACY_COMMENTS_PER_ADDRESS_DAY: &str = "SONGBIRD_COMMENTS_PER_ADDRESS_DAY";
 pub const COMMENTS_PER_SHARE_DAY: &str = "SONGBIRD_COMMENTS_PER_SHARE_DAY";
+pub const REMIXES_PER_MINUTE: &str = "SONGBIRD_REMIXES_PER_MINUTE";
 
 /// A test keeps `.env.example` in sync with this list so operators can discover every setting.
-pub const ALL_VARIABLES: [&str; 27] = [
+pub const ALL_VARIABLES: [&str; 28] = [
     BIND_ADDR,
     AI_PROVIDER,
     ANTHROPIC_API_KEY,
@@ -72,9 +77,10 @@ pub const ALL_VARIABLES: [&str; 27] = [
     MASTER_KEYS,
     OPENAI_MODEL,
     SHARE_READS_PER_MINUTE,
-    COMMENTS_PER_ADDRESS_10M,
-    COMMENTS_PER_ADDRESS_DAY,
+    COMMENTS_PER_USER_10M,
+    COMMENTS_PER_USER_DAY,
     COMMENTS_PER_SHARE_DAY,
+    REMIXES_PER_MINUTE,
 ];
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
@@ -100,12 +106,14 @@ const DEFAULT_AI_REQUESTS_PER_DAY: u32 = 200;
 const MAX_AI_REQUESTS_PER_DAY: u32 = 100_000;
 const DEFAULT_SHARE_READS_PER_MINUTE: u32 = 60;
 const MAX_SHARE_READS_PER_MINUTE: u32 = 10_000;
-const DEFAULT_COMMENTS_PER_ADDRESS_10M: u32 = 5;
-const MAX_COMMENTS_PER_ADDRESS_10M: u32 = 1_000;
-const DEFAULT_COMMENTS_PER_ADDRESS_DAY: u32 = 30;
-const MAX_COMMENTS_PER_ADDRESS_DAY: u32 = 10_000;
+const DEFAULT_COMMENTS_PER_USER_10M: u32 = 5;
+const MAX_COMMENTS_PER_USER_10M: u32 = 1_000;
+const DEFAULT_COMMENTS_PER_USER_DAY: u32 = 30;
+const MAX_COMMENTS_PER_USER_DAY: u32 = 10_000;
 const DEFAULT_COMMENTS_PER_SHARE_DAY: u32 = 200;
 const MAX_COMMENTS_PER_SHARE_DAY: u32 = 100_000;
+const DEFAULT_REMIXES_PER_MINUTE: u32 = 10;
+const MAX_REMIXES_PER_MINUTE: u32 = 600;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
@@ -305,9 +313,10 @@ pub struct Config {
     pub ai_requests_per_minute: u32,
     pub ai_requests_per_day: u32,
     pub share_reads_per_minute: u32,
-    pub comments_per_address_10m: u32,
-    pub comments_per_address_day: u32,
+    pub comments_per_user_10m: u32,
+    pub comments_per_user_day: u32,
     pub comments_per_share_day: u32,
+    pub remixes_per_minute: u32,
 }
 
 fn has_https_origin(origins: &[String]) -> bool {
@@ -358,6 +367,18 @@ fn parse_ranged(
             var,
             problem: format!("\"{v}\" is not an integer between 1 and {max}"),
         })
+}
+
+fn parse_ranged_with_legacy(
+    (var, value): (&'static str, Option<String>),
+    (legacy_var, legacy_value): (&'static str, Option<String>),
+    default: u32,
+    max: u32,
+) -> Result<u32, ConfigError> {
+    match value {
+        Some(_) => parse_ranged(var, value, default, max),
+        None => parse_ranged(legacy_var, legacy_value, default, max),
+    }
 }
 
 impl Config {
@@ -535,23 +556,35 @@ impl Config {
             DEFAULT_SHARE_READS_PER_MINUTE,
             MAX_SHARE_READS_PER_MINUTE,
         )?;
-        let comments_per_address_10m = parse_ranged(
-            COMMENTS_PER_ADDRESS_10M,
-            get(COMMENTS_PER_ADDRESS_10M),
-            DEFAULT_COMMENTS_PER_ADDRESS_10M,
-            MAX_COMMENTS_PER_ADDRESS_10M,
+        let comments_per_user_10m = parse_ranged_with_legacy(
+            (COMMENTS_PER_USER_10M, get(COMMENTS_PER_USER_10M)),
+            (
+                LEGACY_COMMENTS_PER_ADDRESS_10M,
+                get(LEGACY_COMMENTS_PER_ADDRESS_10M),
+            ),
+            DEFAULT_COMMENTS_PER_USER_10M,
+            MAX_COMMENTS_PER_USER_10M,
         )?;
-        let comments_per_address_day = parse_ranged(
-            COMMENTS_PER_ADDRESS_DAY,
-            get(COMMENTS_PER_ADDRESS_DAY),
-            DEFAULT_COMMENTS_PER_ADDRESS_DAY,
-            MAX_COMMENTS_PER_ADDRESS_DAY,
+        let comments_per_user_day = parse_ranged_with_legacy(
+            (COMMENTS_PER_USER_DAY, get(COMMENTS_PER_USER_DAY)),
+            (
+                LEGACY_COMMENTS_PER_ADDRESS_DAY,
+                get(LEGACY_COMMENTS_PER_ADDRESS_DAY),
+            ),
+            DEFAULT_COMMENTS_PER_USER_DAY,
+            MAX_COMMENTS_PER_USER_DAY,
         )?;
         let comments_per_share_day = parse_ranged(
             COMMENTS_PER_SHARE_DAY,
             get(COMMENTS_PER_SHARE_DAY),
             DEFAULT_COMMENTS_PER_SHARE_DAY,
             MAX_COMMENTS_PER_SHARE_DAY,
+        )?;
+        let remixes_per_minute = parse_ranged(
+            REMIXES_PER_MINUTE,
+            get(REMIXES_PER_MINUTE),
+            DEFAULT_REMIXES_PER_MINUTE,
+            MAX_REMIXES_PER_MINUTE,
         )?;
 
         Ok(Self {
@@ -581,9 +614,10 @@ impl Config {
             ai_requests_per_minute,
             ai_requests_per_day,
             share_reads_per_minute,
-            comments_per_address_10m,
-            comments_per_address_day,
+            comments_per_user_10m,
+            comments_per_user_day,
             comments_per_share_day,
+            remixes_per_minute,
         })
     }
 
@@ -882,9 +916,10 @@ mod tests {
             (AI_REQUESTS_PER_MINUTE, "7"),
             (AI_REQUESTS_PER_DAY, "70"),
             (SHARE_READS_PER_MINUTE, "11"),
-            (COMMENTS_PER_ADDRESS_10M, "2"),
-            (COMMENTS_PER_ADDRESS_DAY, "9"),
+            (COMMENTS_PER_USER_10M, "2"),
+            (COMMENTS_PER_USER_DAY, "9"),
             (COMMENTS_PER_SHARE_DAY, "33"),
+            (REMIXES_PER_MINUTE, "12"),
         ];
         assert_eq!(all.len(), ALL_VARIABLES.len());
         let c = Config::from_lookup(lookup(&all)).unwrap();
@@ -921,9 +956,32 @@ mod tests {
         assert_eq!(c.ai_requests_per_minute, 7);
         assert_eq!(c.ai_requests_per_day, 70);
         assert_eq!(c.share_reads_per_minute, 11);
-        assert_eq!(c.comments_per_address_10m, 2);
-        assert_eq!(c.comments_per_address_day, 9);
+        assert_eq!(c.comments_per_user_10m, 2);
+        assert_eq!(c.comments_per_user_day, 9);
         assert_eq!(c.comments_per_share_day, 33);
+        assert_eq!(c.remixes_per_minute, 12);
+    }
+
+    #[test]
+    fn old_comment_limit_names_still_apply_unless_the_new_name_is_set() {
+        let c = mock(&[
+            (LEGACY_COMMENTS_PER_ADDRESS_10M, "3"),
+            (LEGACY_COMMENTS_PER_ADDRESS_DAY, "8"),
+        ])
+        .unwrap();
+        assert_eq!((c.comments_per_user_10m, c.comments_per_user_day), (3, 8));
+
+        let c = mock(&[
+            (LEGACY_COMMENTS_PER_ADDRESS_10M, "3"),
+            (COMMENTS_PER_USER_10M, "4"),
+        ])
+        .unwrap();
+        assert_eq!(c.comments_per_user_10m, 4);
+
+        let err = mock(&[(LEGACY_COMMENTS_PER_ADDRESS_DAY, "0")])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(LEGACY_COMMENTS_PER_ADDRESS_DAY), "{err}");
     }
 
     #[test]
@@ -932,17 +990,19 @@ mod tests {
         assert_eq!(
             (
                 c.share_reads_per_minute,
-                c.comments_per_address_10m,
-                c.comments_per_address_day,
-                c.comments_per_share_day
+                c.comments_per_user_10m,
+                c.comments_per_user_day,
+                c.comments_per_share_day,
+                c.remixes_per_minute
             ),
-            (60, 5, 30, 200)
+            (60, 5, 30, 200, 10)
         );
         for var in [
             SHARE_READS_PER_MINUTE,
-            COMMENTS_PER_ADDRESS_10M,
-            COMMENTS_PER_ADDRESS_DAY,
+            COMMENTS_PER_USER_10M,
+            COMMENTS_PER_USER_DAY,
             COMMENTS_PER_SHARE_DAY,
+            REMIXES_PER_MINUTE,
         ] {
             for bad in ["0", "-1", "x", "100000000"] {
                 let err = mock(&[(var, bad)]).unwrap_err().to_string();

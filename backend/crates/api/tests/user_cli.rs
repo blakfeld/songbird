@@ -45,6 +45,7 @@ async fn create_stores_a_verifiable_argon2id_hash_never_the_password() {
         &svc,
         UserCommand::Create {
             email: email("Ana@Example.com"),
+            username: None,
         },
         with_password(PASSWORD),
     )
@@ -76,6 +77,7 @@ async fn short_password_is_refused_and_creates_nothing() {
         &passwords(),
         UserCommand::Create {
             email: email("ana@example.com"),
+            username: None,
         },
         with_password("too short"),
     )
@@ -96,6 +98,7 @@ async fn missing_password_is_refused() {
         &passwords(),
         UserCommand::Create {
             email: email("ana@example.com"),
+            username: None,
         },
         Inputs::default(),
     )
@@ -114,6 +117,7 @@ async fn duplicate_email_is_refused_with_a_clear_message() {
             &svc,
             UserCommand::Create {
                 email: email(address),
+                username: None,
             },
             with_password(PASSWORD),
         )
@@ -135,6 +139,7 @@ async fn set_password_ends_sessions_and_changes_the_hash() {
         &svc,
         UserCommand::Create {
             email: email("ana@example.com"),
+            username: None,
         },
         with_password(PASSWORD),
     )
@@ -176,6 +181,7 @@ async fn set_password_with_a_short_password_keeps_the_old_one_and_the_sessions()
         &svc,
         UserCommand::Create {
             email: email("ana@example.com"),
+            username: None,
         },
         with_password(PASSWORD),
     )
@@ -326,9 +332,15 @@ async fn list_shows_email_status_and_creation_time_but_no_hash() {
         .unwrap();
     let lines: Vec<Vec<&str>> = out.lines().map(|l| l.split('\t').collect()).collect();
     assert_eq!(lines.len(), 2);
-    assert_eq!(&lines[0][..2], ["ana@example.com", "active"]);
-    assert_eq!(&lines[1][..2], ["bo@example.com", "disabled"]);
-    assert!(lines[0][2].ends_with('Z') && lines[0][2].contains('T'));
+    assert_eq!(
+        [lines[0][0], lines[0][1], lines[0][2]],
+        ["ana@example.com", "-", "active"]
+    );
+    assert_eq!(
+        [lines[1][0], lines[1][1], lines[1][2]],
+        ["bo@example.com", "-", "disabled"]
+    );
+    assert!(lines[0][3].ends_with('Z') && lines[0][3].contains('T'));
     assert!(!out.contains('!'), "the stored hash must not be printed");
 }
 
@@ -346,4 +358,116 @@ async fn commands_on_an_unknown_account_report_it() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("No account"), "{err}");
+}
+
+fn create_with(address: &str, username: &str) -> UserCommand {
+    UserCommand::Create {
+        email: email(address),
+        username: Some(username.to_string()),
+    }
+}
+
+#[tokio::test]
+async fn create_with_a_username_stores_it_lowercased_and_list_shows_it() {
+    let db = test_db().await;
+    let svc = passwords();
+    run_user_command(
+        &db,
+        &svc,
+        create_with("ana@example.com", "Ana-B"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap();
+
+    let user = users::find_by_email(&db, "ana@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(user.username.as_deref(), Some("ana-b"));
+    let out = run_user_command(&db, &svc, UserCommand::List, Inputs::default())
+        .await
+        .unwrap();
+    assert_eq!(out.split('\t').nth(1), Some("ana-b"));
+}
+
+#[tokio::test]
+async fn a_taken_or_invalid_username_is_refused_and_no_account_is_created() {
+    let db = test_db().await;
+    let svc = passwords();
+    run_user_command(
+        &db,
+        &svc,
+        create_with("ana@example.com", "ana"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap();
+
+    let taken = run_user_command(
+        &db,
+        &svc,
+        create_with("bo@example.com", "Ana"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap_err();
+    assert!(taken.to_string().contains("already taken"), "{taken}");
+
+    let invalid = run_user_command(
+        &db,
+        &svc,
+        create_with("cy@example.com", "1cy!"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap_err();
+    assert!(invalid.to_string().contains("3 to 30"), "{invalid}");
+
+    assert_eq!(users::list(&db).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_existing_email_is_still_reported_as_an_email_conflict_when_a_username_is_given() {
+    let db = test_db().await;
+    let svc = passwords();
+    run_user_command(
+        &db,
+        &svc,
+        create_with("ana@example.com", "ana"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap();
+
+    let err = run_user_command(
+        &db,
+        &svc,
+        create_with("ana@example.com", "other"),
+        with_password(PASSWORD),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(err.to_string().contains("email"), "{err}");
+}
+
+#[tokio::test]
+async fn delete_says_it_removes_listener_comments_too() {
+    let db = test_db().await;
+    login_as(&db, "ana@example.com").await;
+
+    let out = run_user_command(
+        &db,
+        &passwords(),
+        UserCommand::Delete {
+            email: email("ana@example.com"),
+            yes: true,
+        },
+        Inputs::default(),
+    )
+    .await
+    .unwrap();
+
+    assert!(out.contains("comments"), "{out}");
 }

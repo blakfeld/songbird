@@ -20,7 +20,7 @@ vi.mock("@/lib/api", async (orig) => ({
 vi.mock("@/lib/auth/client", () => ({ me: vi.fn(), logout: vi.fn() }));
 vi.mock("@/lib/auth/signOut", () => ({ signOutLocally: vi.fn(), isSigningOut: () => false }));
 
-const user = { id: "u1", email: "ana@example.com" };
+const user = { id: "u1", email: "ana@example.com", username: null };
 let library: SongLibrary;
 let fake: ReturnType<typeof createFakeProjectsApi>;
 let order: string[];
@@ -87,6 +87,12 @@ describe("AccountMenu", () => {
     await openMenu();
     expect(screen.getByText("Signed in as")).toBeInTheDocument();
     expect(screen.getAllByText("ana@example.com").length).toBeGreaterThan(0);
+  });
+
+  it("offers Profile, linking to the profile page", async () => {
+    renderMenu();
+    await openMenu();
+    expect(screen.getByRole("menuitem", { name: "Profile" })).toHaveAttribute("href", "/settings/profile");
   });
 
   it("links every instrument, with drums at the drum machine URL", async () => {

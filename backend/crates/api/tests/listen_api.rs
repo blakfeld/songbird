@@ -2,7 +2,7 @@ mod common;
 
 use api::clock::now_ms;
 use api::config::{
-    COMMENTS_PER_ADDRESS_10M, COMMENTS_PER_ADDRESS_DAY, COMMENTS_PER_SHARE_DAY, TRUST_PROXY,
+    COMMENTS_PER_SHARE_DAY, COMMENTS_PER_USER_10M, COMMENTS_PER_USER_DAY, TRUST_PROXY,
 };
 use axum::http::{header, StatusCode};
 use common::app::{request, song, TestApp};
@@ -52,7 +52,7 @@ async fn a_listener_without_an_account_gets_the_song_and_only_its_instruments() 
     assert_eq!(
         heard.body["share"],
         json!({"mode": "live", "allow_comments": true, "allow_downloads": true,
-               "expires_at": null})
+               "allow_remix": false, "expires_at": null})
     );
     assert_eq!(heard.body["song"]["name"], "Late Train");
     assert_eq!(heard.body["song"]["lyrics"], "[Verse]\nla la");
@@ -382,14 +382,14 @@ async fn a_comment_is_pinned_to_the_section_at_its_step_and_visible_to_the_owner
     let posted = post_comment(
         &s.app,
         &token,
-        json!({"name": "Sam", "body": "Love this lift", "at_step": 40}),
+        json!({"body": "Love this lift", "at_step": 40}),
     )
     .await;
 
     assert_eq!(posted.status, StatusCode::CREATED);
     let comment = &posted.body["comment"];
     assert!(!comment["id"].as_str().unwrap().is_empty());
-    assert_eq!(comment["name"], "Sam");
+    assert_eq!(comment["name"], "sam");
     assert_eq!(comment["body"], "Love this lift");
     assert_eq!(comment["at_step"], 40);
     assert_eq!(comment["section_name"], "Chorus");
@@ -488,92 +488,127 @@ async fn comments_through_a_link_that_does_not_allow_them_are_404_and_store_noth
 }
 
 #[tokio::test]
-async fn a_filled_honeypot_gets_a_201_and_stores_nothing() {
+async fn the_retired_name_and_website_fields_are_refused_with_422() {
+    let s = setup_with(&[(COMMENTS_PER_USER_10M, "100")]).await;
+    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
+
+    for (field, value) in [("name", "Someone Else"), ("website", "http://spam.example")] {
+        let mut body = comment_body(40);
+        body[field] = json!(value);
+        let response = post_comment(&s.app, &token, body).await;
+        assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY, "{field}");
+        assert_eq!(response.body["error"]["code"], "invalid_comment", "{field}");
+    }
+    assert_eq!(count(&s.app, "share_comments").await, 0);
+}
+
+#[tokio::test]
+async fn posting_needs_a_session_and_a_username_and_stores_nothing_without_them() {
     let s = setup().await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-    let mut body = comment_body(40);
-    body["website"] = json!("http://spam.example");
 
-    let first = post_comment(&s.app, &token, body.clone()).await;
-    let second = post_comment(&s.app, &token, body).await;
+    let anonymous = s
+        .app
+        .send(listen_request(
+            "POST",
+            &format!("/api/v1/listen/{token}/comments"),
+            &[],
+            Some(comment_body(3)),
+        ))
+        .await;
+    assert_eq!(anonymous.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous.body["error"]["code"], "unauthenticated");
 
-    assert_eq!(first.status, StatusCode::CREATED);
-    assert_eq!(second.status, StatusCode::CREATED);
-    let real = post_comment(&s.app, &token, comment_body(40)).await;
-    let keys = |response: &common::app::Response| {
-        let mut keys: Vec<String> = response.body["comment"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        keys.sort();
-        keys
-    };
-    assert_eq!(keys(&first), keys(&real));
-    assert_ne!(first.body["comment"]["id"], second.body["comment"]["id"]);
-    assert_eq!(count(&s.app, "share_comments").await, 1);
-    let empty_website = json!({"name": "Sam", "body": "ok", "at_step": 1, "website": ""});
-    assert_eq!(
-        post_comment(&s.app, &token, empty_website).await.status,
-        StatusCode::CREATED
-    );
-    assert_eq!(count(&s.app, "share_comments").await, 2);
+    let nameless = commenter_cookie(&s.app, "nameless@example.com", None).await;
+    let refused = post_comment_as(&s.app, &nameless, &token, comment_body(3), &[]).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT);
+    assert_eq!(refused.body["error"]["code"], "username_required");
+    assert_eq!(count(&s.app, "share_comments").await, 0);
+}
+
+#[tokio::test]
+async fn the_comment_name_is_the_username_at_posting_and_the_owner_never_sees_the_account() {
+    let s = setup().await;
+    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
+    let sam = commenter_cookie(&s.app, "sam@example.com", Some("sam")).await;
+    let sam_user = api::users::find_by_email(s.app.db(), "sam@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let posted = post_comment_as(&s.app, &sam, &token, comment_body(3), &[]).await;
+    assert_eq!(posted.status, StatusCode::CREATED);
+    assert_eq!(posted.body["comment"]["name"], "sam");
+
+    let renamed = s
+        .app
+        .send(request(
+            "PUT",
+            "/api/v1/account/username",
+            Some(&sam),
+            Some(json!({"username": "sam-b"})),
+        ))
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+
+    let listed = owner_comments(&s.app, &s.cookie, &s.project).await;
+    assert_eq!(listed.body["comments"][0]["name"], "sam");
+    let text = listed.body.to_string();
+    for private in ["sam@example.com", sam_user.id.as_str(), "author"] {
+        assert!(!text.contains(private), "{private} leaked in {text}");
+    }
+    assert!(!posted.body.to_string().contains(sam_user.id.as_str()));
+
+    let stored: String = sqlx::query_scalar("SELECT author_id FROM share_comments")
+        .fetch_one(s.app.db().pool())
+        .await
+        .unwrap();
+    assert_eq!(stored, sam_user.id);
+}
+
+#[tokio::test]
+async fn the_owner_can_comment_on_their_own_link() {
+    let s = setup().await;
+    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
+    let owner = commenter_cookie(&s.app, OWNER, Some("owner")).await;
+
+    let response = post_comment_as(&s.app, &owner, &token, comment_body(3), &[]).await;
+
+    assert_eq!(response.status, StatusCode::CREATED);
+    assert_eq!(response.body["comment"]["name"], "owner");
 }
 
 #[tokio::test]
 async fn invalid_comments_are_422_invalid_comment_and_store_nothing() {
-    let s = setup_with(&[(COMMENTS_PER_ADDRESS_10M, "100")]).await;
+    let s = setup_with(&[(COMMENTS_PER_USER_10M, "100")]).await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
     let cases = [
         (
             "whitespace-only body",
-            json!({"name": "Sam", "body": "   \n ", "at_step": 1}),
-        ),
-        (
-            "empty name",
-            json!({"name": "  ", "body": "hi", "at_step": 1}),
-        ),
-        (
-            "long name",
-            json!({"name": "x".repeat(41), "body": "hi", "at_step": 1}),
-        ),
-        (
-            "bidi name",
-            json!({"name": "Sam\u{202E}", "body": "hi", "at_step": 1}),
+            json!({"body": "   \n ", "at_step": 1}),
         ),
         (
             "bidi isolate body",
-            json!({"name": "Sam", "body": "hi\u{2066}", "at_step": 1}),
+            json!({"body": "hi\u{2066}", "at_step": 1}),
         ),
         (
-            "control in name",
-            json!({"name": "Sam\u{0}", "body": "hi", "at_step": 1}),
+            "bidi override body",
+            json!({"body": "hi\u{202E}", "at_step": 1}),
         ),
+        ("tab in body", json!({"body": "a\tb", "at_step": 1})),
+        ("long body", json!({"body": "x".repeat(2001), "at_step": 1})),
+        ("31 lines", json!({"body": "a\n".repeat(31), "at_step": 1})),
+        ("fractional step", json!({"body": "hi", "at_step": 1.5})),
+        ("string step", json!({"body": "hi", "at_step": "1"})),
+        ("missing step", json!({"body": "hi"})),
+        ("missing body", json!({"at_step": 1})),
         (
-            "tab in body",
-            json!({"name": "Sam", "body": "a\tb", "at_step": 1}),
+            "name field",
+            json!({"name": "Sam", "body": "hi", "at_step": 1}),
         ),
-        (
-            "long body",
-            json!({"name": "Sam", "body": "x".repeat(2001), "at_step": 1}),
-        ),
-        (
-            "31 lines",
-            json!({"name": "Sam", "body": "a\n".repeat(31), "at_step": 1}),
-        ),
-        (
-            "fractional step",
-            json!({"name": "Sam", "body": "hi", "at_step": 1.5}),
-        ),
-        (
-            "string step",
-            json!({"name": "Sam", "body": "hi", "at_step": "1"}),
-        ),
-        ("missing step", json!({"name": "Sam", "body": "hi"})),
         (
             "unknown field",
-            json!({"name": "Sam", "body": "hi", "at_step": 1, "extra": 1}),
+            json!({"body": "hi", "at_step": 1, "extra": 1}),
         ),
         ("not an object", json!([1, 2])),
     ];
@@ -589,7 +624,7 @@ async fn invalid_comments_are_422_invalid_comment_and_store_nothing() {
 async fn limits_are_counted_in_characters_not_bytes() {
     let s = setup().await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-    let body = json!({"name": "é".repeat(40), "body": "ü".repeat(2000), "at_step": 1});
+    let body = json!({"body": "ü".repeat(2000), "at_step": 1});
 
     let response = post_comment(&s.app, &token, body).await;
 
@@ -597,21 +632,19 @@ async fn limits_are_counted_in_characters_not_bytes() {
 }
 
 #[tokio::test]
-async fn names_and_bodies_are_trimmed_and_markup_is_stored_as_received() {
+async fn bodies_are_trimmed_and_markup_is_stored_as_received() {
     let s = setup().await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
 
     let posted = post_comment(
         &s.app,
         &token,
-        json!({"name": "  Sam \t  Jones ", "body": "  <img src=x onerror=alert(1)>\nline two \n",
-               "at_step": 2}),
+        json!({"body": "  <img src=x onerror=alert(1)>\nline two \n", "at_step": 2}),
     )
     .await;
 
     assert_eq!(posted.status, StatusCode::CREATED);
     let listed = owner_comments(&s.app, &s.cookie, &s.project).await;
-    assert_eq!(listed.body["comments"][0]["name"], "Sam Jones");
     assert_eq!(
         listed.body["comments"][0]["body"],
         "<img src=x onerror=alert(1)>\nline two"
@@ -622,7 +655,7 @@ async fn names_and_bodies_are_trimmed_and_markup_is_stored_as_received() {
 async fn a_body_over_8_kib_is_413_payload_too_large() {
     let s = setup().await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-    let body = json!({"name": "Sam", "body": "x".repeat(9 * 1024), "at_step": 1});
+    let body = json!({"body": "x".repeat(9 * 1024), "at_step": 1});
 
     let response = post_comment(&s.app, &token, body).await;
 
@@ -646,23 +679,7 @@ async fn a_cross_site_comment_is_403_and_stores_nothing() {
 }
 
 #[tokio::test]
-async fn the_owners_session_is_ignored_when_commenting() {
-    let s = setup().await;
-    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-
-    let response = post_comment_from(
-        &s.app,
-        &token,
-        comment_body(3),
-        &[("cookie", s.cookie.as_str())],
-    )
-    .await;
-
-    assert_eq!(response.status, StatusCode::CREATED);
-}
-
-#[tokio::test]
-async fn a_sixth_comment_from_one_address_in_ten_minutes_is_429_and_not_stored() {
+async fn a_sixth_comment_from_one_user_in_ten_minutes_is_429_and_not_stored() {
     let s = setup().await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
 
@@ -679,39 +696,49 @@ async fn a_sixth_comment_from_one_address_in_ten_minutes_is_429_and_not_stored()
 }
 
 #[tokio::test]
-async fn other_addresses_are_unaffected_by_one_addresss_limit() {
-    let s = setup_with(&[(TRUST_PROXY, "true"), (COMMENTS_PER_ADDRESS_10M, "1")]).await;
+async fn another_user_at_the_same_address_is_unaffected_by_one_users_limit() {
+    let s = setup_with(&[(COMMENTS_PER_USER_10M, "1")]).await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-    let a = from_address("198.51.100.1");
-    let b = from_address("198.51.100.2");
+    let ana = commenter_cookie(&s.app, "ana@example.com", Some("anna")).await;
+    let bo = commenter_cookie(&s.app, "bo@example.com", Some("bobby")).await;
 
-    assert_eq!(
-        post_comment_from(&s.app, &token, comment_body(1), &a)
-            .await
-            .status,
-        StatusCode::CREATED
-    );
-    assert_eq!(
-        post_comment_from(&s.app, &token, comment_body(2), &a)
-            .await
-            .status,
-        StatusCode::TOO_MANY_REQUESTS
-    );
-    assert_eq!(
-        post_comment_from(&s.app, &token, comment_body(3), &b)
-            .await
-            .status,
-        StatusCode::CREATED
-    );
+    let status = |cookie: &str, step| {
+        let app = &s.app;
+        let token = token.clone();
+        let cookie = cookie.to_string();
+        async move {
+            post_comment_as(app, &cookie, &token, comment_body(step), &[])
+                .await
+                .status
+        }
+    };
+
+    assert_eq!(status(&ana, 1).await, StatusCode::CREATED);
+    assert_eq!(status(&ana, 2).await, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(status(&bo, 3).await, StatusCode::CREATED);
     assert_eq!(count(&s.app, "share_comments").await, 2);
 }
 
 #[tokio::test]
-async fn refused_attempts_still_count_toward_the_address_limit() {
-    let s = setup_with(&[(COMMENTS_PER_ADDRESS_10M, "3")]).await;
+async fn one_user_behind_many_addresses_shares_one_budget() {
+    let s = setup_with(&[(TRUST_PROXY, "true"), (COMMENTS_PER_USER_10M, "1")]).await;
+    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
+    let a = from_address("198.51.100.1");
+    let b = from_address("198.51.100.2");
+
+    let first = post_comment_from(&s.app, &token, comment_body(1), &a).await;
+    let second = post_comment_from(&s.app, &token, comment_body(2), &b).await;
+
+    assert_eq!(first.status, StatusCode::CREATED);
+    assert_eq!(second.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn refused_attempts_still_count_toward_the_user_limit() {
+    let s = setup_with(&[(COMMENTS_PER_USER_10M, "3")]).await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
 
-    let invalid = json!({"name": "", "body": "", "at_step": -5});
+    let invalid = json!({"body": "", "at_step": -5});
     for _ in 0..2 {
         let response = post_comment(&s.app, &token, invalid.clone()).await;
         assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -725,8 +752,8 @@ async fn refused_attempts_still_count_toward_the_address_limit() {
 }
 
 #[tokio::test]
-async fn the_daily_per_address_limit_applies_across_links() {
-    let s = setup_with(&[(COMMENTS_PER_ADDRESS_DAY, "2")]).await;
+async fn the_daily_per_user_limit_applies_across_links() {
+    let s = setup_with(&[(COMMENTS_PER_USER_DAY, "2")]).await;
     let (_, first) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
     let (_, second) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
 
@@ -745,62 +772,40 @@ async fn the_daily_per_address_limit_applies_across_links() {
 }
 
 #[tokio::test]
-async fn the_per_link_daily_limit_applies_to_every_address() {
-    let s = setup_with(&[(TRUST_PROXY, "true"), (COMMENTS_PER_SHARE_DAY, "2")]).await;
+async fn the_per_link_daily_limit_applies_to_every_user() {
+    let s = setup_with(&[(COMMENTS_PER_SHARE_DAY, "2")]).await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
     let (_, other_link) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
-    let from = |n: u8| format!("198.51.100.{n}");
+    let mut cookies = Vec::new();
+    for n in 1..=3 {
+        let email = format!("u{n}@example.com");
+        cookies.push(commenter_cookie(&s.app, &email, Some(&format!("user{n}"))).await);
+    }
 
-    for n in 1..=2 {
-        let address = from(n);
-        let ok = post_comment_from(
-            &s.app,
-            &token,
-            comment_body(1),
-            &[("x-forwarded-for", address.as_str())],
-        )
-        .await;
+    for cookie in &cookies[..2] {
+        let ok = post_comment_as(&s.app, cookie, &token, comment_body(1), &[]).await;
         assert_eq!(ok.status, StatusCode::CREATED);
     }
-    let address = from(3);
-    let limited = post_comment_from(
-        &s.app,
-        &token,
-        comment_body(1),
-        &[("x-forwarded-for", address.as_str())],
-    )
-    .await;
+    let limited = post_comment_as(&s.app, &cookies[2], &token, comment_body(1), &[]).await;
     assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
     assert!(limited.headers.contains_key(header::RETRY_AFTER));
-    let elsewhere = post_comment_from(
-        &s.app,
-        &other_link,
-        comment_body(1),
-        &[("x-forwarded-for", address.as_str())],
-    )
-    .await;
+    let elsewhere = post_comment_as(&s.app, &cookies[2], &other_link, comment_body(1), &[]).await;
     assert_eq!(elsewhere.status, StatusCode::CREATED);
 }
 
 #[tokio::test]
-async fn invalid_and_honeypot_posts_do_not_use_up_the_links_daily_budget() {
+async fn invalid_posts_do_not_use_up_the_links_daily_budget() {
     let s = setup_with(&[
         (COMMENTS_PER_SHARE_DAY, "1"),
-        (COMMENTS_PER_ADDRESS_10M, "100"),
+        (COMMENTS_PER_USER_10M, "100"),
     ])
     .await;
     let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
 
     for _ in 0..3 {
-        let invalid = json!({"name": "", "body": "x", "at_step": 1});
+        let invalid = json!({"body": "", "at_step": 1});
         let refused = post_comment(&s.app, &token, invalid).await;
         assert_eq!(refused.status, StatusCode::UNPROCESSABLE_ENTITY);
-        let mut trap = comment_body(1);
-        trap["website"] = json!("http://spam.example");
-        assert_eq!(
-            post_comment(&s.app, &token, trap).await.status,
-            StatusCode::CREATED
-        );
     }
 
     assert_eq!(
@@ -879,4 +884,17 @@ async fn there_is_no_public_way_to_list_comments() {
         ))
         .await;
     assert_eq!(listing.status, StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn an_oversized_body_is_413_even_for_a_user_without_a_username() {
+    let s = setup().await;
+    let (_, token) = make_share(&s.app, &s.cookie, &s.project, live_body()).await;
+    let nameless = commenter_cookie(&s.app, "nameless@example.com", None).await;
+    let body = json!({"body": "x".repeat(9 * 1024), "at_step": 1});
+
+    let response = post_comment_as(&s.app, &nameless, &token, body, &[]).await;
+
+    assert_eq!(response.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(response.body["error"]["code"], "payload_too_large");
 }

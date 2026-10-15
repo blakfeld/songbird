@@ -19,8 +19,8 @@ const SWEEP_INTERVAL: Duration = MINUTE;
 /// Addresses are attacker-spreadable, so without a ceiling a flood of distinct sources grows
 /// memory until the next sweep. New addresses are refused rather than evicting old ones,
 /// because eviction would let a flood reset the counters of the very addresses it is abusing.
-/// Applied to the read and comment tables separately, because comment entries live a day and
-/// a comment flood must not be able to lock listeners out of reads.
+/// Only the read table is capped: comment keys are user ids, which are bounded by the accounts
+/// an operator created, so a flood of distinct sources cannot grow that table.
 const DEFAULT_MAX_TRACKED_ADDRESSES: usize = 100_000;
 
 type Hits = VecDeque<Instant>;
@@ -28,8 +28,8 @@ type Hits = VecDeque<Instant>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShareLimits {
     pub reads_per_minute: usize,
-    pub comments_per_address_10m: usize,
-    pub comments_per_address_day: usize,
+    pub comments_per_user_10m: usize,
+    pub comments_per_user_day: usize,
     pub comments_per_share_day: usize,
 }
 
@@ -37,8 +37,8 @@ impl ShareLimits {
     pub fn from_config(config: &Config) -> Self {
         Self {
             reads_per_minute: config.share_reads_per_minute as usize,
-            comments_per_address_10m: config.comments_per_address_10m as usize,
-            comments_per_address_day: config.comments_per_address_day as usize,
+            comments_per_user_10m: config.comments_per_user_10m as usize,
+            comments_per_user_day: config.comments_per_user_day as usize,
             comments_per_share_day: config.comments_per_share_day as usize,
         }
     }
@@ -123,23 +123,23 @@ impl ShareThrottle {
 
     /// Called before the body is parsed, so a request that later fails
     /// validation has already been counted and cannot be used as a free probe.
-    pub fn check_comment_address(&self, address: &str) -> Result<(), Throttled> {
+    pub fn check_comment_user(&self, user_id: &str) -> Result<(), Throttled> {
         let windows = [
-            (TEN_MINUTES, self.limits.comments_per_address_10m),
-            (DAY, self.limits.comments_per_address_day),
+            (TEN_MINUTES, self.limits.comments_per_user_10m),
+            (DAY, self.limits.comments_per_user_day),
         ];
         self.admit(
             |inner| &mut inner.comments,
-            address,
+            user_id,
             &windows,
             DAY,
             Use::Record,
-            true,
+            false,
         )
     }
 
-    /// Does not count the attempt: invalid and honeypot posts must not use up the
-    /// link's budget, or one bot could silence a link for every real listener.
+    /// Does not count the attempt: invalid posts must not use up the link's budget, or one
+    /// listener could silence a link for everyone else.
     pub fn check_comment_share(&self, share_id: &str) -> Result<(), Throttled> {
         self.admit_share(share_id, Use::Peek)
     }
@@ -241,8 +241,8 @@ mod tests {
     fn limits(reads: usize, ten_min: usize, day: usize, share_day: usize) -> ShareLimits {
         ShareLimits {
             reads_per_minute: reads,
-            comments_per_address_10m: ten_min,
-            comments_per_address_day: day,
+            comments_per_user_10m: ten_min,
+            comments_per_user_day: day,
             comments_per_share_day: share_day,
         }
     }
@@ -274,27 +274,27 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn comments_have_a_ten_minute_window_per_address() {
         let t = throttle(60, 2, 30, 200);
-        t.check_comment_address("a").unwrap();
-        t.check_comment_address("a").unwrap();
-        assert!(t.check_comment_address("a").is_err());
-        t.check_comment_address("b").unwrap();
+        t.check_comment_user("a").unwrap();
+        t.check_comment_user("a").unwrap();
+        assert!(t.check_comment_user("a").is_err());
+        t.check_comment_user("b").unwrap();
 
         tokio::time::advance(TEN_MINUTES).await;
-        t.check_comment_address("a").unwrap();
+        t.check_comment_user("a").unwrap();
     }
 
     #[tokio::test(start_paused = true)]
     async fn comments_have_a_daily_window_per_address() {
         let t = throttle(60, 2, 3, 200);
         for _ in 0..3 {
-            t.check_comment_address("a").unwrap();
+            t.check_comment_user("a").unwrap();
             tokio::time::advance(TEN_MINUTES).await;
         }
-        let refused = t.check_comment_address("a").unwrap_err();
+        let refused = t.check_comment_user("a").unwrap_err();
         assert!(refused.retry_after_secs > TEN_MINUTES.as_secs());
 
         tokio::time::advance(DAY).await;
-        t.check_comment_address("a").unwrap();
+        t.check_comment_user("a").unwrap();
     }
 
     #[tokio::test(start_paused = true)]
@@ -336,7 +336,7 @@ mod tests {
         let t = throttle(60, 5, 30, 200);
         for n in 0..10 {
             t.check_read(&format!("addr-{n}")).unwrap();
-            t.check_comment_address(&format!("addr-{n}")).unwrap();
+            t.check_comment_user(&format!("addr-{n}")).unwrap();
             t.check_comment_share(&format!("share-{n}")).unwrap();
             t.record_comment_share(&format!("share-{n}"));
         }
@@ -391,13 +391,11 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_full_comments_table_does_not_block_reads() {
+    async fn the_address_cap_does_not_limit_users_and_comments_do_not_block_reads() {
         let t = ShareThrottle::with_address_cap(limits(60, 5, 30, 200), 2);
-        t.check_comment_address("a").unwrap();
-        t.check_comment_address("b").unwrap();
-
-        let refused = t.check_comment_address("c").unwrap_err();
-        assert_eq!(refused.retry_after_secs, (DAY + SWEEP_INTERVAL).as_secs());
+        for user in ["a", "b", "c", "d"] {
+            t.check_comment_user(user).unwrap();
+        }
         t.check_read("c").unwrap();
         t.check_read("d").unwrap();
         assert!(t.check_read("e").is_err());

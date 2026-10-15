@@ -65,6 +65,11 @@ pub fn routes(state: AppState) -> Router {
         .route_layer(from_fn_with_state(state.clone(), crate::ai_limits::meter))
         .route_layer(from_fn_with_state(limiter, shed_when_busy));
 
+    // Listeners reach these with a session, so they join the protected routes, but they still
+    // count against the per-address listen budget, which runs before any database work.
+    let listen_actions = crate::listen_actions::router()
+        .route_layer(from_fn_with_state(state.clone(), crate::listen::throttle));
+
     // One layer around every protected route, so a new route cannot forget
     // authentication. Added last, the origin check runs first and refuses a
     // cross-site write before any database work.
@@ -77,6 +82,8 @@ pub fn routes(state: AppState) -> Router {
         .merge(crate::shares::router())
         .merge(crate::auth::http::me_router())
         .merge(crate::ai_keys::router())
+        .merge(crate::account::router())
+        .merge(listen_actions)
         .merge(ai)
         .route_layer(from_fn_with_state(state.clone(), require_session))
         .route_layer(from_fn_with_state(state.clone(), check_origin));
@@ -87,9 +94,8 @@ pub fn routes(state: AppState) -> Router {
     let public_auth = crate::auth::http::public_router()
         .route_layer(from_fn_with_state(state.clone(), check_origin));
 
-    // No session layer: the token is the credential. The origin check still
-    // runs first so another site cannot post comments from visitors' browsers,
-    // and the throttle runs before any database work.
+    // No session layer: the token is the credential for these reads. The origin check still
+    // runs first, and the throttle runs before any database work.
     let listen = crate::listen::router()
         .route_layer(from_fn_with_state(state.clone(), crate::listen::throttle))
         .route_layer(from_fn_with_state(state.clone(), check_origin));

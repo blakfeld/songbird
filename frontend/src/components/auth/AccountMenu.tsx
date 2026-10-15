@@ -16,6 +16,7 @@ import { getSongLibrary, type SongLibrary } from "@/lib/song/songLibrary";
 import { useApiResource } from "@/lib/useApiResource";
 import { useAuth } from "./AuthProvider";
 
+const PROFILE_PATH = "/settings/profile";
 const DRUM_MACHINE = { href: "/drum-machine", label: "Drum Machine" };
 
 // The Studio is the home page, so this menu is the only way to the standalone instrument pages.
@@ -90,8 +91,8 @@ function SignedInMenu({
   const [unsaved, setUnsaved] = useState(false);
   const titleId = useId();
   // Read from the location rather than the router hook so the menu works in trees without an app router.
-  const onKeysPage =
-    typeof window !== "undefined" && window.location.pathname === AI_KEYS_PATH;
+  const here = typeof window !== "undefined" ? window.location.pathname : null;
+  const onKeysPage = here === AI_KEYS_PATH;
   // A second click while the first is still flushing must not start a second logout.
   const busy = useRef(false);
 
@@ -160,6 +161,15 @@ function SignedInMenu({
               className="my-1 border-t border-zinc-200 dark:border-zinc-800"
             />
             <InstrumentItems instruments={instruments} close={close} />
+            <Link
+              href={PROFILE_PATH}
+              role="menuitem"
+              aria-current={here === PROFILE_PATH ? "page" : undefined}
+              className={menuItemClass}
+              onClick={close}
+            >
+              Profile
+            </Link>
             <Link
               href={AI_KEYS_PATH}
               role="menuitem"

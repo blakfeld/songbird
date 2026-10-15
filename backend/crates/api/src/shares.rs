@@ -51,6 +51,8 @@ struct CreateBody {
     expires_at: Option<i64>,
     allow_comments: bool,
     allow_downloads: bool,
+    #[serde(default)]
+    allow_remix: bool,
     label: Option<String>,
 }
 
@@ -61,6 +63,7 @@ struct UpdateBody {
     expires_at: Option<i64>,
     allow_comments: bool,
     allow_downloads: bool,
+    allow_remix: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +134,7 @@ fn share_json(share: &ShareSummary, now: i64) -> Value {
         "label": share.label,
         "allow_comments": share.allow_comments,
         "allow_downloads": share.allow_downloads,
+        "allow_remix": share.allow_remix,
         "expires_at": share.expires_at,
         "created_at": share.created_at,
         "revoked_at": share.revoked_at,
@@ -173,6 +177,7 @@ async fn create(
         expires_at: validated_expiry(body.expires_at, now)?,
         allow_comments: body.allow_comments,
         allow_downloads: body.allow_downloads,
+        allow_remix: body.allow_remix,
     };
     let token = generate_token();
     let share = store::create(
@@ -234,6 +239,7 @@ async fn update(
         expires_at,
         allow_comments: body.allow_comments,
         allow_downloads: body.allow_downloads,
+        allow_remix: body.allow_remix,
     };
     let share = store::update(&state.db, &user.id, &project_id, &share_id, &edit)
         .await

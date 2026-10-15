@@ -26,6 +26,8 @@ pub struct AppState {
     /// Counts every save attempt, not only failures, so the endpoint is no oracle for stolen keys.
     pub key_save_limiter: Arc<AiLimiter>,
     pub share_throttle: Arc<ShareThrottle>,
+    pub remix_limiter: Arc<AiLimiter>,
+    pub username_limiter: Arc<AiLimiter>,
     /// Lets keys be managed in development with an operator provider, where `ai` has no factory.
     pub shared_key_checker: Arc<dyn UserProviders>,
 }
@@ -42,6 +44,8 @@ impl std::fmt::Debug for AppState {
 }
 
 const KEY_SAVE_WINDOW: Duration = Duration::from_secs(3600);
+const REMIX_WINDOW: Duration = Duration::from_secs(60);
+const USERNAME_WINDOW: Duration = Duration::from_secs(3600);
 
 impl AppState {
     /// A shared provider for every user, which is how tests and development run. Fields stay
@@ -73,6 +77,8 @@ impl AppState {
             ai_limiter: Arc::new(AiLimiter::default()),
             key_save_limiter: Arc::new(AiLimiter::with_window(KEY_SAVE_WINDOW)),
             share_throttle,
+            remix_limiter: Arc::new(AiLimiter::with_window(REMIX_WINDOW)),
+            username_limiter: Arc::new(AiLimiter::with_window(USERNAME_WINDOW)),
         }
     }
 }

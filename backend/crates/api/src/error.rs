@@ -95,6 +95,13 @@ pub enum ApiError {
     InvalidComment(String),
     #[error("This link has reached its limit of comments.")]
     CommentLimit,
+    /// The message states the username rules; it only describes the caller's own input.
+    #[error("{0}")]
+    InvalidUsername(String),
+    #[error("That username is already taken.")]
+    UsernameTaken,
+    #[error("Choose a username before commenting.")]
+    UsernameRequired,
     #[error("The project was changed elsewhere. Reload it before saving.")]
     RevisionConflict,
     #[error("You have reached the limit on projects or stored song data.")]
@@ -152,6 +159,7 @@ impl ApiError {
             | Self::ToplineRejected { .. }
             | Self::InvalidShare(_)
             | Self::InvalidComment(_)
+            | Self::InvalidUsername(_)
             | Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::GenerationFailed => StatusCode::BAD_GATEWAY,
@@ -167,6 +175,8 @@ impl ApiError {
             | Self::ProjectLimit
             | Self::ShareLimit
             | Self::CommentLimit
+            | Self::UsernameTaken
+            | Self::UsernameRequired
             | Self::ApiKeyRequired
             | Self::ApiKeyInvalid { .. }
             | Self::StoredKeyUnusable { .. }
@@ -213,6 +223,9 @@ impl ApiError {
             Self::ShareLimit => "share_limit",
             Self::InvalidComment(_) => "invalid_comment",
             Self::CommentLimit => "comment_limit",
+            Self::InvalidUsername(_) => "invalid_username",
+            Self::UsernameTaken => "username_taken",
+            Self::UsernameRequired => "username_required",
             Self::RevisionConflict => "revision_conflict",
             Self::ProjectLimit => "project_limit",
             Self::IdMismatch => "id_mismatch",

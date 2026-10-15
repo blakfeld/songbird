@@ -88,6 +88,7 @@ async fn creating_a_live_link_returns_the_token_url_and_link_once() {
     assert_eq!(share["label"], "");
     assert_eq!(share["allow_comments"], true);
     assert_eq!(share["allow_downloads"], false);
+    assert_eq!(share["allow_remix"], false);
     assert_eq!(share["expires_at"], Value::Null);
     assert_eq!(share["revoked_at"], Value::Null);
     assert_eq!(share["unresolved_comments"], 0);
@@ -606,7 +607,7 @@ async fn owner_comments_are_ordered_by_position_then_time_with_their_link_detail
     assert_eq!(first["share_id"], share_id);
     assert_eq!(first["share_label"], "Band");
     assert_eq!(first["token_prefix"], token[..6]);
-    assert_eq!(first["name"], "Sam");
+    assert_eq!(first["name"], "sam");
     assert_eq!(first["body"], "Love this lift");
     assert_eq!(first["section_id"], "sec-verse");
     assert_eq!(first["section_name"], "Verse");
@@ -760,4 +761,63 @@ async fn a_second_project_gets_its_own_links_and_comments() {
 
     assert_eq!(shares.body["shares"].as_array().unwrap().len(), 0);
     assert_eq!(comments.body["comments"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn allow_remix_can_be_set_on_create_and_toggled_by_put_but_is_kept_when_omitted() {
+    let s = setup().await;
+    let mut body = live_body();
+    body["allow_remix"] = json!(true);
+    let created = create_share(&s.app, &s.cookie, &s.project, body).await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    assert_eq!(created.body["share"]["allow_remix"], true);
+    let token = created.body["token"].as_str().unwrap().to_string();
+    let id = created.body["share"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        listen(&s.app, &token).await.body["share"]["allow_remix"],
+        true
+    );
+
+    let put = |extra: Value| {
+        let mut body = json!({"label": "", "expires_at": null,
+                              "allow_comments": true, "allow_downloads": false});
+        if let Value::Object(fields) = extra {
+            body.as_object_mut().unwrap().extend(fields);
+        }
+        let app = &s.app;
+        let path = format!("/api/v1/projects/{}/shares/{id}", s.project);
+        let cookie = s.cookie.clone();
+        async move {
+            app.send(request("PUT", &path, Some(&cookie), Some(body)))
+                .await
+        }
+    };
+
+    let omitted = put(json!({})).await;
+    assert_eq!(omitted.status, StatusCode::OK);
+    assert_eq!(omitted.body["share"]["allow_remix"], true);
+
+    let off = put(json!({"allow_remix": false})).await;
+    assert_eq!(off.body["share"]["allow_remix"], false);
+    assert_eq!(
+        listen(&s.app, &token).await.body["share"]["allow_remix"],
+        false
+    );
+
+    let on = put(json!({"allow_remix": true})).await;
+    assert_eq!(on.body["share"]["allow_remix"], true);
+
+    let listed = s
+        .app
+        .send(request(
+            "GET",
+            &format!("/api/v1/projects/{}/shares", s.project),
+            Some(&s.cookie),
+            None,
+        ))
+        .await;
+    assert_eq!(listed.body["shares"][0]["allow_remix"], true);
+
+    let invalid = put(json!({"allow_remix": "yes"})).await;
+    assert_eq!(invalid.status, StatusCode::UNPROCESSABLE_ENTITY);
 }

@@ -88,6 +88,7 @@ pub struct NewShare {
     pub expires_at: Option<i64>,
     pub allow_comments: bool,
     pub allow_downloads: bool,
+    pub allow_remix: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +97,8 @@ pub struct ShareEdit {
     pub expires_at: Option<i64>,
     pub allow_comments: bool,
     pub allow_downloads: bool,
+    /// `None` keeps the stored value, so a client that predates the setting cannot switch it off.
+    pub allow_remix: Option<bool>,
 }
 
 /// What the owner sees. The token and its hash are deliberately not columns here.
@@ -107,6 +110,7 @@ pub struct ShareSummary {
     pub label: String,
     pub allow_comments: bool,
     pub allow_downloads: bool,
+    pub allow_remix: bool,
     pub expires_at: Option<i64>,
     pub created_at: i64,
     pub revoked_at: Option<i64>,
@@ -134,6 +138,7 @@ pub struct ActiveShare {
     pub mode: ShareMode,
     pub allow_comments: bool,
     pub allow_downloads: bool,
+    pub allow_remix: bool,
     pub expires_at: Option<i64>,
     pub song: Value,
     /// Set only for live links, so a comment can say which version it heard.
@@ -159,6 +164,7 @@ pub struct OwnerComment {
 
 #[derive(Debug, Clone)]
 pub struct NewComment {
+    pub author_id: String,
     pub name: String,
     pub body: String,
     pub at_step: i64,
@@ -225,7 +231,7 @@ pub fn parse_projected(projected: &Value) -> Result<Song, serde_json::Error> {
 }
 
 const SUMMARY_COLUMNS: &str = "s.id, s.token_prefix, s.mode, s.label, s.allow_comments, \
-     s.allow_downloads, s.expires_at, s.created_at, s.revoked_at, \
+     s.allow_downloads, s.allow_remix, s.expires_at, s.created_at, s.revoked_at, \
      (SELECT COUNT(*) FROM share_comments c WHERE c.share_id = s.id AND c.resolved_at IS NULL) \
      AS unresolved";
 
@@ -237,6 +243,7 @@ fn summary_from_row(row: &AnyRow) -> Result<ShareSummary, sqlx::Error> {
         label: row.try_get("label")?,
         allow_comments: decode_bool(row, "allow_comments")?,
         allow_downloads: decode_bool(row, "allow_downloads")?,
+        allow_remix: decode_bool(row, "allow_remix")?,
         expires_at: row.try_get("expires_at")?,
         created_at: row.try_get("created_at")?,
         revoked_at: row.try_get("revoked_at")?,
@@ -316,9 +323,9 @@ pub async fn create(
     sqlx::query(
         "INSERT INTO share_links \
          (id, project_id, owner_id, token_hash, token_prefix, mode, label, snapshot, \
-          snapshot_bytes, allow_comments, allow_downloads, expires_at, revoked_at, created_at, \
-          updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13, $14)",
+          snapshot_bytes, allow_comments, allow_downloads, allow_remix, expires_at, revoked_at, \
+          created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, $14, $15)",
     )
     .bind(&id)
     .bind(project_id)
@@ -331,6 +338,7 @@ pub async fn create(
     .bind(snapshot_bytes)
     .bind(new.allow_comments)
     .bind(new.allow_downloads)
+    .bind(new.allow_remix)
     .bind(new.expires_at)
     .bind(now)
     .bind(now)
@@ -345,6 +353,7 @@ pub async fn create(
         label: new.label.clone(),
         allow_comments: new.allow_comments,
         allow_downloads: new.allow_downloads,
+        allow_remix: new.allow_remix,
         expires_at: new.expires_at,
         created_at: now,
         revoked_at: None,
@@ -401,13 +410,14 @@ pub async fn update(
 ) -> Result<ShareSummary, ShareError> {
     let updated = sqlx::query(
         "UPDATE share_links SET label = $1, expires_at = $2, allow_comments = $3, \
-         allow_downloads = $4, updated_at = $5 \
-         WHERE id = $6 AND project_id = $7 AND owner_id = $8 AND revoked_at IS NULL",
+         allow_downloads = $4, allow_remix = COALESCE($5, allow_remix), updated_at = $6 \
+         WHERE id = $7 AND project_id = $8 AND owner_id = $9 AND revoked_at IS NULL",
     )
     .bind(&edit.label)
     .bind(edit.expires_at)
     .bind(edit.allow_comments)
     .bind(edit.allow_downloads)
+    .bind(edit.allow_remix)
     .bind(now_ms())
     .bind(share_id)
     .bind(project_id)
@@ -458,7 +468,7 @@ pub async fn find_active(
     }
     let row = sqlx::query(
         "SELECT s.id, s.project_id, s.mode, s.snapshot, s.allow_comments, s.allow_downloads, \
-         s.expires_at, s.created_at, p.song, p.revision, p.updated_at AS project_updated_at \
+         s.allow_remix, s.expires_at, s.created_at, p.song, p.revision, p.updated_at AS project_updated_at \
          FROM share_links s JOIN projects p ON p.id = s.project_id \
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL \
          AND (s.expires_at IS NULL OR s.expires_at > $2)",
@@ -500,6 +510,7 @@ pub async fn find_active(
         mode,
         allow_comments: decode_bool(&row, "allow_comments")?,
         allow_downloads: decode_bool(&row, "allow_downloads")?,
+        allow_remix: decode_bool(&row, "allow_remix")?,
         expires_at: row.try_get("expires_at")?,
         song,
         project_revision,
@@ -542,13 +553,14 @@ pub async fn add_comment(
     }
     sqlx::query(
         "INSERT INTO share_comments \
-         (id, share_id, project_id, author_name, body, at_step, section_id, section_name, \
-          project_revision, created_at, resolved_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)",
+         (id, share_id, project_id, author_id, author_name, body, at_step, section_id, \
+          section_name, project_revision, created_at, resolved_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL)",
     )
     .bind(&id)
     .bind(share_id)
     .bind(project_id)
+    .bind(&comment.author_id)
     .bind(&comment.name)
     .bind(&comment.body)
     .bind(comment.at_step)

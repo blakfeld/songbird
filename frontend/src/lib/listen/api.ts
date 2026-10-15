@@ -5,6 +5,7 @@ export interface ListenShare {
   mode: "live" | "snapshot";
   allow_comments: boolean;
   allow_downloads: boolean;
+  allow_remix: boolean;
   expires_at: number | null;
 }
 
@@ -15,13 +16,11 @@ export interface ListenResponse {
   shared_at: number;
 }
 
-// Exactly the fields the server accepts, since it refuses unknown ones.
+// Exactly the fields the server accepts, since it refuses unknown ones. The name is the commenter's username,
+// which the server fills in, so sending one would be refused.
 export interface CommentInput {
-  name: string;
   body: string;
   at_step: number;
-  // The honeypot: a hidden field only a form-filling bot touches. Sent solely when filled, so a person never sends it.
-  website?: string;
 }
 
 export interface PostedComment {
@@ -49,6 +48,7 @@ export const UNAVAILABLE_MESSAGE = "This link isn't available";
 export const RATE_LIMITED_MESSAGE = "Too many requests right now. Please try again shortly.";
 const COMMENT_LIMIT_MESSAGE = "This song has reached its comment limit.";
 const NETWORK_MESSAGE = "Could not reach the Songbird service. Check your connection and try again.";
+const PROJECT_LIMIT_MESSAGE = "You've reached your limit for stored songs. Delete a song and try again.";
 const FALLBACK_MESSAGE = "Something went wrong. Please try again.";
 
 async function toListenError(res: Response): Promise<ListenError> {
@@ -66,6 +66,7 @@ async function toListenError(res: Response): Promise<ListenError> {
   // Every failure but a throttle looks the same on purpose, so the page cannot say why a link is gone.
   if (res.status === 404) return new ListenError("not_found", UNAVAILABLE_MESSAGE, 404);
   if (res.status === 429) return new ListenError("too_many_requests", RATE_LIMITED_MESSAGE, 429, retryAfterMs);
+  if (code === "project_limit") return new ListenError(code, PROJECT_LIMIT_MESSAGE, res.status);
   if (code === "comment_limit") return new ListenError(code, COMMENT_LIMIT_MESSAGE, res.status);
   // The server's validation reasons are written for the person who typed the comment.
   if (code === "invalid_comment" && serverMessage) return new ListenError(code, serverMessage, res.status);
@@ -73,12 +74,12 @@ async function toListenError(res: Response): Promise<ListenError> {
 }
 
 // Deliberately not built on the Studio's request helper: that one signs the user out on a 401, and a listener
-// may be a signed-in owner whose session this page must leave alone. No credentials are sent either, since the
-// listen API ignores a session anyway.
-async function listenFetch(path: string, init?: RequestInit): Promise<Response> {
+// may be a signed-in owner whose session this page must leave alone. The read endpoints ignore sessions, so
+// they get no credentials; only the remix and comment calls need the cookie, and they report a 401 instead of acting on it.
+async function listenFetch(path: string, init?: RequestInit, withSession = false): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(path, { ...init, credentials: "omit" });
+    res = await fetch(path, withSession ? init : { ...init, credentials: "omit" });
   } catch (e) {
     if (init?.signal?.aborted) throw e;
     throw new ListenError("network_error", NETWORK_MESSAGE, 0);
@@ -96,13 +97,19 @@ export async function getShare(token: string, signal?: AbortSignal): Promise<Lis
 }
 
 export async function postComment(token: string, input: CommentInput): Promise<PostedComment> {
-  const { name, body, at_step, website } = input;
-  const res = await listenFetch(`${base(token)}/comments`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, body, at_step, ...(website && { website }) }),
-  });
+  const { body, at_step } = input;
+  const res = await listenFetch(
+    `${base(token)}/comments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, at_step }) },
+    true,
+  );
   return ((await res.json()) as { comment: PostedComment }).comment;
+}
+
+// Resolves to the new project's id; the song itself is never sent, so the copy always comes from the server's own.
+export async function remixShare(token: string): Promise<string> {
+  const res = await listenFetch(`${base(token)}/remix`, { method: "POST" }, true);
+  return ((await res.json()) as { project: { id: string } }).project.id;
 }
 
 export async function getMidi(token: string): Promise<Blob> {

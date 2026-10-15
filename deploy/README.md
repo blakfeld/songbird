@@ -49,6 +49,8 @@ Run them as `songbird`, not root. Otherwise the root-owned `-wal` and `-shm` fil
 fly ssh console -C "setpriv --reuid=songbird --regid=songbird --init-groups songbird-api user create you@example.com"
 ```
 
+Add `--username <name>` to `user create` to set the name shown on that account's listener comments. A username is 3 to 30 characters of lowercase letters, digits, `_` and `-`, starting with a letter, and unique without regard to case. Users can also set it themselves from the Profile page, and accounts without one cannot comment. `user list` shows each account's username (`-` when unset). `user delete` also deletes the listener comments the account wrote on other people's songs, and its data stays in the volume snapshots until they age out.
+
 ## Rules
 
 - **Never scale past one Machine.** Each new Machine gets its own empty volume, and so its own separate database.

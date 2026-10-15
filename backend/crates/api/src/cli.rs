@@ -63,7 +63,11 @@ impl KeysCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum UserCommand {
     #[command(about = "Create an account; the password comes from the terminal or one stdin line")]
-    Create { email: String },
+    Create {
+        email: String,
+        #[arg(long, help = "Name shown on the listener comments this account posts")]
+        username: Option<String>,
+    },
     #[command(
         about = "Set a new password and end all of the account's sessions",
         name = "set-password"
@@ -73,7 +77,9 @@ pub enum UserCommand {
     Disable { email: String },
     #[command(about = "Re-enable a disabled account")]
     Enable { email: String },
-    #[command(about = "Delete an account with all of its projects, sessions, and usage")]
+    #[command(
+        about = "Delete an account with all of its projects, sessions, usage, and listener comments"
+    )]
     Delete {
         email: String,
         #[arg(long, help = "Skip the retype prompt; required when not on a terminal")]
@@ -133,9 +139,13 @@ pub async fn run_user_command(
     inputs: Inputs,
 ) -> Result<String, CliError> {
     match command {
-        UserCommand::Create { email } => {
+        UserCommand::Create { email, username } => {
+            // Before the slow hash, so a bad username is reported without waiting on it.
+            if let Some(username) = &username {
+                users::normalize_username(username)?;
+            }
             let hash = passwords.hash(&required(inputs.password)?).await?;
-            let user = users::create(db, &email, &hash).await?;
+            let user = users::create_with_username(db, &email, &hash, username.as_deref()).await?;
             Ok(format!("Created {}.", user.email))
         }
         UserCommand::SetPassword { email } => {
@@ -169,7 +179,9 @@ pub async fn run_user_command(
                 return Err(CliError::NotConfirmed);
             }
             users::delete(db, &normalized).await?;
-            Ok(format!("Deleted {normalized} and all of their data."))
+            Ok(format!(
+                "Deleted {normalized}, with their projects, sessions, usage, and the listener comments they wrote."
+            ))
         }
         UserCommand::List => {
             let all = users::list(db).await?;
@@ -180,8 +192,9 @@ pub async fn run_user_command(
                 .iter()
                 .map(|u| {
                     format!(
-                        "{}\t{}\t{}",
+                        "{}\t{}\t{}\t{}",
                         u.email,
+                        u.username.as_deref().unwrap_or("-"),
                         if u.disabled { "disabled" } else { "active" },
                         format_utc(u.created_at)
                     )
@@ -308,7 +321,9 @@ pub fn read_inputs(command: &UserCommand) -> Result<Inputs, CliError> {
         });
     }
     if command.needs_retyped_email() && interactive {
-        eprint!("Retype the account's email to delete it and all of its data: ");
+        eprint!(
+            "Retype the account's email to delete it with its projects, sessions, usage, and the listener comments it wrote: "
+        );
         io::stderr().flush()?;
         inputs.retyped_email = Some(read_stdin_line()?);
     }

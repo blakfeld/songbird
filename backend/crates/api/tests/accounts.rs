@@ -199,3 +199,73 @@ async fn login_as_seeds_a_user_and_a_session_and_stores_only_the_token_hash() {
     assert_eq!(count(&db, "users").await, 1, "reuses the existing user");
     assert_eq!(count(&db, "sessions").await, 2);
 }
+
+async fn insert_comment(db: &Db, id: &str, project_id: &str, author_id: Option<&str>) {
+    sqlx::query(
+        "INSERT INTO share_comments (id, share_id, project_id, author_id, author_name, body, \
+         at_step, created_at) VALUES ($1, 'share-1', $2, $3, 'sam', 'hi', 0, 0)",
+    )
+    .bind(id)
+    .bind(project_id)
+    .bind(author_id)
+    .execute(db.pool())
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn deleting_a_commenter_removes_their_comments_but_not_anonymous_or_other_ones() {
+    let db = test_db().await;
+    let owner = seed_user(&db, "owner@example.com").await;
+    let sam = seed_user(&db, "sam@example.com").await;
+    let bo = seed_user(&db, "bo@example.com").await;
+    insert_project(&db, &owner.id, "p-owner").await;
+    sqlx::query(
+        "INSERT INTO share_links (id, project_id, owner_id, token_hash, token_prefix, mode, \
+         allow_comments, allow_downloads, created_at, updated_at) \
+         VALUES ('share-1', 'p-owner', $1, 'hash', 'abcdef', 'live', $2, $3, 0, 0)",
+    )
+    .bind(&owner.id)
+    .bind(true)
+    .bind(false)
+    .execute(db.pool())
+    .await
+    .unwrap();
+    insert_comment(&db, "by-sam", "p-owner", Some(&sam.id)).await;
+    insert_comment(&db, "by-bo", "p-owner", Some(&bo.id)).await;
+    insert_comment(&db, "anonymous", "p-owner", None).await;
+
+    users::delete(&db, "sam@example.com").await.unwrap();
+
+    let left: Vec<String> = sqlx::query("SELECT id FROM share_comments ORDER BY id")
+        .fetch_all(db.pool())
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    assert_eq!(left, ["anonymous", "by-bo"]);
+    assert_eq!(count(&db, "projects").await, 1);
+}
+
+#[tokio::test]
+async fn usernames_are_stored_lowercased_and_unique_without_regard_to_case() {
+    let db = test_db().await;
+    let ana = seed_user(&db, "ana@example.com").await;
+    let bo = seed_user(&db, "bo@example.com").await;
+    assert_eq!(ana.username, None);
+
+    assert_eq!(
+        users::set_username(&db, &ana.id, "Ana").await.unwrap(),
+        "ana"
+    );
+    let taken = users::set_username(&db, &bo.id, "ANA").await;
+    assert!(matches!(taken, Err(UserError::UsernameTaken)), "{taken:?}");
+    users::set_username(&db, &ana.id, "ana").await.unwrap();
+
+    let stored = users::find_by_email(&db, "ana@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.username.as_deref(), Some("ana"));
+}
