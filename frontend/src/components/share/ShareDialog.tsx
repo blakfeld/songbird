@@ -170,6 +170,7 @@ function ShareDialogBody({
                         expires_at: link.expires_at,
                         allow_comments: link.allow_comments,
                         allow_downloads: link.allow_downloads,
+                        allow_remix: link.allow_remix,
                         ...edit,
                       }),
                     );
@@ -196,6 +197,7 @@ interface CreateValues {
   expiry: ExpiryChoice;
   allow_comments: boolean;
   allow_downloads: boolean;
+  allow_remix: boolean;
   label?: string;
 }
 
@@ -208,11 +210,12 @@ function CreateForm({
   busy: boolean;
   onCreate: (values: CreateValues) => Promise<void>;
 }) {
-  const ids = { mode: useId(), expiry: useId(), label: useId(), downloads: useId() };
+  const ids = { mode: useId(), expiry: useId(), label: useId(), downloads: useId(), remix: useId() };
   const [mode, setMode] = useState<ShareMode>("live");
   const [expiry, setExpiry] = useState<ExpiryChoice>("never");
   const [comments, setComments] = useState(true);
   const [downloads, setDownloads] = useState(false);
+  const [remix, setRemix] = useState(false);
   const [label, setLabel] = useState("");
 
   return (
@@ -227,6 +230,7 @@ function CreateForm({
           expiry,
           allow_comments: comments,
           allow_downloads: downloads,
+          allow_remix: remix,
           ...(trimmed && { label: trimmed }),
         });
       }}
@@ -279,6 +283,11 @@ function CreateForm({
         <p id={ids.downloads} className={hintClass}>
           Downloads offer MIDI and WAV files. Listeners can still record what they hear, so this expresses your intent
           and doesn&apos;t prevent copying.
+        </p>
+        <Switch label="Allow remixing" checked={remix} onChange={setRemix} describedBy={ids.remix} />
+        <p id={ids.remix} className={hintClass}>
+          Signed-in listeners can save their own copy of the song, without its chat or section notes. Copies already
+          made stay with them if you turn this off later.
         </p>
       </div>
       <div>
@@ -341,7 +350,7 @@ function LinkRow({
   busy: boolean;
   confirming: boolean;
   onConfirm: (on: boolean) => void;
-  onEdit: (edit: Partial<Pick<ShareLink, "allow_comments" | "allow_downloads" | "expires_at">>) => Promise<void>;
+  onEdit: (edit: Partial<Pick<ShareLink, "allow_comments" | "allow_downloads" | "allow_remix" | "expires_at">>) => Promise<void>;
   onRevoke: () => Promise<void>;
   now: () => number;
 }) {
@@ -360,6 +369,7 @@ function LinkRow({
       </div>
       <p className={hintClass}>
         {describeExpiry(link.expires_at)}
+        {` · Remixing ${link.allow_remix ? "on" : "off"}`}
         {link.unresolved_comments > 0 &&
           ` · ${link.unresolved_comments} unresolved ${link.unresolved_comments === 1 ? "comment" : "comments"}`}
       </p>
@@ -375,6 +385,11 @@ function LinkRow({
               label="Allow downloads"
               checked={link.allow_downloads}
               onChange={(next) => void onEdit({ allow_downloads: next })}
+            />
+            <Switch
+              label="Allow remixing"
+              checked={link.allow_remix}
+              onChange={(next) => void onEdit({ allow_remix: next })}
             />
             <Select
               aria-label="Change expiry"

@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
-import { login, logout, me } from "./client";
+import { login, logout, me, setUsername } from "./client";
 import { navigateTo } from "./navigation";
 import { PER_USER_IDB_DATABASES } from "./perUserStores";
 import { signOutLocally } from "./signOut";
@@ -99,6 +99,45 @@ describe("401 handling in request()", () => {
   });
 });
 
+describe("setUsername", () => {
+  it("puts the username and returns the updated user", async () => {
+    const fn = vi.fn<typeof fetch>(async () => json({ user: { id: "u1", email: "a@b.c", username: "ana" } }));
+    vi.stubGlobal("fetch", fn);
+    expect(await setUsername("ana")).toEqual({ id: "u1", email: "a@b.c", username: "ana" });
+    const [url, init] = fn.mock.calls[0];
+    expect(url).toBe("/api/v1/account/username");
+    expect(init!.method).toBe("PUT");
+    expect(JSON.parse(init!.body as string)).toEqual({ username: "ana" });
+  });
+
+  it("maps 409 username_taken to a readable message", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(errorBody("username_taken"), 409)));
+    await expect(setUsername("ana")).rejects.toMatchObject({
+      code: "username_taken",
+      status: 409,
+      message: "That username is taken. Try another.",
+    });
+  });
+
+  it("maps 422 invalid_username to the rules, not the server's developer text", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(errorBody("invalid_username"), 422)));
+    const error = await setUsername("1ana").catch((e) => e);
+    expect(error).toMatchObject({ code: "invalid_username", status: 422 });
+    expect(error.message).toMatch(/3 to 30 characters/);
+  });
+
+  it("keeps Retry-After when throttled", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(errorBody("too_many_requests"), 429, { "Retry-After": "60" })));
+    await expect(setUsername("ana")).rejects.toMatchObject({ status: 429, retryAfterMs: 60_000 });
+  });
+
+  it("does not sign out when told not to", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(errorBody("unauthenticated"), 401)));
+    await expect(setUsername("ana", { signOutOnUnauthenticated: false })).rejects.toMatchObject({ status: 401 });
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+});
+
 describe("auth client", () => {
   it("login posts the credentials and returns the user", async () => {
     const fn = vi.fn<typeof fetch>(async () => json({ user: { id: "u1", email: "a@b.c" } }));
@@ -112,9 +151,9 @@ describe("auth client", () => {
     expect(JSON.parse(init!.body as string)).toEqual({ email: "a@b.c", password: "pw" });
   });
 
-  it("me returns the signed-in user", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ user: { id: "u1", email: "a@b.c" } })));
-    expect(await me()).toEqual({ id: "u1", email: "a@b.c" });
+  it("me returns the signed-in user with their username", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ user: { id: "u1", email: "a@b.c", username: null } })));
+    expect(await me()).toEqual({ id: "u1", email: "a@b.c", username: null });
   });
 
   it("logout posts and accepts 204", async () => {

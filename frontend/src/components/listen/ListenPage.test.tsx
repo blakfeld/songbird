@@ -5,6 +5,7 @@ import type { ListenResponse } from "@/lib/listen/api";
 import type { SongStore } from "@/lib/song/songStore";
 import { newSong, newTrack, type Section, type Song } from "@/lib/song/types";
 import { drums, note, trackWithNotes } from "@/test/fixtures";
+import { navigateTo } from "@/lib/auth/navigation";
 import { ListenPage } from "./ListenPage";
 
 const playback = vi.hoisted(() => ({
@@ -42,6 +43,8 @@ const renderMixdown = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/audio/mixdown", () => ({ renderMixdown, isMixdownCancelled: () => false }));
 vi.mock("@/lib/download", () => ({ saveBlob: vi.fn() }));
 
+vi.mock("@/lib/auth/navigation", () => ({ navigateTo: vi.fn() }));
+
 const TOKEN = "abcdef0123456789abcdef0123456789abcdef01234";
 
 const section = (id: string, name: string, kind: Section["kind"], measures: number): Section => ({
@@ -64,8 +67,17 @@ function sharedSong(extra: Partial<Song> = {}): Song {
   return { ...song, ...extra };
 }
 
+const shareOf = (over: Partial<ListenResponse["share"]> = {}): ListenResponse["share"] => ({
+  mode: "live",
+  allow_comments: true,
+  allow_downloads: false,
+  allow_remix: false,
+  expires_at: null,
+  ...over,
+});
+
 const respond = (overrides: Partial<ListenResponse> = {}): ListenResponse => ({
-  share: { mode: "live", allow_comments: true, allow_downloads: false, expires_at: null },
+  share: shareOf(),
   song: sharedSong(),
   instruments: [drums],
   shared_at: 1,
@@ -78,9 +90,15 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
 const fetchMock = vi.fn();
 const calls = () => fetchMock.mock.calls.map(([url]) => String(url));
 
-async function open(data: ListenResponse = respond()) {
+const signedIn = (username: string | null = "sam") =>
+  json(200, { user: { id: "u1", email: "sam@example.com", username } });
+const signedOut = () => json(401, { error: { code: "unauthenticated", message: "x" } });
+
+async function open(data: ListenResponse = respond(), me: () => Response = signedIn) {
   fetchMock.mockImplementation(async (url: string) => {
     if (url === `/api/v1/listen/${TOKEN}`) return json(200, data);
+    if (url === "/api/v1/auth/me") return me();
+    if (url.endsWith("/remix")) return json(201, { project: { id: "new-1", revision: 1, updated_at: 1, song: {} } });
     if (url.endsWith("/comments")) return json(201, { comment: posted });
     if (url.endsWith("/midi")) return new Response(new Uint8Array([1]), { status: 200 });
     return json(404, { error: { code: "not_found", message: "x" } });
@@ -89,13 +107,13 @@ async function open(data: ListenResponse = respond()) {
   await screen.findByRole("heading", { level: 1 });
 }
 
-let posted = { id: "c1", name: "Sam", body: "Love this", at_step: 80, section_name: "Chorus", created_at: 1 };
+let posted = { id: "c1", name: "sam", body: "Love this", at_step: 80, section_name: "Chorus", created_at: 1 };
 
 beforeEach(() => {
   localStorage.clear();
   vi.stubGlobal("fetch", fetchMock);
   playback.isPlaying = false;
-  posted = { id: "c1", name: "Sam", body: "Love this", at_step: 80, section_name: "Chorus", created_at: 1 };
+  posted = { id: "c1", name: "sam", body: "Love this", at_step: 80, section_name: "Chorus", created_at: 1 };
 });
 afterEach(() => {
   cleanup();
@@ -118,7 +136,7 @@ describe("Listen page", () => {
     await userEvent.click(screen.getByRole("button", { name: /Play/ }));
     expect(playback.toggle).toHaveBeenCalled();
     expect(screen.getByRole("group", { name: "Sections" })).toBeInTheDocument();
-    expect(calls()).toEqual([`/api/v1/listen/${TOKEN}`]);
+    expect(calls()).toEqual([`/api/v1/listen/${TOKEN}`, "/api/v1/auth/me"]);
   });
 
   it("names the section under the playhead", async () => {
@@ -222,7 +240,7 @@ describe("Downloads", () => {
     const song = sharedSong();
     song.tracks = [...song.tracks, newTrack("audio", "Vocal")];
     renderMixdown.mockResolvedValue({ wav: new Blob(["x"]), clipped: false, seconds: 1 });
-    await open(respond({ song, share: { mode: "live", allow_comments: true, allow_downloads: true, expires_at: null } }));
+    await open(respond({ song, share: shareOf({ allow_comments: false, allow_downloads: true }) }));
     await userEvent.click(screen.getByRole("button", { name: "Download WAV" }));
     await waitFor(() => expect(renderMixdown).toHaveBeenCalled());
     const rendered = renderMixdown.mock.calls[0][0] as Song;
@@ -231,67 +249,137 @@ describe("Downloads", () => {
   });
 
   it("fetches the MIDI file from the listen API", async () => {
-    await open(respond({ share: { mode: "live", allow_comments: true, allow_downloads: true, expires_at: null } }));
+    await open(respond({ share: shareOf({ allow_comments: false, allow_downloads: true }) }));
     await userEvent.click(screen.getByRole("button", { name: "Download MIDI" }));
     await waitFor(() => expect(calls()).toContain(`/api/v1/listen/${TOKEN}/midi`));
   });
 });
 
-describe("Comments", () => {
-  const name = () => screen.getByLabelText("Your name");
-  const text = () => screen.getByLabelText("Comment");
-
-  it("shows no form when comments are off", async () => {
-    await open(respond({ share: { mode: "live", allow_comments: false, allow_downloads: false, expires_at: null } }));
-    expect(screen.queryByRole("form", { name: "Leave a comment" })).toBeNull();
+describe("Session probe", () => {
+  it("does not look for a session when neither comments nor remixing are on", async () => {
+    await open(respond({ share: shareOf({ allow_comments: false, allow_remix: false }) }));
+    expect(calls()).toEqual([`/api/v1/listen/${TOKEN}`]);
   });
 
-  it("pins the comment to the playhead when writing starts, and posts that step", async () => {
+  it.each([
+    ["comments", { allow_comments: true, allow_remix: false }],
+    ["remixing", { allow_comments: false, allow_remix: true }],
+  ])("looks for a session when %s is on, and sends the cookie", async (_n, flags) => {
+    await open(respond({ share: shareOf(flags) }));
+    await waitFor(() => expect(calls()).toContain("/api/v1/auth/me"));
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === "/api/v1/auth/me")!;
+    expect(init?.credentials).not.toBe("omit");
+  });
+
+  it("a 401 shows the sign-in links but never signs anyone out or clears storage", async () => {
+    localStorage.setItem("songbird.studio.rightTab", "lyrics");
+    await open(respond({ share: shareOf({ allow_remix: true }) }), signedOut);
+    expect(await screen.findByRole("link", { name: "Sign in to remix" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in to comment" })).toBeInTheDocument();
+    expect(localStorage.getItem("songbird.studio.rightTab")).toBe("lyrics");
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(screen.queryByText(/sam@example.com|Log out/)).toBeNull();
+  });
+
+  it("treats a failed check like being signed out", async () => {
+    await open(respond(), () => json(500, {}));
+    expect(await screen.findByRole("link", { name: "Sign in to comment" })).toBeInTheDocument();
+  });
+
+  it("still plays the song while the session is unknown", async () => {
+    await open(respond(), signedOut);
+    await userEvent.click(screen.getByRole("button", { name: /Play/ }));
+    expect(playback.toggle).toHaveBeenCalled();
+  });
+});
+
+describe("Comments", () => {
+  const text = () => screen.getByLabelText("Comment");
+  const post = () => userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+  const commentCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/comments"));
+  const failComments = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/comments")) return json(status, body, headers);
+      if (url === "/api/v1/auth/me") return signedIn();
+      return json(200, respond());
+    });
+
+  it("shows no form and no prompt when comments are off", async () => {
+    await open(respond({ share: shareOf({ allow_comments: false }) }));
+    expect(screen.queryByRole("form", { name: "Leave a comment" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sign in to comment" })).toBeNull();
+  });
+
+  it("offers a sign-in link back to this page when signed out, with no form", async () => {
+    await open(respond(), signedOut);
+    const link = await screen.findByRole("link", { name: "Sign in to comment" });
+    expect(link).toHaveAttribute("href", `/login?next=${encodeURIComponent(`/listen/${TOKEN}`)}`);
+    expect(screen.queryByLabelText("Comment")).toBeNull();
+  });
+
+  it("says who is commenting, has no name field, and pins to the playhead", async () => {
     await open();
+    expect(await screen.findByText("Commenting as sam")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Your name")).toBeNull();
     emit(80);
     await userEvent.type(text(), "Love this");
     expect(screen.getByText(/pinned at 0:10 in Chorus/)).toBeInTheDocument();
-    await userEvent.type(name(), "Sam");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     await screen.findByText("Comment posted.");
-    const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/comments"))!;
-    expect(JSON.parse(init.body)).toEqual({ name: "Sam", body: "Love this", at_step: 80 });
+    expect(JSON.parse(commentCalls()[0][1].body)).toEqual({ body: "Love this", at_step: 80 });
   });
 
-  it("renders a hidden honeypot field that a person never fills, and sends no website key", async () => {
+  it("has no honeypot field and remembers no name", async () => {
     await open();
-    const trap = document.querySelector<HTMLInputElement>("input[data-form-type='other']")!;
-    expect(trap).toHaveAttribute("tabindex", "-1");
-    expect(trap).toHaveAttribute("autocomplete", "one-time-code");
-    expect(trap).toHaveAttribute("data-1p-ignore");
-    expect(trap).toHaveAttribute("data-lpignore", "true");
-    expect(trap).toHaveAttribute("data-bwignore");
-    expect(trap.name).not.toMatch(/website|url|site/i);
-    expect(trap.id).not.toMatch(/website|url|site/i);
-    expect(trap.closest("[aria-hidden='true']")).not.toBeNull();
+    await screen.findByText("Commenting as sam");
+    expect(document.querySelector("input[data-form-type='other']")).toBeNull();
     emit(80);
-    await userEvent.type(name(), "Sam");
     await userEvent.type(text(), "Love this");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     await screen.findByText("Comment posted.");
-    const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/comments"))!;
-    expect(JSON.parse(init.body)).not.toHaveProperty("website");
+    expect(localStorage.getItem(`songbird-listen.${TOKEN.slice(0, 6)}.name`)).toBeNull();
+    expect(JSON.parse(commentCalls()[0][1].body)).not.toHaveProperty("website");
   });
 
-  it("sends a filled honeypot, and treats the fake success like any other", async () => {
+  it("tells a signed-in user without a username to set one in their profile, with no username field", async () => {
+    await open(respond(), () => signedIn(null));
+    expect(await screen.findByText(/Commenting needs a username/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set a username in your profile" })).toHaveAttribute("href", "/settings/profile");
+    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(screen.queryByLabelText("Comment")).toBeNull();
+    expect(calls().some((u) => u.includes("account/username"))).toBe(false);
+  });
+
+  it("keeps the text and switches to sign-in when the session has expired", async () => {
     await open();
-    const trap = document.querySelector<HTMLInputElement>("input[data-form-type='other']")!;
-    await userEvent.type(trap, "http://spam.example");
-    await userEvent.type(name(), "Bot");
-    await userEvent.type(text(), "Buy now");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
-    await screen.findByText("Comment posted.");
-    const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/comments"))!;
-    expect(JSON.parse(init.body).website).toBe("http://spam.example");
+    await screen.findByText("Commenting as sam");
+    emit(80);
+    await userEvent.type(text(), "Please keep me");
+    failComments(401, { error: { code: "unauthenticated", message: "x" } });
+    await post();
+    expect(await screen.findByRole("link", { name: "Sign in to comment" })).toBeInTheDocument();
+    expect(text()).toHaveValue("Please keep me");
+    expect(screen.queryByRole("button", { name: "Post comment" })).toBeNull();
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it("keeps the text and shows the profile note when the server says a username is required", async () => {
+    await open();
+    await screen.findByText("Commenting as sam");
+    emit(80);
+    await userEvent.type(text(), "Mine");
+    failComments(409, { error: { code: "username_required", message: "x" } });
+    await post();
+    expect(await screen.findByText(/Commenting needs a username/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set a username in your profile" })).toHaveAttribute("href", "/settings/profile");
+    expect(text()).toHaveValue("Mine");
+    expect(screen.queryByRole("button", { name: "Post comment" })).toBeNull();
+    expect(screen.queryByLabelText("Username")).toBeNull();
   });
 
   it("moves the pin when the timeline is clicked before posting", async () => {
     await open();
+    await screen.findByText("Commenting as sam");
     emit(80);
     await userEvent.type(text(), "x");
     screen.getByRole("button", { name: "Verse, measures 1 to 4" }).focus();
@@ -299,64 +387,46 @@ describe("Comments", () => {
     expect(screen.getByText(/pinned at 0:00 in Verse/)).toBeInTheDocument();
   });
 
-  it("refuses an empty name or comment before sending anything", async () => {
+  it("refuses an empty comment before sending anything", async () => {
     await open();
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
-    expect(screen.getByText("Enter your name.")).toBeInTheDocument();
+    await screen.findByText("Commenting as sam");
+    await post();
     expect(screen.getByText("Write a comment.")).toBeInTheDocument();
-    expect(calls().some((u) => u.endsWith("/comments"))).toBe(false);
-  });
-
-  it("counts a long name in code points", async () => {
-    await open();
-    await userEvent.type(name(), "🎵".repeat(41));
-    await userEvent.type(text(), "hi");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
-    expect(screen.getByText(/at most 40 characters/)).toBeInTheDocument();
+    expect(commentCalls()).toHaveLength(0);
   });
 
   it("keeps the text and asks to try later when rate limited", async () => {
     await open();
-    fetchMock.mockImplementation(async (url: string) =>
-      url.endsWith("/comments")
-        ? json(429, { error: { code: "too_many_requests", message: "x" } }, { "Retry-After": "90" })
-        : json(200, respond()),
-    );
-    await userEvent.type(name(), "Sam");
+    await screen.findByText("Commenting as sam");
+    failComments(429, { error: { code: "too_many_requests", message: "x" } }, { "Retry-After": "90" });
     await userEvent.type(text(), "Please keep me");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     expect(await screen.findByRole("alert")).toHaveTextContent(/Your text is kept; try again in about a minute/);
     expect(text()).toHaveValue("Please keep me");
   });
 
   it("shows the server's reason when a comment is refused", async () => {
     await open();
-    fetchMock.mockImplementation(async (url: string) =>
-      url.endsWith("/comments")
-        ? json(422, { error: { code: "invalid_comment", message: "That position is past the end of the song." } })
-        : json(200, respond()),
-    );
-    await userEvent.type(name(), "Sam");
+    await screen.findByText("Commenting as sam");
+    failComments(422, { error: { code: "invalid_comment", message: "That position is past the end of the song." } });
     await userEvent.type(text(), "hi");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     expect(await screen.findByRole("alert")).toHaveTextContent("That position is past the end of the song.");
   });
 
-  it("remembers the name and lists the listener's own comments after a reload", async () => {
+  it("lists the listener's own comments after a reload", async () => {
     await open();
+    await screen.findByText("Commenting as sam");
     emit(80);
-    await userEvent.type(name(), "Sam");
     await userEvent.type(text(), "Love this");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     await screen.findByText("Comment posted.");
-    expect(localStorage.getItem(`songbird-listen.${TOKEN.slice(0, 6)}.name`)).toBe("Sam");
     cleanup();
 
     await open();
     const own = screen.getByRole("region", { name: "Your comments" });
     expect(within(own).getByText("Love this")).toBeInTheDocument();
     expect(within(own).getByText(/at 0:10 in Chorus/)).toBeInTheDocument();
-    expect(name()).toHaveValue("Sam");
   });
 
   it("does not show comments another listener left, and never asks the server for any", async () => {
@@ -367,20 +437,107 @@ describe("Comments", () => {
     await open();
     expect(screen.queryByText("Not yours")).toBeNull();
     expect(screen.queryByRole("region", { name: "Your comments" })).toBeNull();
-    expect(calls()).toEqual([`/api/v1/listen/${TOKEN}`]);
+    expect(calls().filter((u) => u.includes("comments"))).toEqual([]);
   });
 
   it("renders comment text literally", async () => {
-    posted = { ...posted, name: "<i>Sam</i>", body: "<script>alert(1)</script>\nsee https://example.com" };
+    posted = { ...posted, name: "<i>sam</i>", body: "<script>alert(1)</script>\nsee https://example.com" };
     await open();
-    await userEvent.type(name(), "<i>Sam</i>");
+    await screen.findByText("Commenting as sam");
     await userEvent.type(text(), "x");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    await post();
     const own = await screen.findByRole("region", { name: "Your comments" });
     expect(within(own).getByText(/<script>alert\(1\)<\/script>/)).toBeInTheDocument();
     expect(own.querySelector("script")).toBeNull();
     expect(within(own).queryByRole("link")).toBeNull();
-    expect(within(own).getByText("<i>Sam</i>")).toBeInTheDocument();
+    expect(within(own).getByText("<i>sam</i>")).toBeInTheDocument();
+  });
+});
+
+describe("Remix", () => {
+  const remixShareOf = () => respond({ share: shareOf({ allow_comments: false, allow_remix: true }) });
+  const remixButton = () => screen.findByRole("button", { name: "Remix" });
+  const remixCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/remix"));
+
+  it("shows no control when remixing is off, signed in or not", async () => {
+    await open(respond({ share: shareOf({ allow_comments: true, allow_remix: false }) }));
+    await screen.findByText("Commenting as sam");
+    expect(screen.queryByRole("button", { name: "Remix" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sign in to remix" })).toBeNull();
+    cleanup();
+    await open(respond({ share: shareOf({ allow_comments: true, allow_remix: false }) }), signedOut);
+    await screen.findByRole("link", { name: "Sign in to comment" });
+    expect(screen.queryByRole("link", { name: "Sign in to remix" })).toBeNull();
+  });
+
+  it("offers a sign-in link back to this page when signed out", async () => {
+    await open(remixShareOf(), signedOut);
+    const link = await screen.findByRole("link", { name: "Sign in to remix" });
+    expect(link).toHaveAttribute("href", `/login?next=${encodeURIComponent(`/listen/${TOKEN}`)}`);
+    expect(screen.queryByRole("button", { name: "Remix" })).toBeNull();
+    expect(remixCalls()).toHaveLength(0);
+  });
+
+  it("creates nothing until the signed-in visitor chooses Remix, then opens the Studio with the new project", async () => {
+    await open(remixShareOf());
+    const button = await remixButton();
+    expect(remixCalls()).toHaveLength(0);
+    await userEvent.click(button);
+    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/?song=new-1"));
+    expect(remixCalls()).toHaveLength(1);
+    expect(remixCalls()[0][1].method).toBe("POST");
+  });
+
+  it("is disabled while the request is in flight, and only sends it once", async () => {
+    await open(remixShareOf());
+    const button = await remixButton();
+    let finish: (r: Response) => void = () => {};
+    fetchMock.mockImplementation(() => new Promise<Response>((r) => (finish = r)));
+    await userEvent.click(button);
+    expect(screen.getByRole("button", { name: /Remixing/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /Remixing/ }));
+    expect(remixCalls()).toHaveLength(1);
+    finish(json(201, { project: { id: "p2" } }));
+    await waitFor(() => expect(navigateTo).toHaveBeenCalledWith("/?song=p2"));
+  });
+
+  it("warns that audio tracks arrive without their audio, only when there are clips", async () => {
+    const song = sharedSong();
+    const vocal = newTrack("audio", "Vocal");
+    vocal.audio_clips = [{ id: "a1" } as never];
+    song.tracks = [...song.tracks, vocal];
+    await open(respond({ song, share: shareOf({ allow_comments: false, allow_remix: true }) }));
+    await remixButton();
+    expect(screen.getByRole("note")).toHaveTextContent(/Audio tracks will be copied without their audio/);
+    cleanup();
+    await open(remixShareOf());
+    await remixButton();
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it.each([
+    ["the project limit", 409, { error: { code: "project_limit", message: "x" } }, /limit for stored songs/],
+    ["a throttle", 429, { error: { code: "too_many_requests", message: "x" } }, /Try again shortly/],
+    ["a missing link", 404, { error: { code: "not_found", message: "x" } }, /Remixing isn't available for this link/],
+  ])("stays on the page and explains %s", async (_n, status, body, message) => {
+    await open(remixShareOf());
+    const button = await remixButton();
+    fetchMock.mockImplementation(async () => json(status, body));
+    await userEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remix" })).toBeEnabled();
+  });
+
+  it("switches to the sign-in link on a 401, without signing out", async () => {
+    localStorage.setItem("songbird.studio.rightTab", "lyrics");
+    await open(remixShareOf());
+    const button = await remixButton();
+    fetchMock.mockImplementation(async () => signedOut());
+    await userEvent.click(button);
+    expect(await screen.findByRole("link", { name: "Sign in to remix" })).toBeInTheDocument();
+    expect(localStorage.getItem("songbird.studio.rightTab")).toBe("lyrics");
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 });
 

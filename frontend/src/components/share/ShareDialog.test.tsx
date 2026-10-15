@@ -14,6 +14,7 @@ const link = (over: Partial<ShareLink> = {}): ShareLink => ({
   label: "",
   allow_comments: true,
   allow_downloads: false,
+  allow_remix: false,
   expires_at: null,
   created_at: NOW,
   revoked_at: null,
@@ -67,6 +68,8 @@ describe("Share dialog", () => {
     await screen.findByText("No links yet.");
     expect(screen.getByRole("switch", { name: "Allow comments" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: "Allow downloads" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Allow remixing" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText(/save their own copy of the song, without its chat or section notes/)).toBeInTheDocument();
     expect(screen.getByText(/Listeners can still record what they hear/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Create link" }));
@@ -75,6 +78,7 @@ describe("Share dialog", () => {
       expires_at: null,
       allow_comments: true,
       allow_downloads: false,
+      allow_remix: false,
     });
     const url = `${window.location.origin}/listen/tok`;
     expect(await screen.findByDisplayValue(url)).toBeInTheDocument();
@@ -97,8 +101,41 @@ describe("Share dialog", () => {
       expires_at: NOW + 7 * 24 * 60 * 60 * 1000,
       allow_comments: true,
       allow_downloads: false,
+      allow_remix: false,
       label: "For Sam",
     });
+  });
+
+  it("creates a link with remixing on when the toggle is switched", async () => {
+    show();
+    await screen.findByText("No links yet.");
+    await userEvent.click(screen.getByRole("switch", { name: "Allow remixing" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create link" }));
+    expect(api.create).toHaveBeenCalledWith("p1", expect.objectContaining({ allow_remix: true }));
+  });
+
+  it("shows the remix status of each link and toggles it on an existing link", async () => {
+    links = [link({ label: "For Sam" })];
+    show();
+    const row = await screen.findByRole("group", { name: "For Sam" });
+    expect(row).toHaveTextContent("Remixing off");
+    const toggle = within(row).getByRole("switch", { name: "Allow remixing" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith("p1", "s1", {
+        label: "For Sam",
+        expires_at: null,
+        allow_comments: true,
+        allow_downloads: false,
+        allow_remix: true,
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole("group", { name: "For Sam" })).toHaveTextContent("Remixing on"));
+    expect(within(screen.getByRole("group", { name: "For Sam" })).getByRole("switch", { name: "Allow remixing" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("warns that audio tracks will be silent only when there are clips", async () => {
@@ -126,6 +163,7 @@ describe("Share dialog", () => {
         expires_at: null,
         allow_comments: true,
         allow_downloads: true,
+        allow_remix: false,
       }),
     );
     await userEvent.selectOptions(within(row).getByLabelText("Change expiry"), "1");

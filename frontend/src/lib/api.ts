@@ -51,6 +51,8 @@ const USER_MESSAGES: Record<string, string> = {
   project_limit: "You've reached your limit for stored songs. Delete a song and try again.",
   id_mismatch: "This song doesn't match the one being saved. Reload it and try again.",
   too_many_requests: "Too many attempts. Please try again later.",
+  username_taken: "That username is taken. Try another.",
+  invalid_username: "Usernames are 3 to 30 characters: lowercase letters, digits, _ or -, starting with a letter.",
   server_busy: "The service is busy. Please try again later.",
   api_key_required: "AI features need your own Anthropic or OpenAI key.",
   invalid_api_key_format: "That doesn't look like a valid API key for this provider.",
@@ -126,8 +128,8 @@ export function postJson(path: string, body: unknown): Promise<Response> {
   });
 }
 
-function putJson(path: string, body: unknown): Promise<Response> {
-  return request(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export function putJson(path: string, body: unknown, options?: RequestOptions): Promise<Response> {
+  return request(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, options);
 }
 
 export async function getAiKeys(): Promise<AiKeySummary> {

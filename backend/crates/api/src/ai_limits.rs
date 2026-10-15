@@ -41,6 +41,36 @@ impl AiLimiter {
         }
     }
 
+    /// For budgets that only successful work should spend: the caller checks first and calls
+    /// `record` once the work has happened.
+    pub fn check(&self, user_id: &str, limit: u32) -> Result<(), u64> {
+        let now = Instant::now();
+        let mut windows = self.windows.lock().expect("ai limiter lock");
+        let Some(window) = windows.get_mut(user_id) else {
+            return Ok(());
+        };
+        while window
+            .front()
+            .is_some_and(|at| now.duration_since(*at) >= self.window)
+        {
+            window.pop_front();
+        }
+        if window.len() >= limit as usize {
+            let oldest = *window.front().expect("a full window is not empty");
+            let wait = (oldest + self.window).saturating_duration_since(now);
+            return Err(wait.as_secs() + 1);
+        }
+        Ok(())
+    }
+
+    pub fn record(&self, user_id: &str) {
+        let mut windows = self.windows.lock().expect("ai limiter lock");
+        windows
+            .entry(user_id.to_string())
+            .or_default()
+            .push_back(Instant::now());
+    }
+
     pub fn try_record(&self, user_id: &str, limit: u32) -> Result<(), u64> {
         let now = Instant::now();
         let mut windows = self.windows.lock().expect("ai limiter lock");

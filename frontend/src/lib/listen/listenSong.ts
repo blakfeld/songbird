@@ -9,6 +9,10 @@ export const hasLocalAudio = (track: Track) =>
 
 export const unavailableTracks = (song: Song): Track[] => song.tracks.filter(hasLocalAudio);
 
+// An empty audio track has nothing to lose, so only tracks that would arrive silent in a remix count.
+export const hasAudioToLose = (song: Song) =>
+  song.tracks.some((t) => hasLocalAudio(t) && (t.instrument !== AUDIO_INSTRUMENT || (t.audio_clips?.length ?? 0) > 0));
+
 // Dropping the sample list and the sampler assignments leaves the playback model nothing to look up, so those
 // tracks fall silent through its existing "sample not in the song" path and no browser sample store is ever read.
 export function playableSong(song: Song): Song {

@@ -101,11 +101,12 @@ Locally, from `backend/`:
 
 ```sh
 cargo run -p api -- user create ana@example.com                 # prompts for the password
+cargo run -p api -- user create ana@example.com --username ana  # also sets the name shown on comments
 printf '%s\n' "$PASSWORD" | cargo run -p api -- user create ana@example.com
 cargo run -p api -- user set-password ana@example.com           # also ends all of Ana's sessions
 cargo run -p api -- user disable ana@example.com                # also ends all of Ana's sessions
 cargo run -p api -- user enable ana@example.com
-cargo run -p api -- user list                                   # email, active/disabled, created
+cargo run -p api -- user list                                   # email, username, active/disabled, created
 cargo run -p api -- user delete ana@example.com                 # asks you to retype the email
 cargo run -p api -- user delete ana@example.com --yes           # required when not on a terminal
 ```
@@ -120,8 +121,10 @@ docker compose exec backend songbird-api user list
 ```
 
 Emails are trimmed and compared without regard to letter case.
+Usernames are 3 to 30 characters of lowercase letters, digits, `_` and `-`,
+starting with a letter, and are unique without regard to letter case.
 `user delete` removes the account together with all of its projects, sessions,
-and usage records. Database backups made by your provider keep that data until
+usage records, and the listener comments it wrote on other users' songs. Database backups made by your provider keep that data until
 they age out of the provider's retention window, so deleting an account does
 not erase it from backups.
 
@@ -242,8 +245,10 @@ All backend settings are documented in [`backend/.env.example`](backend/.env.exa
 `SONGBIRD_CODEX_BIN`, `SONGBIRD_CODEX_MODEL`, `SONGBIRD_COOKIE_SECURE`,
 `SONGBIRD_SESSION_IDLE_HOURS`, `SONGBIRD_TRUST_PROXY`,
 `SONGBIRD_AI_REQUESTS_PER_MINUTE`, `SONGBIRD_AI_REQUESTS_PER_DAY`,
-`SONGBIRD_SHARE_READS_PER_MINUTE`, `SONGBIRD_COMMENTS_PER_ADDRESS_10M`,
-`SONGBIRD_COMMENTS_PER_ADDRESS_DAY`, and `SONGBIRD_COMMENTS_PER_SHARE_DAY`. `SONGBIRD_ENV`
+`SONGBIRD_SHARE_READS_PER_MINUTE`, `SONGBIRD_COMMENTS_PER_USER_10M`,
+`SONGBIRD_COMMENTS_PER_USER_DAY`, `SONGBIRD_COMMENTS_PER_SHARE_DAY`, and
+`SONGBIRD_REMIXES_PER_MINUTE` (the comment limits were `SONGBIRD_COMMENTS_PER_ADDRESS_10M` and
+`SONGBIRD_COMMENTS_PER_ADDRESS_DAY`, which are still read for one release). `SONGBIRD_ENV`
 is `production` when unset, and production refuses to start with any provider other than
 `user` (each user's own key) or with an `ANTHROPIC_API_KEY` set; local development
 needs `SONGBIRD_ENV=development`, which `just dev`, `docker-compose.yml`, and `.env.example`

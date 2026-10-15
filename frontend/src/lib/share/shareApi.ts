@@ -11,6 +11,7 @@ export interface ShareLink {
   label: string;
   allow_comments: boolean;
   allow_downloads: boolean;
+  allow_remix: boolean;
   expires_at: number | null;
   created_at: number;
   revoked_at: number | null;
@@ -23,6 +24,7 @@ export interface NewShare {
   expires_at: number | null;
   allow_comments: boolean;
   allow_downloads: boolean;
+  allow_remix: boolean;
   label?: string;
 }
 
@@ -31,6 +33,7 @@ export interface ShareEdit {
   expires_at: number | null;
   allow_comments: boolean;
   allow_downloads: boolean;
+  allow_remix: boolean;
 }
 
 export interface CreatedShare {

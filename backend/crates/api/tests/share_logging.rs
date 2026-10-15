@@ -66,22 +66,31 @@ async fn a_listeners_token_and_comment_text_never_reach_the_logs() {
     let midi_body = json!({"mode": "live", "expires_at": null, "allow_comments": true,
                            "allow_downloads": true});
     let (_, midi_token) = make_share(&app, &cookie, &project, midi_body).await;
-    let name = "Unique-Listener-Name-81b6";
+    let remix_body = json!({"mode": "live", "expires_at": null, "allow_comments": false,
+                            "allow_downloads": false, "allow_remix": true});
+    let (_, remix_token) = make_share(&app, &cookie, &project, remix_body).await;
+    let name = "unique-listener-name-81b6";
+    let listener = commenter_cookie(&app, "logging-listener-81b6@example.com", Some(name)).await;
     let text = "unique comment text 5c0f that must stay out of logs";
 
     let heard = listen(&app, &token).await;
-    let posted = post_comment(
+    let posted = post_comment_as(
         &app,
+        &listener,
         &token,
-        json!({"name": name, "body": text, "at_step": 3}),
+        json!({"body": text, "at_step": 3}),
+        &[],
     )
     .await;
-    let rejected = post_comment(
+    let rejected = post_comment_as(
         &app,
+        &listener,
         &token,
-        json!({"name": name, "body": text, "at_step": -1}),
+        json!({"body": text, "at_step": -1}),
+        &[],
     )
     .await;
+    let remixed = remix(&app, Some(&listener), &remix_token).await;
     let midi = send_raw(
         &app,
         listen_request(
@@ -96,6 +105,7 @@ async fn a_listeners_token_and_comment_text_never_reach_the_logs() {
     assert_eq!(heard.status, StatusCode::OK);
     assert_eq!(posted.status, StatusCode::CREATED);
     assert_eq!(rejected.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(remixed.status, StatusCode::CREATED);
     assert_eq!(midi.status, StatusCode::OK);
     assert_eq!(unknown.status, StatusCode::NOT_FOUND);
 
@@ -103,6 +113,7 @@ async fn a_listeners_token_and_comment_text_never_reach_the_logs() {
     for secret in [
         token.as_str(),
         midi_token.as_str(),
+        remix_token.as_str(),
         &"Z".repeat(43),
         name,
         text,
@@ -113,6 +124,7 @@ async fn a_listeners_token_and_comment_text_never_reach_the_logs() {
         "/api/v1/listen/:token\"",
         "/api/v1/listen/:token/comments",
         "/api/v1/listen/:token/midi",
+        "/api/v1/listen/:token/remix",
     ] {
         assert!(
             captured.lines().any(|l| l.contains(expected)),

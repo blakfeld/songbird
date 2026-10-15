@@ -65,7 +65,7 @@ fn validated_facts(state: &AppState, song: &Value) -> Result<(Song, SongFacts), 
     Ok((typed, facts))
 }
 
-fn project_json(stored: &Stored) -> Result<Value, ApiError> {
+pub(crate) fn project_json(stored: &Stored) -> Result<Value, ApiError> {
     let song: Value = serde_json::from_str(&stored.song).map_err(|error| {
         tracing::error!(%error, "a stored song is not valid JSON");
         ApiError::Internal
@@ -96,22 +96,31 @@ async fn list(State(state): State<AppState>, user: CurrentUser) -> Result<Json<V
     Ok(Json(json!({"projects": entries})))
 }
 
-async fn create(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    ApiJson(body): ApiJson<CreateBody>,
-) -> Result<Response, ApiError> {
+/// Shared with remixing so a copy made from a share link is held to exactly the validation
+/// and per-user limits of a project created directly.
+pub(crate) async fn create_project(
+    state: &AppState,
+    owner_id: &str,
+    mut song: Value,
+) -> Result<Stored, ApiError> {
     // The server owns the id: the client cannot know it yet and must not be
     // able to pick one that collides with another user's project.
     let id = uuid::Uuid::now_v7().to_string();
-    let mut song = body.song;
     let Some(object) = song.as_object_mut() else {
         return Err(ApiError::InvalidJson);
     };
     object.insert("id".into(), Value::String(id.clone()));
 
-    let (_, facts) = validated_facts(&state, &song)?;
-    let stored = store::create(&state.db, &user.id, &id, &facts).await?;
+    let (_, facts) = validated_facts(state, &song)?;
+    Ok(store::create(&state.db, owner_id, &id, &facts).await?)
+}
+
+async fn create(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    ApiJson(body): ApiJson<CreateBody>,
+) -> Result<Response, ApiError> {
+    let stored = create_project(&state, &user.id, body.song).await?;
     Ok((StatusCode::CREATED, Json(project_json(&stored)?)).into_response())
 }
 

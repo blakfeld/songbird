@@ -55,6 +55,7 @@ fn new_share(mode: ShareMode) -> NewShare {
         expires_at: None,
         allow_comments: true,
         allow_downloads: false,
+        allow_remix: false,
     }
 }
 
@@ -72,8 +73,9 @@ async fn add_share(f: &Fixture, mode: ShareMode) -> (String, String) {
     (share.id, token.expose_secret().to_string())
 }
 
-fn comment(at_step: i64) -> NewComment {
+fn comment(f: &Fixture, at_step: i64) -> NewComment {
     NewComment {
+        author_id: f.other.clone(),
         name: "Sam".into(),
         body: "Love this".into(),
         at_step,
@@ -207,6 +209,7 @@ async fn expired_revoked_unknown_and_malformed_tokens_are_not_found() {
             expires_at: Some(now + 1000),
             allow_comments: true,
             allow_downloads: false,
+            allow_remix: None,
         },
     )
     .await
@@ -235,7 +238,7 @@ async fn expired_revoked_unknown_and_malformed_tokens_are_not_found() {
 async fn another_users_ids_are_not_found_for_every_owner_operation() {
     let f = fixture().await;
     let (share_id, token) = add_share(&f, ShareMode::Live).await;
-    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(3))
+    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 3))
         .await
         .unwrap();
     let edit = ShareEdit {
@@ -243,6 +246,7 @@ async fn another_users_ids_are_not_found_for_every_owner_operation() {
         expires_at: None,
         allow_comments: false,
         allow_downloads: true,
+        allow_remix: None,
     };
     let b = &f.other;
     let p = &f.project;
@@ -291,7 +295,7 @@ async fn another_users_ids_are_not_found_for_every_owner_operation() {
 async fn a_comment_path_through_the_wrong_project_is_not_found() {
     let f = fixture().await;
     let (share_id, _) = add_share(&f, ShareMode::Live).await;
-    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(3))
+    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 3))
         .await
         .unwrap();
     let second_project = new_project(&f.db, &f.owner).await;
@@ -309,7 +313,7 @@ async fn a_comment_path_through_the_wrong_project_is_not_found() {
 async fn resolving_keeps_the_first_time_and_reopening_clears_it() {
     let f = fixture().await;
     let (share_id, _) = add_share(&f, ShareMode::Live).await;
-    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(3))
+    let stored = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 3))
         .await
         .unwrap();
     let resolve =
@@ -324,13 +328,13 @@ async fn resolving_keeps_the_first_time_and_reopening_clears_it() {
 async fn comments_are_listed_by_position_then_time_and_counted_when_unresolved() {
     let f = fixture().await;
     let (share_id, _) = add_share(&f, ShareMode::Live).await;
-    let late = store::add_comment(&f.db, &share_id, &f.project, &comment(40))
+    let late = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 40))
         .await
         .unwrap();
-    store::add_comment(&f.db, &share_id, &f.project, &comment(8))
+    store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 8))
         .await
         .unwrap();
-    store::add_comment(&f.db, &share_id, &f.project, &comment(8))
+    store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 8))
         .await
         .unwrap();
 
@@ -359,25 +363,26 @@ async fn a_comment_is_refused_once_the_link_stops_taking_comments_or_expires() {
         expires_at,
         allow_comments,
         allow_downloads: false,
+        allow_remix: None,
     };
 
     store::update(&f.db, &f.owner, &f.project, &share_id, &edit(None, false))
         .await
         .unwrap();
-    let off = store::add_comment(&f.db, &share_id, &f.project, &comment(0)).await;
+    let off = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 0)).await;
     assert!(matches!(off, Err(ShareError::NotFound)));
 
     let past = Some(now_ms() - 1_000);
     store::update(&f.db, &f.owner, &f.project, &share_id, &edit(past, true))
         .await
         .unwrap();
-    let expired = store::add_comment(&f.db, &share_id, &f.project, &comment(0)).await;
+    let expired = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 0)).await;
     assert!(matches!(expired, Err(ShareError::NotFound)));
 
     store::update(&f.db, &f.owner, &f.project, &share_id, &edit(None, true))
         .await
         .unwrap();
-    store::add_comment(&f.db, &share_id, &f.project, &comment(0))
+    store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 0))
         .await
         .unwrap();
 }
@@ -402,7 +407,7 @@ async fn a_link_holds_at_most_1000_comments() {
     }
     tx.commit().await.unwrap();
 
-    let refused = store::add_comment(&f.db, &share_id, &f.project, &comment(0)).await;
+    let refused = store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 0)).await;
     assert!(matches!(refused, Err(ShareError::CommentLimit)));
     assert_eq!(
         scalar(&f.db, "SELECT COUNT(*) FROM share_comments").await,
@@ -414,7 +419,7 @@ async fn a_link_holds_at_most_1000_comments() {
 async fn deleting_a_project_removes_its_links_and_comments() {
     let f = fixture().await;
     let (share_id, token) = add_share(&f, ShareMode::Snapshot).await;
-    store::add_comment(&f.db, &share_id, &f.project, &comment(0))
+    store::add_comment(&f.db, &share_id, &f.project, &comment(&f, 0))
         .await
         .unwrap();
 
@@ -448,10 +453,10 @@ async fn deleting_a_user_removes_the_links_and_comments_of_all_their_projects() 
     )
     .await
     .unwrap();
-    store::add_comment(&f.db, &first_share, &f.project, &comment(0))
+    store::add_comment(&f.db, &first_share, &f.project, &comment(&f, 0))
         .await
         .unwrap();
-    store::add_comment(&f.db, &second_share.id, &second, &comment(0))
+    store::add_comment(&f.db, &second_share.id, &second, &comment(&f, 0))
         .await
         .unwrap();
 
@@ -489,4 +494,61 @@ async fn only_a_hash_of_the_token_is_stored() {
         .await
         .unwrap()
         .is_none());
+}
+
+#[tokio::test]
+async fn allow_remix_is_stored_listed_served_and_only_changed_when_given() {
+    let f = fixture().await;
+    let token = generate_token();
+    let created = store::create(
+        &f.db,
+        &f.owner,
+        &f.project,
+        &NewShare {
+            allow_remix: true,
+            ..new_share(ShareMode::Live)
+        },
+        token.expose_secret(),
+    )
+    .await
+    .unwrap();
+    assert!(created.allow_remix);
+    let (default_id, default_token) = add_share(&f, ShareMode::Live).await;
+
+    let served = |token: String| {
+        let db: Db = (*f.db).clone();
+        async move {
+            store::find_active(&db, &token, now_ms())
+                .await
+                .unwrap()
+                .unwrap()
+                .allow_remix
+        }
+    };
+    assert!(served(token.expose_secret().to_string()).await);
+    assert!(!served(default_token).await);
+    let listed = store::list(&f.db, &f.owner, &f.project).await.unwrap();
+    let remix_of = |id: &str| listed.iter().find(|s| s.id == id).unwrap().allow_remix;
+    assert!(remix_of(&created.id));
+    assert!(!remix_of(&default_id));
+
+    let edit = |allow_remix| ShareEdit {
+        label: "Band".into(),
+        expires_at: None,
+        allow_comments: true,
+        allow_downloads: false,
+        allow_remix,
+    };
+    let unchanged = store::update(&f.db, &f.owner, &f.project, &created.id, &edit(None))
+        .await
+        .unwrap();
+    assert!(unchanged.allow_remix);
+    let off = store::update(&f.db, &f.owner, &f.project, &created.id, &edit(Some(false)))
+        .await
+        .unwrap();
+    assert!(!off.allow_remix);
+    let on = store::update(&f.db, &f.owner, &f.project, &default_id, &edit(Some(true)))
+        .await
+        .unwrap();
+    assert!(on.allow_remix);
 }

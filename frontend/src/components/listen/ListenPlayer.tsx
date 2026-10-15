@@ -7,7 +7,8 @@ import { SectionRuler } from "@/components/studio/SectionRuler";
 import { Button } from "@/components/ui/Button";
 import { useSongPlayback } from "@/lib/audio/useSongPlayback";
 import type { ListenResponse, PostedComment } from "@/lib/listen/api";
-import { playableSong, unavailableTracks } from "@/lib/listen/listenSong";
+import type { ListenSession } from "@/lib/listen/session";
+import { hasAudioToLose, playableSong, unavailableTracks } from "@/lib/listen/listenSong";
 import { readOwnComments, rememberComment, tokenPrefixOf } from "@/lib/listen/listenerStorage";
 import { sectionNameAt, songSteps } from "@/lib/listen/position";
 import { defaultLoop } from "@/lib/loopRegion";
@@ -17,8 +18,19 @@ import { CommentForm } from "./CommentForm";
 import { ListenDownloads } from "./ListenDownloads";
 import { OwnComments } from "./OwnComments";
 import { ReadOnlyLyrics } from "./ReadOnlyLyrics";
+import { RemixControl } from "./RemixControl";
 
-export function ListenPlayer({ token, data }: { token: string; data: ListenResponse }) {
+export function ListenPlayer({
+  token,
+  data,
+  session,
+  onSessionChange,
+}: {
+  token: string;
+  data: ListenResponse;
+  session: ListenSession;
+  onSessionChange: (session: ListenSession) => void;
+}) {
   const { share, instruments } = data;
   const song = useMemo(() => playableSong(data.song), [data.song]);
   const tokenPrefix = tokenPrefixOf(token);
@@ -116,15 +128,25 @@ export function ListenPlayer({ token, data }: { token: string; data: ListenRespo
 
       {share.allow_downloads && <ListenDownloads token={token} song={song} instruments={instruments} />}
 
+      {share.allow_remix && (
+        <RemixControl
+          token={token}
+          session={session}
+          audioWarning={hasAudioToLose(data.song)}
+          onSessionChange={onSessionChange}
+        />
+      )}
+
       <ReadOnlyLyrics lyrics={lyrics} />
 
       {share.allow_comments && (
         <>
           <CommentForm
             token={token}
-            tokenPrefix={tokenPrefix}
             song={song}
             pin={pin}
+            session={session}
+            onSessionChange={onSessionChange}
             onStartWriting={() => setPin(playhead.current)}
             onPosted={(comment) => {
               setOwn(rememberComment(tokenPrefix, comment));

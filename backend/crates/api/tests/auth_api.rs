@@ -74,7 +74,32 @@ async fn successful_login_returns_the_user_and_sets_a_host_prefixed_cookie() {
         ))
         .await;
     assert_eq!(me.status, StatusCode::OK);
-    assert_eq!(me.body, response.body);
+    assert_eq!(
+        me.body,
+        json!({"user": {"id": user.id, "email": "ana@example.com", "username": null}})
+    );
+}
+
+#[tokio::test]
+async fn me_returns_the_username_once_one_is_set() {
+    let app = app_with_ana(&[]).await;
+    let user = users::find_by_email(app.db(), "ana@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    users::set_username(app.db(), &user.id, "Ana")
+        .await
+        .unwrap();
+    let cookie = app.cookie_for("ana@example.com").await;
+
+    let me = app
+        .send(request("GET", "/api/v1/auth/me", Some(&cookie), None))
+        .await;
+
+    assert_eq!(
+        me.body,
+        json!({"user": {"id": user.id, "email": "ana@example.com", "username": "ana"}})
+    );
 }
 
 #[tokio::test]

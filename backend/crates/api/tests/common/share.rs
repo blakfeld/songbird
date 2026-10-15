@@ -99,6 +99,7 @@ pub async fn listen(app: &TestApp, token: &str) -> Response {
     .await
 }
 
+/// Posts as the signed-in user `sam`, so most comment tests need no sign-in plumbing.
 pub async fn post_comment(app: &TestApp, token: &str, body: Value) -> Response {
     post_comment_from(app, token, body, &[]).await
 }
@@ -109,17 +110,62 @@ pub async fn post_comment_from(
     body: Value,
     headers: &[(&str, &str)],
 ) -> Response {
+    let cookie = commenter_cookie(app, "sam@example.com", Some("sam")).await;
+    post_comment_as(app, &cookie, token, body, headers).await
+}
+
+pub async fn post_comment_as(
+    app: &TestApp,
+    cookie: &str,
+    token: &str,
+    body: Value,
+    headers: &[(&str, &str)],
+) -> Response {
+    let mut all = vec![("cookie", cookie)];
+    all.extend_from_slice(headers);
     app.send(listen_request(
         "POST",
         &format!("/api/v1/listen/{token}/comments"),
-        headers,
+        &all,
         Some(body),
     ))
     .await
 }
 
+/// A session for `email`; the username is set only when the account has none yet, so
+/// repeated calls are cheap and idempotent.
+pub async fn commenter_cookie(app: &TestApp, email: &str, username: Option<&str>) -> String {
+    let cookie = app.cookie_for(email).await;
+    if let Some(username) = username {
+        let user = api::users::find_by_email(app.db(), email)
+            .await
+            .unwrap()
+            .unwrap();
+        if user.username.is_none() {
+            api::users::set_username(app.db(), &user.id, username)
+                .await
+                .unwrap();
+        }
+    }
+    cookie
+}
+
 pub fn comment_body(at_step: i64) -> Value {
-    json!({"name": "Sam", "body": "Love this lift", "at_step": at_step})
+    json!({"body": "Love this lift", "at_step": at_step})
+}
+
+pub async fn remix(app: &TestApp, cookie: Option<&str>, token: &str) -> Response {
+    let mut headers = Vec::new();
+    if let Some(cookie) = cookie {
+        headers.push(("cookie", cookie));
+    }
+    app.send(listen_request(
+        "POST",
+        &format!("/api/v1/listen/{token}/remix"),
+        &headers,
+        None,
+    ))
+    .await
 }
 
 pub async fn owner_comments(app: &TestApp, cookie: &str, project: &str) -> Response {

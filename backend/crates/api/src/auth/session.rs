@@ -121,6 +121,7 @@ pub async fn create_if_credentials_unchanged(
 pub struct SessionUser {
     pub id: String,
     pub email: String,
+    pub username: Option<String>,
 }
 
 /// Disabled users are excluded by the join so a disable takes effect even if
@@ -133,7 +134,7 @@ pub async fn lookup(
 ) -> Result<Option<SessionUser>, sqlx::Error> {
     let token_hash = hash_token(token);
     let row = sqlx::query(
-        "SELECT u.id, u.email, s.created_at, s.last_seen_at, s.expires_at \
+        "SELECT u.id, u.email, u.username, s.created_at, s.last_seen_at, s.expires_at \
          FROM sessions s JOIN users u ON u.id = s.user_id \
          WHERE s.token_hash = $1 AND u.disabled = $2",
     )
@@ -163,6 +164,7 @@ pub async fn lookup(
     Ok(Some(SessionUser {
         id: row.try_get("id")?,
         email: row.try_get("email")?,
+        username: row.try_get("username")?,
     }))
 }
 

@@ -8,11 +8,14 @@ use crate::clock::now_ms;
 use crate::db::Db;
 
 const MAX_EMAIL_CHARS: usize = 254;
+const USERNAME_MIN_CHARS: usize = 3;
+const USERNAME_MAX_CHARS: usize = 30;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: String,
     pub email: String,
+    pub username: Option<String>,
     pub password_hash: String,
     pub disabled: bool,
     pub created_at: i64,
@@ -27,8 +30,32 @@ pub enum UserError {
     NotFound,
     #[error("\"{0}\" is not a valid email address.")]
     InvalidEmail(String),
+    #[error("{0}")]
+    InvalidUsername(String),
+    #[error("That username is already taken.")]
+    UsernameTaken,
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
+}
+
+const USERNAME_RULES: &str =
+    "A username is 3 to 30 characters: lowercase letters, digits, _ or -, starting with a letter.";
+
+/// Lowercased here for the same reason as emails: the plain `UNIQUE` index must be
+/// case-insensitive on both backends. ASCII-only lowercasing keeps look-alike Unicode out.
+pub fn normalize_username(raw: &str) -> Result<String, UserError> {
+    let username = raw.to_ascii_lowercase();
+    let length = username.chars().count();
+    let well_formed = (USERNAME_MIN_CHARS..=USERNAME_MAX_CHARS).contains(&length)
+        && username.starts_with(|c: char| c.is_ascii_lowercase())
+        && username
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');
+    if well_formed {
+        Ok(username)
+    } else {
+        Err(UserError::InvalidUsername(USERNAME_RULES.to_string()))
+    }
 }
 
 /// Applied to every write and lookup so the plain `UNIQUE` index is case-insensitive.
@@ -47,39 +74,78 @@ pub fn normalize_email(raw: &str) -> Result<String, UserError> {
 }
 
 pub async fn create(db: &Db, email: &str, password_hash: &str) -> Result<User, UserError> {
+    create_with_username(db, email, password_hash, None).await
+}
+
+pub async fn create_with_username(
+    db: &Db,
+    email: &str,
+    password_hash: &str,
+    username: Option<&str>,
+) -> Result<User, UserError> {
     let email = normalize_email(email)?;
+    let username = username.map(normalize_username).transpose()?;
     let now = now_ms();
     let user = User {
         id: uuid::Uuid::now_v7().to_string(),
         email,
+        username,
         password_hash: password_hash.to_string(),
         disabled: false,
         created_at: now,
         updated_at: now,
     };
-    sqlx::query(
-        "INSERT INTO users (id, email, password_hash, disabled, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+    let inserted = sqlx::query(
+        "INSERT INTO users (id, email, username, password_hash, disabled, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&user.id)
     .bind(&user.email)
+    .bind(&user.username)
     .bind(&user.password_hash)
     .bind(user.disabled)
     .bind(user.created_at)
     .bind(user.updated_at)
     .execute(db.pool())
-    .await
-    .map_err(|e| {
+    .await;
+    if let Err(e) = inserted {
         // Detected through sqlx rather than error-code strings, which differ per backend.
-        if e.as_database_error()
+        if !e
+            .as_database_error()
             .is_some_and(|d| d.is_unique_violation())
         {
+            return Err(UserError::Database(e));
+        }
+        // Both columns have unique indexes and the violation does not say which fired.
+        return Err(if find_by_email(db, &user.email).await?.is_some() {
             UserError::EmailInUse
         } else {
-            UserError::Database(e)
-        }
-    })?;
+            UserError::UsernameTaken
+        });
+    }
     Ok(user)
+}
+
+/// The unique index settles concurrent claims, so a lost race is reported as taken rather
+/// than checked for beforehand.
+pub async fn set_username(db: &Db, user_id: &str, username: &str) -> Result<String, UserError> {
+    let username = normalize_username(username)?;
+    sqlx::query("UPDATE users SET username = $1, updated_at = $2 WHERE id = $3")
+        .bind(&username)
+        .bind(now_ms())
+        .bind(user_id)
+        .execute(db.pool())
+        .await
+        .map_err(|e| {
+            if e.as_database_error()
+                .is_some_and(|d| d.is_unique_violation())
+            {
+                UserError::UsernameTaken
+            } else {
+                UserError::Database(e)
+            }
+        })?;
+    Ok(username)
 }
 
 pub async fn find_by_email(db: &Db, email: &str) -> Result<Option<User>, UserError> {
@@ -187,7 +253,7 @@ pub async fn delete(db: &Db, email: &str) -> Result<(), UserError> {
     Ok(())
 }
 
-const COLUMNS: &str = "id, email, password_hash, disabled, created_at, updated_at";
+const COLUMNS: &str = "id, email, username, password_hash, disabled, created_at, updated_at";
 
 async fn delete_sessions_of(
     tx: &mut sqlx::Transaction<'_, sqlx::Any>,
@@ -204,6 +270,7 @@ fn user_from_row(row: AnyRow) -> Result<User, sqlx::Error> {
     Ok(User {
         id: row.try_get("id")?,
         email: row.try_get("email")?,
+        username: row.try_get("username")?,
         password_hash: row.try_get("password_hash")?,
         disabled: decode_bool(&row, "disabled")?,
         created_at: row.try_get("created_at")?,
@@ -228,6 +295,29 @@ mod tests {
             normalize_email("  Ana@Example.COM ").unwrap(),
             "ana@example.com"
         );
+    }
+
+    #[test]
+    fn usernames_are_lowercased_and_follow_the_rules() {
+        assert_eq!(normalize_username("Ana-b_2").unwrap(), "ana-b_2");
+        assert!(normalize_username(&"a".repeat(30)).is_ok());
+        for bad in [
+            "",
+            "ab",
+            "1ana",
+            "_ana",
+            "-ana",
+            "ana!",
+            "ana b",
+            " ana",
+            "änä",
+            &"a".repeat(31),
+        ] {
+            assert!(
+                matches!(normalize_username(bad), Err(UserError::InvalidUsername(_))),
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]

@@ -29,6 +29,7 @@ const MAX_THROTTLE_KEY_CHARS: usize = 254;
 pub struct CurrentUser {
     pub id: String,
     pub email: String,
+    pub username: Option<String>,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for CurrentUser {
@@ -87,6 +88,7 @@ pub async fn require_session(
     request.extensions_mut().insert(CurrentUser {
         id: user.id,
         email: user.email,
+        username: user.username,
     });
     Ok(next.run(request).await)
 }
@@ -117,12 +119,12 @@ pub async fn check_origin(
     Ok(next.run(request).await)
 }
 
-fn user_json(id: &str, email: &str) -> serde_json::Value {
-    json!({"user": {"id": id, "email": email}})
+pub(crate) fn user_json(id: &str, email: &str, username: Option<&str>) -> serde_json::Value {
+    json!({"user": {"id": id, "email": email, "username": username}})
 }
 
 async fn me(user: CurrentUser) -> Json<serde_json::Value> {
-    Json(user_json(&user.id, &user.email))
+    Json(user_json(&user.id, &user.email, user.username.as_deref()))
 }
 
 #[derive(Deserialize)]
@@ -290,7 +292,7 @@ async fn login(
     Ok((
         StatusCode::OK,
         [(header::SET_COOKIE, cookie)],
-        Json(user_json(&user.id, &user.email)),
+        Json(json!({"user": {"id": user.id, "email": user.email}})),
     )
         .into_response())
 }
